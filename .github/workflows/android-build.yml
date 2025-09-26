@@ -1,0 +1,51 @@
+name: Android Build and Deploy
+
+on:
+  push:
+    branches:
+      - main  # 或者你想要触发构建的其他分支
+  pull_request:
+    branches:
+      - main  # 或者你想要触发构建的其他分支
+
+jobs:
+  build:
+    runs-on: ubuntu-latest  # 使用GitHub提供的Ubuntu runner进行构建
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2  # 获取代码
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'  # 设置Python版本
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt  # 安装Python依赖项
+
+      - name: Install Buildozer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip build-essential ccache git unzip zip
+          sudo apt-get install -y python3-dev python3-setuptools
+          pip install buildozer
+
+      - name: Install Android dependencies
+        run: |
+          sudo apt-get install -y openjdk-8-jdk
+          sudo apt-get install -y libncurses5 libstdc++6 zlib1g
+          sudo apt-get install -y lib32stdc++6 lib32z1
+          sudo apt-get install -y libssl1.0.0
+
+      - name: Build the APK with Buildozer
+        run: |
+          buildozer android debug  # 使用Buildozer来构建APK，debug模式
+
+      - name: Upload APK to GitHub Artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: hydrogen-music-apk
+          path: bin/*.apk  # 上传生成的 .apk 文件
