@@ -2,7 +2,8 @@
 <p align="center">
 
   <h2 align="center" style="font-weight: 600">Hydrogen Music 复活版 新特性试验场</h2>
-  <h3>这个和ldx123000/Hydrogen-Music没有关系，属于我@acnekot的另外分支</h3>
+  <h3>这个分支的维护和ldx123000没有关系，属于我@acnekot的另外分支</h3>
+  <h3>在此感谢ldx123000大佬的维护</h3>
   <p align="center">
     首先感谢原作者的绝佳创意和辛勤付出：<a href="https://github.com/Kaidesuyo/Hydrogen-Music" target="blank"><strong>Hydrogen-Music</strong></a>
     <br />
