@@ -1,8 +1,8 @@
 <br />
 <p align="center">
 
-  <h2 align="center" style="font-weight: 600">Hydrogen Music 复活版</h2>
-
+  <h2 align="center" style="font-weight: 600">Hydrogen Music 复活版 新特性试验场</h2>
+  <h3>这个和ldx123000/Hydrogen-Music没有关系，属于我@acnekot的另外分支</h3>
   <p align="center">
     首先感谢原作者的绝佳创意和辛勤付出：<a href="https://github.com/Kaidesuyo/Hydrogen-Music" target="blank"><strong>Hydrogen-Music</strong></a>
     <br />
@@ -16,6 +16,10 @@
     <br />
   </p>
 </p>
+
+## 注意
+- 此分支代码部分由AI编写，容易出现BUG过多的情况
+- 如果出现了bug尽管提issue
 
 ## 🌟 主要特性
 
