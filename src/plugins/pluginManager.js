@@ -326,7 +326,13 @@ class PackageModuleLoader {
         stack.push(segment)
       }
     }
-    return { path: stack.join('/'), suffix }
+    let resolvedPath = stack.join('/')
+    const normalized = normalizePackagePath(resolvedPath)
+    const candidate = this._resolveModuleCandidate(normalized)
+    if (candidate) {
+      resolvedPath = candidate
+    }
+    return { path: resolvedPath, suffix }
   }
 
   async _resolveBare(specifier) {
