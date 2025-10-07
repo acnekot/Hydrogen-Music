@@ -11,6 +11,7 @@ import { usePlayerStore } from '../store/playerStore';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
 import { setTheme, getSavedTheme } from '../utils/theme';
+import PluginManager from '../components/PluginManager.vue';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -1252,6 +1253,7 @@ const clearFmRecent = () => {
                     <h2 class="item-title">音乐</h2>
                     <div class="line"></div>
                     <div class="item-options">
+                        <template v-if="false">
                         <div class="option">
                             <div class="option-name">音质选择</div>
                             <div class="option-operation">
@@ -1685,6 +1687,7 @@ const clearFmRecent = () => {
                                 <div class="option-reset" @click="resetLyricVisualizerTransitionDelay">重置</div>
                             </div>
                         </div>
+                        </template>
                         <div class="option">
                             <div class="option-name">歌词字体大小</div>
                             <div class="option-operation">
@@ -1854,6 +1857,11 @@ const clearFmRecent = () => {
                             </div>
                         </div>
                     </div>
+                </div>
+                <div class="settings-item">
+                    <h2 class="item-title">插件</h2>
+                    <div class="line"></div>
+                    <PluginManager />
                 </div>
             </div>
             <div class="app-version">

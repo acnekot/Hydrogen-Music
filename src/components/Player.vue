@@ -10,6 +10,7 @@ import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import { useLocalStore } from '../store/localStore';
 import { useOtherStore } from '../store/otherStore';
+import { usePluginStore } from '../store/pluginStore';
 import { storeToRefs } from 'pinia';
 import { toggleDesktopLyric } from '../utils/desktopLyric';
 
@@ -33,6 +34,7 @@ const userStore = useUserStore();
 const localStore = useLocalStore();
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
+const pluginStore = usePluginStore();
 const {
     playing,
     progress,
@@ -103,6 +105,8 @@ const hasRomaLyric = computed(() => {
     if (!lyricsObjArr.value || !Array.isArray(lyricsObjArr.value)) return false;
     return lyricsObjArr.value.some(item => item.rlyric && item.rlyric.trim() !== '');
 });
+
+const desktopLyricAvailable = computed(() => pluginStore.isPluginActive('desktop-lyric'));
 
 const toAlbum = () => {
     const currentSong = songList.value?.[currentIndex.value];
@@ -697,6 +701,7 @@ const toggleDjSub = async (isSubscribe) => {
                 </svg>
                 <!-- 桌面歌词控制按钮 -->
                 <svg
+                    v-if="desktopLyricAvailable"
                     @click="toggleDesktopLyric"
                     :class="{ active: isDesktopLyricOpen }"
                     class="icon desktop-lyric-btn"

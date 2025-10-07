@@ -1,0 +1,9 @@
+{
+  "id": "lyric-visualizer",
+  "name": "歌词可视化插件",
+  "version": "1.0.0",
+  "description": "在歌词区域显示音频可视化效果，并提供丰富的参数调节。",
+  "author": "Hydrogen Music",
+  "categories": ["integration"],
+  "entry": "index.js"
+}
