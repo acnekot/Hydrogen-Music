@@ -5,16 +5,24 @@ import { logout } from '../api/user';
 import { noticeOpen, dialogOpen } from '../utils/dialog';
 import { initSettings } from '../utils/initApp';
 import { getVipInfo } from '../api/user';
-import { isLogin } from '../utils/authority';
+import { isLogin, clearLoginCookies } from '../utils/authority';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
 import { setTheme, getSavedTheme } from '../utils/theme';
+import { getAllProviders } from '../utils/provider';
+import { logout as kugouLogout } from '../api/kugou/user';
 
 const router = useRouter();
 const userStore = useUserStore();
 const playerStore = usePlayerStore();
+
+const providerOptions = getAllProviders();
+const selectedProvider = computed(() => userStore.loginProvider || 'netease');
+const changeLoginProvider = provider => {
+    userStore.setLoginProvider(provider);
+};
 
 const vipInfo = ref(null);
 const musicLevel = ref('standard');
@@ -1088,26 +1096,46 @@ const clearCustomBackgroundImage = () => {
     playerStore.customBackgroundImage = '';
 };
 const userLogout = async () => {
-    if (isLogin()) {
-        logout().then(async result => {
-            if (result.code == 200) {
-                window.localStorage.clear();
-                userStore.user = null;
-                userStore.biliUser = null;
+    if (!isLogin()) {
+        noticeOpen('您已退出账号', 2);
+        return;
+    }
 
-                // 清理登录session，确保下次一键登录能正常工作
-                try {
-                    await window.electronAPI?.clearLoginSession?.();
-                    console.log('登录session已清理');
-                } catch (error) {
-                    console.error('清理登录session失败:', error);
+    const provider = userStore.loginProvider || 'netease';
+    const executeLogout = provider === 'kugou' ? kugouLogout : logout;
+
+    try {
+        const result = await executeLogout();
+        const success = result?.code === 200 || result?.status === 1 || result?.success;
+
+        if (success) {
+            clearLoginCookies(provider);
+            userStore.user = null;
+            userStore.biliUser = null;
+            userStore.kugouUser = null;
+            userStore.kugouAuth = null;
+            userStore.likelist = null;
+
+            try {
+                if (provider === 'kugou' && window.electronAPI?.clearKugouSession) {
+                    await window.electronAPI.clearKugouSession();
+                } else if (window.electronAPI?.clearLoginSession) {
+                    await window.electronAPI.clearLoginSession();
                 }
+                console.log('登录session已清理');
+            } catch (error) {
+                console.error('清理登录session失败:', error);
+            }
 
-                router.push('/');
-                noticeOpen('已退出账号', 2);
-            } else noticeOpen('退出登录失败', 2);
-        });
-    } else noticeOpen('您已退出账号', 2);
+            router.push('/');
+            noticeOpen('已退出账号', 2);
+        } else {
+            noticeOpen('退出登录失败', 2);
+        }
+    } catch (error) {
+        console.error('退出登录失败:', error);
+        noticeOpen('退出登录失败', 2);
+    }
 };
 const save = () => {
     selectedShortcut.value = null;
@@ -1195,6 +1223,28 @@ const clearFmRecent = () => {
                 </div>
                 <div class="logout" @click="userLogout()">
                     <span>退出</span>
+                </div>
+            </div>
+            <div class="settings-provider">
+                <h2 class="item-title">登录平台</h2>
+                <div class="line"></div>
+                <div class="provider-options">
+                    <div
+                        class="provider-option"
+                        v-for="provider in providerOptions"
+                        :key="provider.id"
+                        :class="{ active: selectedProvider === provider.id }"
+                        @click="changeLoginProvider(provider.id)"
+                    >
+                        <div class="provider-icon" :style="{ backgroundColor: provider.accentColor }">
+                            <img :src="provider.icon()" :alt="provider.name" />
+                        </div>
+                        <div class="provider-info">
+                            <div class="provider-name">{{ provider.name }}</div>
+                            <div class="provider-desc">{{ provider.loginDescription }}</div>
+                        </div>
+                        <div class="provider-state">{{ selectedProvider === provider.id ? '当前使用' : '切换' }}</div>
+                    </div>
                 </div>
             </div>
             <div class="settings">
@@ -1906,6 +1956,73 @@ const clearFmRecent = () => {
                 }
                 &:active {
                     transform: scale(0.95);
+                }
+            }
+        }
+        .settings-provider {
+            margin-top: 30px;
+            .item-title {
+                margin: 0;
+                font: 24px SourceHanSansCN-Bold;
+                color: black;
+            }
+            .line {
+                margin: 12px 0 20px;
+                width: 100%;
+                height: 2px;
+                background-color: rgba(0, 0, 0, 0.1);
+            }
+            .provider-options {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+            .provider-option {
+                display: flex;
+                align-items: center;
+                padding: 12px 18px;
+                background: rgba(255, 255, 255, 0.25);
+                border-radius: 12px;
+                transition: 0.2s ease;
+                cursor: pointer;
+                border: 1px solid transparent;
+                &:hover {
+                    border-color: rgba(0, 0, 0, 0.12);
+                }
+                &.active {
+                    border-color: rgba(0, 0, 0, 0.2);
+                    box-shadow: 0 0 12px rgba(0, 0, 0, 0.05);
+                }
+                .provider-icon {
+                    width: 48px;
+                    height: 48px;
+                    border-radius: 12px;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    margin-right: 16px;
+                    img {
+                        width: 100%;
+                        height: 100%;
+                    }
+                }
+                .provider-info {
+                    flex: 1;
+                    display: flex;
+                    flex-direction: column;
+                    .provider-name {
+                        font: 16px SourceHanSansCN-Bold;
+                        color: black;
+                    }
+                    .provider-desc {
+                        margin-top: 4px;
+                        font: 12px SourceHanSansCN-Regular;
+                        color: rgba(0, 0, 0, 0.65);
+                    }
+                }
+                .provider-state {
+                    font: 12px SourceHanSansCN-Bold;
+                    color: rgba(0, 0, 0, 0.6);
                 }
             }
         }

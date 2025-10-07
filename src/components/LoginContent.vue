@@ -104,7 +104,7 @@
         <LoginByQRCode class="qrcode-container" ref="loginByQR" @jumpTo="jumpTo" :firstLoadMode="loginMode" v-show="loginMode == 0 && accountMode == 0"></LoginByQRCode>
         <LoginByAccount class="account-container" ref="loginByAC" @jumpTo="jumpTo" :currentMode="currentMode"  v-show="loginMode == 1 && (currentMode == 0 || currentMode == 1)"></LoginByAccount>
         <LoginByCookie class="cookie-container" ref="loginByCK" @jumpTo="jumpTo" v-show="loginMode == 1 && currentMode == 3"></LoginByCookie>
-        <LoginByEmbedded class="embedded-container" ref="loginByEM" @jumpTo="jumpTo" v-show="loginMode == 1 && currentMode == 4"></LoginByEmbedded>
+        <LoginByEmbedded class="embedded-container" ref="loginByEM" provider="netease" @jumpTo="jumpTo" v-show="loginMode == 1 && currentMode == 4"></LoginByEmbedded>
 
         <div class="login-other">
             <span class="qrcode-tip" v-show="loginMode == 0 && accountMode == 0">打开网易云APP扫码登录</span>

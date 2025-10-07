@@ -5,7 +5,7 @@ import HomePage from '../views/HomePage.vue'
 import CloudDisk from '../views/CloudDisk.vue'
 import PersonalFMPage from '../views/PersonalFMPage.vue'
 import LoginPage from '../views/LoginPage.vue'
-import LoginContent from '../components/LoginContent.vue'
+import LoginAccount from '../views/LoginAccount.vue'
 import MyMusic from '../views/MyMusic.vue'
 import LibraryDetail from '../components/LibraryDetail.vue'
 import RecommendSongs from '../components/RecommendSongs.vue'
@@ -156,7 +156,7 @@ const routes = [
     {
         path: '/login/account',
         name: 'account',
-        component: LoginContent
+        component: LoginAccount
     },
     {
         path: '/library',

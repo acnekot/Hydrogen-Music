@@ -1,13 +1,23 @@
 <script setup>
-  import { ref, onMounted, onActivated } from 'vue'
+  import { ref, onMounted, onActivated, computed } from 'vue'
   import DataCheckAnimaton from './DataCheckAnimaton.vue';
   import { noticeOpen } from '../utils/dialog';
   import { loginHandle } from '../utils/handle'
+  import { getProviderMeta } from '../utils/provider'
+
+  const props = defineProps({
+    provider: {
+      type: String,
+      default: 'netease'
+    }
+  })
 
   const emits = defineEmits(['jumpTo'])
   const loginAnimation = ref(false)
   const dataCheckAnimaton = ref(null)
   const loginStatus = ref('等待登录')
+  const providerKey = computed(() => props.provider || 'netease')
+  const providerMeta = computed(() => getProviderMeta(providerKey.value))
 
   // 重置组件状态
   const resetState = () => {
@@ -15,64 +25,56 @@
     loginStatus.value = '等待登录'
   }
 
-  // 组件挂载时重置状态
-  onMounted(() => {
-    resetState()
-  })
-
-  // 组件激活时重置状态（用于keep-alive场景）
-  onActivated(() => {
-    resetState()
-  })
+  onMounted(resetState)
+  onActivated(resetState)
 
   async function startEmbeddedLogin() {
     if (loginAnimation.value) return
-    
+
     loginAnimation.value = true
     loginStatus.value = '正在清除之前的登录状态...'
-    
+
+    const provider = providerKey.value
+
     try {
-      // 先清除之前的登录状态
-      if(window.electronAPI?.clearNeteaseSession) {
+      if (provider === 'kugou' && window.electronAPI?.clearKugouSession) {
+        await window.electronAPI.clearKugouSession()
+      } else if (window.electronAPI?.clearNeteaseSession) {
         await window.electronAPI.clearNeteaseSession()
       }
-      
-      // 调用Electron API打开网易云登录窗口，并确保清除之前的登录状态
+
       loginStatus.value = '登录窗口已打开，正在加载登录页面...'
-      const result = await window.electronAPI?.openNeteaseLogin?.({ clearSession: true })
-      
+      let result = null
+      if (provider === 'kugou') {
+        result = await window.electronAPI?.openKugouLogin?.({ clearSession: true })
+      } else {
+        result = await window.electronAPI?.openNeteaseLogin?.({ clearSession: true })
+      }
+
       console.log('登录结果:', result)
-      
+
       if (result?.success) {
         loginStatus.value = '登录成功，正在处理用户信息...'
-        
-        // 验证cookie是否包含必要信息
-        if (!result.cookies || !result.cookies.includes('MUSIC_U=')) {
+
+        if (!result.cookies) {
           throw new Error('获取的登录信息不完整，请重试')
         }
-        
-        console.log('获取到的cookies长度:', result.cookies.length)
-        console.log('MUSIC_U存在:', result.cookies.includes('MUSIC_U='))
-        
-        // 模拟登录API响应格式
+
         const loginResult = {
           code: 200,
           cookie: result.cookies,
           message: result.message
         }
-        
-        // 使用现有的登录处理逻辑
-        loginHandle(loginResult, 'cookie')
-        
+
+        loginHandle(loginResult, 'cookie', provider)
+
         loginStatus.value = '登录完成，正在跳转...'
-        
-        // 延迟跳转，让用户看到成功信息
+
         setTimeout(() => {
-          // 重置状态，确保下次进入时组件状态正确
           resetState()
           emits('jumpTo')
         }, 1000)
-        
+
       } else {
         loginStatus.value = '登录失败或已取消'
         if (result?.message === '用户取消登录') {
@@ -106,7 +108,7 @@
       <div class="login-description">
         <div class="description-content">
           <div class="main-text">一键扫码登录</div>
-          <div class="sub-text">点击下方按钮，在弹出的窗口中扫码登录网易云音乐</div>
+          <div class="sub-text">{{ providerMeta.embeddedDescription }}</div>
         </div>
       </div>
       

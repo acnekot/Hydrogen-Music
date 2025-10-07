@@ -3,7 +3,8 @@ import { isLogin, clearLoginCookies } from '../utils/authority'
 import { loadLastSong } from './player'
 import { scanMusic } from './locaMusic'
 import { initDownloadManager } from './downloadManager'
-import { getUserProfile, getLikelist, getUserPlaylist } from '../api/user'
+import { getUserProfile as getNeteaseUserProfile, getLikelist as getNeteaseLikelist, getUserPlaylist as getNeteaseUserPlaylist } from '../api/user'
+import { getUserProfile as getKugouUserProfile, getLikelist as getKugouLikelist, getUserPlaylist as getKugouUserPlaylist } from '../api/kugou/user'
 import { useUserStore } from '../store/userStore'
 import { usePlayerStore } from '../store/playerStore'
 import { useLocalStore } from '../store/localStore'
@@ -13,7 +14,20 @@ const userStore = useUserStore(pinia)
 const playerStore = usePlayerStore()
 const { quality, lyricSize, tlyricSize, rlyricSize, lyricInterludeTime } = storeToRefs(playerStore)
 const localStore = useLocalStore()
-const { updateUser } = userStore
+const { updateUser, updateKugouUser } = userStore
+
+const providerApis = {
+    netease: {
+        profile: getNeteaseUserProfile,
+        likelist: getNeteaseLikelist,
+        playlist: getNeteaseUserPlaylist,
+    },
+    kugou: {
+        profile: getKugouUserProfile,
+        likelist: getKugouLikelist,
+        playlist: getKugouUserPlaylist,
+    }
+}
 
 export const initSettings = () => {
     windowApi.getSettings().then(settings => {
@@ -44,17 +58,21 @@ export const initSettings = () => {
         }
     })
 }
-export const getUserLikelist = () => {
-    if(userStore.user.userId)
-        getLikelist(userStore.user.userId).then(result => {
-            userStore.likelist = result.ids
+export const getUserLikelist = (provider = userStore.loginProvider || 'netease') => {
+    const apis = providerApis[provider] || providerApis.netease
+    if(userStore.user?.userId)
+        apis.likelist(userStore.user.userId).then(result => {
+            userStore.likelist = result.ids || result.songs || []
+        }).catch(error => {
+            console.error('加载喜欢列表失败:', error)
+            userStore.likelist = []
         })
     else {
         userStore.likelist = []
     }
 }
 
-export const initFavoritePlaylist = async () => {
+export const initFavoritePlaylist = async (provider = userStore.loginProvider || 'netease') => {
     if (userStore.user && userStore.user.userId) {
         try {
             const params = {
@@ -63,12 +81,13 @@ export const initFavoritePlaylist = async () => {
                 offset: 0,
                 timestamp: new Date().getTime()
             }
-            
-            const result = await getUserPlaylist(params)
+
+            const apis = providerApis[provider] || providerApis.netease
+            const result = await apis.playlist(params)
             if (result && result.playlist && result.playlist.length > 0) {
                 // 找到用户的"我喜欢的音乐"播放列表
-                const favoritePlaylist = result.playlist.find(playlist => 
-                    playlist.creator.userId === userStore.user.userId && 
+                const favoritePlaylist = result.playlist.find(playlist =>
+                    playlist.creator.userId === userStore.user.userId &&
                     playlist.specialType === 5
                 )
                 
@@ -113,24 +132,33 @@ export const init = () => {
     
     if(isLogin()) {
         // 先加载用户信息，再恢复播放状态，确保喜欢列表已加载
-        getUserProfile().then(result => {
-            updateUser(result.profile)
+        const provider = userStore.loginProvider || 'netease'
+        const apis = providerApis[provider] || providerApis.netease
+
+        apis.profile().then(result => {
+            const profile = result?.profile || result
+            if (provider === 'kugou' && profile) {
+                updateKugouUser(profile)
+            }
+            updateUser(profile)
             // 加载用户喜欢列表
-            return getUserLikelist()
+            return getUserLikelist(provider)
         }).then(() => {
             // 初始化喜欢音乐播放列表
-            initFavoritePlaylist()
+            initFavoritePlaylist(provider)
             // 用户数据加载完成后，再恢复上次播放状态
             loadLastSong()
         }).catch(error => {
             console.error('用户信息加载失败:', error)
             // 登录状态异常，清理登录信息并自动退出
-            clearLoginCookies()
+            clearLoginCookies(provider)
             userStore.user = null
             userStore.likelist = null
             userStore.favoritePlaylistId = null
             // 清除Electron中的登录状态
-            if(window.electronAPI?.clearNeteaseSession) {
+            if(provider === 'kugou' && window.electronAPI?.clearKugouSession) {
+                window.electronAPI.clearKugouSession()
+            } else if(window.electronAPI?.clearNeteaseSession) {
                 window.electronAPI.clearNeteaseSession()
             }
             // 即使登录失效，也要恢复播放状态

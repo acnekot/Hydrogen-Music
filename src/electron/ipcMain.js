@@ -705,6 +705,97 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         }
     })
 
+    ipcMain.handle('open-kugou-login', async () => {
+        return new Promise((resolve) => {
+            const loginSession = session.fromPartition('kugou-login-' + Date.now(), {
+                cache: false
+            })
+
+            const loginWindow = new BrowserWindow({
+                width: 900,
+                height: 700,
+                title: '酷狗音乐登录',
+                autoHideMenuBar: true,
+                webPreferences: {
+                    nodeIntegration: false,
+                    contextIsolation: true,
+                    webSecurity: true,
+                    session: loginSession
+                }
+            })
+
+            const authCookieNames = ['KuGooUser', 'KuGooUserName', 'kg_mid', 'KugooID', 'userid', 'kg_dfid', 'kg_dfid_collect', 'token']
+
+            const checkLoginStatus = async () => {
+                try {
+                    const cookies = await loginSession.cookies.get({})
+                    const kugouCookies = cookies.filter(cookie => cookie.domain && cookie.domain.includes('kugou'))
+                    const authCookies = kugouCookies.filter(cookie => authCookieNames.includes(cookie.name))
+
+                    if (authCookies.length >= 2) {
+                        const cookieString = kugouCookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ')
+                        try { clearInterval(checkTimer) } catch (_) {}
+                        if (!loginWindow.isDestroyed()) {
+                            loginWindow.close()
+                        }
+                        resolve({
+                            success: true,
+                            cookies: cookieString,
+                            message: '登录成功'
+                        })
+                        return true
+                    }
+                } catch (error) {
+                    console.error('检测酷狗登录状态失败:', error)
+                }
+                return false
+            }
+
+            loginSession.clearCache()
+            loginSession.clearStorageData({
+                storages: ['cookies', 'localstorage', 'sessionstorage']
+            })
+
+            loginWindow.loadURL('https://passport.kugou.com/login.html')
+
+            let checkTimer = setInterval(checkLoginStatus, 2000)
+
+            loginWindow.on('closed', () => {
+                try { clearInterval(checkTimer) } catch (_) {}
+                resolve({ success: false, message: '用户取消登录' })
+            })
+
+            loginWindow.webContents.on('did-navigate', () => {
+                checkLoginStatus()
+            })
+        })
+    })
+
+    ipcMain.handle('clear-kugou-session', async () => {
+        try {
+            await session.defaultSession.clearStorageData({
+                storages: ['cookies', 'localstorage', 'sessionstorage'],
+                origin: 'https://www.kugou.com'
+            })
+
+            const domains = ['.kugou.com', '.kgimg.com']
+            for (const domain of domains) {
+                const cookies = await session.defaultSession.cookies.get({ domain })
+                for (const cookie of cookies) {
+                    await session.defaultSession.cookies.remove(
+                        `https://${cookie.domain}${cookie.path}`,
+                        cookie.name
+                    )
+                }
+            }
+
+            return { success: true, message: '登录session已清理' }
+        } catch (error) {
+            console.error('清理酷狗session失败:', error)
+            return { success: false, message: '清理失败' }
+        }
+    })
+
     // 桌面歌词相关 IPC 处理
     const { createLyricWindow, closeLyricWindow, setLyricWindowMovable, getLyricWindow } = lyricFunctions
 

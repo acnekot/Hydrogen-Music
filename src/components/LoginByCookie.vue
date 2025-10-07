@@ -57,7 +57,7 @@
   }
 
   async function loginSuccess(result) {
-    loginHandle(result, 'cookie')
+    loginHandle(result, 'cookie', 'netease')
     emits('jumpTo')
   }
 

@@ -94,7 +94,7 @@
   }
 
   async function loginSuccess(result) {
-    loginHandle(result, 'account')
+    loginHandle(result, 'account', 'netease')
     emits('jumpTo')
   }
 

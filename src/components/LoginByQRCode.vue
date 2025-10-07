@@ -106,7 +106,7 @@
         } else if(result.code === 803) {
             qrStatus.value = 803
             clearTimer()
-            loginHandle(result, 'qr')
+            loginHandle(result, 'qr', 'netease')
             emits('jumpTo')
             console.log("授权登录成功")
         }
