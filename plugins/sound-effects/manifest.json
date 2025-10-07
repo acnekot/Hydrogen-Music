@@ -1,0 +1,9 @@
+{
+  "id": "sound-effects",
+  "name": "播放提示音插件",
+  "version": "1.0.0",
+  "description": "为播放、暂停与切歌操作加入细腻的提示音效。",
+  "author": "Hydrogen Music",
+  "categories": ["sound"],
+  "entry": "index.js"
+}

@@ -2,6 +2,7 @@ const { ipcMain, shell, dialog, globalShortcut, Menu, clipboard, BrowserWindow, 
 const axios = require('axios')
 const fs = require('fs')
 const path = require('path')
+const fsExtra = require('fs-extra')
 const { parseFile } = require('music-metadata')
 // const jsmediatags = require("jsmediatags");
 const registerShortcuts = require('./shortcuts')
@@ -13,6 +14,126 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     const settingsStore = new Store({ name: 'settings' })
     const lastPlaylistStore = new Store({ name: 'lastPlaylist' })
     const musicVideoStore = new Store({ name: 'musicVideo' })
+    const pluginsStore = new Store({ name: 'plugins-config' })
+
+    const pluginCategories = ['api', 'theme', 'sound', 'integration']
+    const pluginManifestCache = new Map()
+
+    const resolveDefaultPluginDirectory = () => {
+        const cwd = process.cwd()
+        return path.join(cwd, 'plugins')
+    }
+
+    const ensureDirectory = async (dirPath) => {
+        if (!dirPath) return null
+        try {
+            await fsExtra.ensureDir(dirPath)
+            return dirPath
+        } catch (error) {
+            console.error('[plugins] ensure directory failed:', error)
+            return null
+        }
+    }
+
+    const sanitizePluginConfig = (rawConfig = {}) => {
+        const defaults = {
+            systemEnabled: false,
+            warningAcknowledged: false,
+            pluginDirectory: resolveDefaultPluginDirectory(),
+            categoriesEnabled: {},
+            enabledPlugins: {},
+            pluginConfigs: {},
+        }
+
+        const config = {
+            ...defaults,
+            ...rawConfig,
+        }
+
+        config.pluginDirectory = config.pluginDirectory || resolveDefaultPluginDirectory()
+
+        const normalizedCategories = {}
+        for (const key of pluginCategories) {
+            normalizedCategories[key] = Boolean(config.categoriesEnabled && config.categoriesEnabled[key])
+        }
+        config.categoriesEnabled = normalizedCategories
+
+        if (!config.enabledPlugins || typeof config.enabledPlugins !== 'object') {
+            config.enabledPlugins = {}
+        }
+
+        if (!config.pluginConfigs || typeof config.pluginConfigs !== 'object') {
+            config.pluginConfigs = {}
+        }
+
+        return config
+    }
+
+    const getPluginConfig = async () => {
+        const stored = pluginsStore.get('config')
+        const config = sanitizePluginConfig(stored)
+        await ensureDirectory(config.pluginDirectory)
+        pluginsStore.set('config', config)
+        return config
+    }
+
+    const savePluginConfig = async (config) => {
+        const sanitized = sanitizePluginConfig(config)
+        await ensureDirectory(sanitized.pluginDirectory)
+        pluginsStore.set('config', sanitized)
+        return sanitized
+    }
+
+    const readPluginManifest = async (pluginDir, pluginId) => {
+        try {
+            const manifestPath = path.join(pluginDir, pluginId, 'manifest.json')
+            if (!fs.existsSync(manifestPath)) return null
+            const manifestRaw = await fs.promises.readFile(manifestPath, 'utf-8')
+            const manifest = JSON.parse(manifestRaw)
+            if (!manifest || typeof manifest !== 'object') return null
+            manifest.id = manifest.id || pluginId
+            manifest.entry = manifest.entry || 'index.js'
+            manifest.categories = Array.isArray(manifest.categories) ? manifest.categories : []
+            return manifest
+        } catch (error) {
+            console.error('[plugins] failed to read manifest for', pluginId, error)
+            return null
+        }
+    }
+
+    const scanPluginDirectory = async (directory) => {
+        const result = []
+        try {
+            const entries = await fs.promises.readdir(directory, { withFileTypes: true })
+            for (const entry of entries) {
+                if (!entry.isDirectory()) continue
+                const manifest = await readPluginManifest(directory, entry.name)
+                if (manifest) {
+                    pluginManifestCache.set(manifest.id, {
+                        directory,
+                        path: path.join(directory, manifest.id),
+                        manifest,
+                    })
+                    result.push({
+                        id: manifest.id,
+                        name: manifest.name || manifest.id,
+                        version: manifest.version || '0.0.0',
+                        description: manifest.description || '',
+                        author: manifest.author || '',
+                        categories: Array.isArray(manifest.categories) ? manifest.categories : [],
+                        entry: manifest.entry || 'index.js',
+                        homepage: manifest.homepage || null,
+                    })
+                }
+            }
+        } catch (error) {
+            if (error && error.code !== 'ENOENT') {
+                console.error('[plugins] scan directory error:', error)
+            }
+        }
+        return result
+    }
+
 
     // 全局存储桌面歌词窗口引用
     let globalLyricWindow = null;
@@ -213,6 +334,126 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             return null
         }
         return filePaths[0]
+    })
+
+    ipcMain.handle('plugins:get-config', async () => {
+        return await getPluginConfig()
+    })
+
+    ipcMain.handle('plugins:set-config', async (event, config) => {
+        return await savePluginConfig(config || {})
+    })
+
+    ipcMain.handle('plugins:list', async () => {
+        const config = await getPluginConfig()
+        return await scanPluginDirectory(config.pluginDirectory)
+    })
+
+    ipcMain.handle('plugins:load-source', async (event, pluginId) => {
+        if (!pluginId) return null
+        const config = await getPluginConfig()
+        let cacheEntry = pluginManifestCache.get(pluginId)
+        if (!cacheEntry || !fs.existsSync(cacheEntry.path)) {
+            await scanPluginDirectory(config.pluginDirectory)
+            cacheEntry = pluginManifestCache.get(pluginId)
+        }
+        if (!cacheEntry) return null
+        const entryFile = path.join(cacheEntry.path, cacheEntry.manifest.entry || 'index.js')
+        if (!fs.existsSync(entryFile)) return null
+        return await fs.promises.readFile(entryFile, 'utf-8')
+    })
+
+    ipcMain.handle('plugins:delete', async (event, pluginId) => {
+        if (!pluginId) return { success: false, message: '插件ID无效' }
+        const config = await getPluginConfig()
+        let pluginPath = null
+        const cached = pluginManifestCache.get(pluginId)
+        if (cached && fs.existsSync(cached.path)) {
+            pluginPath = cached.path
+        } else {
+            pluginPath = path.join(config.pluginDirectory, pluginId)
+        }
+        try {
+            if (pluginPath) {
+                await fsExtra.remove(pluginPath)
+            }
+            pluginManifestCache.delete(pluginId)
+            return { success: true }
+        } catch (error) {
+            console.error('[plugins] delete failed:', error)
+            return { success: false, message: error.message }
+        }
+    })
+
+    ipcMain.handle('plugins:choose-directory', async () => {
+        const { canceled, filePaths } = await dialog.showOpenDialog({
+            properties: ['openDirectory', 'createDirectory']
+        })
+        if (canceled || !filePaths || filePaths.length === 0) return null
+        const selected = filePaths[0]
+        try {
+            await ensureDirectory(selected)
+            return selected
+        } catch (error) {
+            console.error('[plugins] choose directory failed:', error)
+            return null
+        }
+    })
+
+    ipcMain.handle('plugins:import', async (event, sourcePath, options = {}) => {
+        if (!sourcePath) return { success: false, message: '未选择插件目录' }
+        try {
+            const stats = await fs.promises.stat(sourcePath)
+            if (!stats.isDirectory()) {
+                return { success: false, message: '请选择包含插件的文件夹' }
+            }
+        } catch (error) {
+            return { success: false, message: '无法访问所选目录' }
+        }
+
+        const manifestPath = path.join(sourcePath, 'manifest.json')
+        if (!fs.existsSync(manifestPath)) {
+            return { success: false, message: '插件目录缺少 manifest.json' }
+        }
+
+        let manifest
+        try {
+            const raw = await fs.promises.readFile(manifestPath, 'utf-8')
+            manifest = JSON.parse(raw)
+        } catch (error) {
+            return { success: false, message: '解析 manifest.json 失败' }
+        }
+
+        if (!manifest || typeof manifest !== 'object' || !manifest.id) {
+            return { success: false, message: 'manifest.json 缺少有效的 id' }
+        }
+
+        const config = await getPluginConfig()
+        const destination = path.join(config.pluginDirectory, manifest.id)
+        try {
+            if (options.overwrite !== false) {
+                await fsExtra.remove(destination)
+            }
+            await fsExtra.copy(sourcePath, destination)
+            pluginManifestCache.delete(manifest.id)
+            return { success: true, manifest }
+        } catch (error) {
+            console.error('[plugins] import failed:', error)
+            return { success: false, message: error.message }
+        }
+    })
+
+    ipcMain.handle('plugins:reload-renderer', () => {
+        try {
+            if (win && !win.isDestroyed()) {
+                win.webContents.reloadIgnoringCache()
+                return { success: true }
+            }
+        } catch (error) {
+            console.error('[plugins] reload renderer failed:', error)
+            return { success: false, message: error.message }
+        }
+        return { success: false, message: '窗口不可用' }
     })
     ipcMain.on('register-shortcuts', () => {
         registerShortcuts(win, app)

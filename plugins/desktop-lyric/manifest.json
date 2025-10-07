@@ -1,0 +1,9 @@
+{
+  "id": "desktop-lyric",
+  "name": "桌面歌词插件",
+  "version": "1.0.0",
+  "description": "提供桌面歌词窗口控制与同步能力。",
+  "author": "Hydrogen Music",
+  "categories": ["integration"],
+  "entry": "index.js"
+}

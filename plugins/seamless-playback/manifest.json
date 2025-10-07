@@ -1,0 +1,9 @@
+{
+  "id": "seamless-playback",
+  "name": "无缝衔接插件",
+  "version": "1.0.0",
+  "description": "在曲目切换时执行淡入淡出，减少突兀感。",
+  "author": "Hydrogen Music",
+  "categories": ["integration"],
+  "entry": "index.js"
+}
