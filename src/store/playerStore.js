@@ -49,11 +49,17 @@ export const usePlayerStore = defineStore('playerStore', {
             lyricVisualizerBarCount: 48, // 柱体数量
             lyricVisualizerBarWidth: 55, // 柱体宽度比例（%）
             lyricVisualizerColor: 'black', // 可视化主颜色
+            lyricVisualizerOpacity: 100, // 可视化透明度（百分比）
+            lyricVisualizerStyle: 'bars', // 可视化样式
+            lyricVisualizerRadialSize: 100, // 辐射样式尺寸（百分比）
+            lyricVisualizerRadialOffsetX: 0, // 辐射样式X轴偏移（百分比）
+            lyricVisualizerRadialOffsetY: 0, // 辐射样式Y轴偏移（百分比）
             customBackgroundEnabled: false, // 是否启用自定义全局背景
             customBackgroundImage: '', // 自定义背景图片路径
             customBackgroundMode: 'cover', // 自定义背景展示模式
             customBackgroundBlur: 0, // 自定义背景模糊强度
             customBackgroundBrightness: 100, // 自定义背景亮度（百分比）
+            customBackgroundApplyToChrome: true, // 是否在全局界面应用自定义背景
             customBackgroundApplyToPlayer: true, // 是否在播放页应用自定义背景
         }
     },
@@ -82,11 +88,17 @@ export const usePlayerStore = defineStore('playerStore', {
             'lyricVisualizerBarCount',
             'lyricVisualizerBarWidth',
             'lyricVisualizerColor',
+            'lyricVisualizerOpacity',
+            'lyricVisualizerStyle',
+            'lyricVisualizerRadialSize',
+            'lyricVisualizerRadialOffsetX',
+            'lyricVisualizerRadialOffsetY',
             'customBackgroundEnabled',
             'customBackgroundImage',
             'customBackgroundMode',
             'customBackgroundBlur',
             'customBackgroundBrightness',
+            'customBackgroundApplyToChrome',
             'customBackgroundApplyToPlayer',
         ]
     },

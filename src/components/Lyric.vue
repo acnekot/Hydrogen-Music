@@ -3,6 +3,7 @@ import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue';
 import { changeProgress, musicVideoCheck, songTime } from '../utils/player';
 import { usePlayerStore } from '../store/playerStore';
 import { getLyricVisualizerAudioEnv } from '../utils/lyricVisualizerAudio';
+import { computeCustomBackgroundStyle } from '../utils/customBackground';
 import { storeToRefs } from 'pinia';
 
 const playerStore = usePlayerStore();
@@ -32,6 +33,18 @@ const {
     lyricVisualizerBarCount,
     lyricVisualizerBarWidth,
     lyricVisualizerColor,
+    lyricVisualizerOpacity,
+    lyricVisualizerStyle,
+    lyricVisualizerRadialSize,
+    lyricVisualizerRadialOffsetX,
+    lyricVisualizerRadialOffsetY,
+    customBackgroundEnabled,
+    customBackgroundImage,
+    customBackgroundMode,
+    customBackgroundBlur,
+    customBackgroundBrightness,
+    customBackgroundApplyToPlayer,
+    customBackgroundApplyToChrome,
     playerShow,
     videoIsPlaying,
 } = storeToRefs(playerStore);
@@ -160,7 +173,76 @@ const visualizerColorRGB = computed(() => {
     return parseColorToRGB(lyricVisualizerColor.value);
 });
 
+const visualizerOpacityValue = computed(() => {
+    const value = Number(lyricVisualizerOpacity.value);
+    if (!Number.isFinite(value)) return 100;
+    return Math.min(Math.max(Math.round(value), 0), 100);
+});
+
+const visualizerOpacityRatio = computed(() => {
+    const ratio = visualizerOpacityValue.value / 100;
+    if (!Number.isFinite(ratio)) return 1;
+    return Math.min(Math.max(ratio, 0), 1);
+});
+
+const visualizerStyleValue = computed(() => (lyricVisualizerStyle.value === 'radial' ? 'radial' : 'bars'));
+
+const visualizerRadialSizeValue = computed(() => {
+    const value = Number(lyricVisualizerRadialSize.value);
+    if (!Number.isFinite(value)) return 100;
+    return clampNumber(Math.round(value), 10, 400, 100);
+});
+
+const visualizerRadialSizeRatio = computed(() => visualizerRadialSizeValue.value / 100);
+
+const visualizerRadialOffsetXValue = computed(() => {
+    const value = Number(lyricVisualizerRadialOffsetX.value);
+    if (!Number.isFinite(value)) return 0;
+    return clampNumber(Math.round(value), -100, 100, 0);
+});
+
+const visualizerRadialOffsetYValue = computed(() => {
+    const value = Number(lyricVisualizerRadialOffsetY.value);
+    if (!Number.isFinite(value)) return 0;
+    return clampNumber(Math.round(value), -100, 100, 0);
+});
+
+const lyricBackgroundActive = computed(
+    () =>
+        customBackgroundEnabled.value &&
+        !!customBackgroundImage.value &&
+        (customBackgroundApplyToPlayer.value || customBackgroundApplyToChrome.value)
+);
+
+const lyricBackgroundStyle = computed(() =>
+    computeCustomBackgroundStyle({
+        active: lyricBackgroundActive.value,
+        image: customBackgroundImage.value,
+        mode: customBackgroundMode.value,
+        blur: customBackgroundBlur.value,
+        brightness: customBackgroundBrightness.value,
+    })
+);
+
+const lyricContainerClasses = computed(() => ({
+    'blur-enabled': lyricBlur.value,
+    'lyric-container--custom': lyricBackgroundActive.value,
+}));
+
 const visualizerCanvasStyle = computed(() => {
+       const isRadial = visualizerStyleValue.value === 'radial';
+    if (isRadial) {
+        return {
+            width: 'calc(100% - 3vh)',
+            height: 'calc(100% - 3vh)',
+            top: '50%',
+            left: '50%',
+            right: 'auto',
+            bottom: 'auto',
+            transform: 'translate(-50%, -50%)',
+        };
+    }
+
     const height = visualizerCanvasHeightPx.value + 'px';
     const base = {
         height,
@@ -356,6 +438,8 @@ const renderVisualizerFrame = () => {
     canvasCtx.clearRect(0, 0, width, height);
 
     const { r, g, b } = visualizerColorRGB.value;
+    const opacityRatio = visualizerOpacityRatio.value;
+    const styleMode = visualizerStyleValue.value;
 
     const nyquist = audioEnv.audioContext ? audioEnv.audioContext.sampleRate / 2 : 22050;
     const binCount = analyserDataArray.length;
@@ -367,6 +451,63 @@ const renderVisualizerFrame = () => {
 
     const barCount = Math.max(1, visualizerBarCountValue.value);
     const step = rangeSize / barCount;
+    if (styleMode === 'radial') {
+        const maxBaseRadius = Math.min(width, height) / 2;
+        if (maxBaseRadius <= 0) return;
+        const sizeRatio = Math.max(visualizerRadialSizeRatio.value, 0.05);
+        const outerRadius = Math.max(8, maxBaseRadius * sizeRatio);
+        const halfWidth = width / 2;
+        const halfHeight = height / 2;
+        const offsetX = (visualizerRadialOffsetXValue.value / 100) * halfWidth;
+        const offsetY = (visualizerRadialOffsetYValue.value / 100) * halfHeight;
+        let centerX = halfWidth + offsetX;
+        let centerY = halfHeight + offsetY;
+
+        const innerRadius = outerRadius * 0.62;
+        const startRadius = innerRadius * 0.92;
+        const maxRadius = outerRadius * 0.98;
+        const circumference = 2 * Math.PI * Math.max(innerRadius, 1);
+        const widthRatio = Math.min(Math.max(visualizerBarWidthRatio.value, 0.05), 1);
+        const lineWidth = Math.max(1.25, (circumference / barCount) * widthRatio);
+
+        canvasCtx.save();
+        canvasCtx.lineCap = 'round';
+        canvasCtx.lineWidth = lineWidth;
+
+        for (let i = 0; i < barCount; i++) {
+            const samplePosition = minIndex + (i + 0.5) * step;
+            const dataIndex = Math.min(binCount - 1, Math.max(0, Math.floor(samplePosition)));
+            const value = analyserDataArray[dataIndex] / 255;
+            const expansion = Math.min(Math.max(value, 0), 1);
+            const endRadius = startRadius + expansion * (maxRadius - startRadius);
+            const angle = (i / barCount) * Math.PI * 2;
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+            const x1 = centerX + startRadius * cos;
+            const y1 = centerY + startRadius * sin;
+            const x2 = centerX + endRadius * cos;
+            const y2 = centerY + endRadius * sin;
+            const baseAlpha = 0.2 + expansion * 0.6;
+            const alpha = Math.min(Math.max(baseAlpha * opacityRatio, 0), 1);
+            canvasCtx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(x1, y1);
+            canvasCtx.lineTo(x2, y2);
+            canvasCtx.stroke();
+        }
+
+        const coreAlpha = Math.min(Math.max(0.18 * opacityRatio, 0), 1);
+        if (coreAlpha > 0) {
+            canvasCtx.fillStyle = `rgba(${r}, ${g}, ${b}, ${coreAlpha})`;
+            canvasCtx.beginPath();
+            canvasCtx.arc(centerX, centerY, innerRadius * 0.7, 0, Math.PI * 2);
+            canvasCtx.fill();
+        }
+
+        canvasCtx.restore();
+        return;
+    }
+
     const barWidth = width / barCount;
     const innerWidth = barWidth * Math.min(Math.max(visualizerBarWidthRatio.value, 0.01), 1);
     const offset = (barWidth - innerWidth) / 2;
@@ -378,7 +519,8 @@ const renderVisualizerFrame = () => {
         const barHeight = height * value;
         const x = i * barWidth + offset;
         const y = height - barHeight;
-        const alpha = 0.12 + value * 0.45;
+        const baseAlpha = 0.12 + value * 0.45;
+        const alpha = Math.min(Math.max(baseAlpha * opacityRatio, 0), 1);
         canvasCtx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
         canvasCtx.fillRect(x, y, innerWidth, barHeight);
     }
@@ -609,10 +751,63 @@ watch(visualizerSmoothing, () => {
 });
 
 watch(
+    () => lyricVisualizerStyle.value,
+    value => {
+        const safe = visualizerStyleValue.value;
+        if (value !== safe) lyricVisualizerStyle.value = safe;
+    },
+    { immediate: true }
+);
+
+watch(visualizerStyleValue, () => {
+    renderVisualizerPreview();
+});
+
+watch(
+    () => lyricVisualizerRadialSize.value,
+    value => {
+        const safe = visualizerRadialSizeValue.value;
+        if (value !== safe) lyricVisualizerRadialSize.value = safe;
+        renderVisualizerPreview();
+    },
+    { immediate: true }
+);
+
+watch(
+    () => lyricVisualizerRadialOffsetX.value,
+    value => {
+        const safe = visualizerRadialOffsetXValue.value;
+        if (value !== safe) lyricVisualizerRadialOffsetX.value = safe;
+        renderVisualizerPreview();
+    },
+    { immediate: true }
+);
+
+watch(
+    () => lyricVisualizerRadialOffsetY.value,
+    value => {
+        const safe = visualizerRadialOffsetYValue.value;
+        if (value !== safe) lyricVisualizerRadialOffsetY.value = safe;
+        renderVisualizerPreview();
+    },
+    { immediate: true }
+);
+
+watch(
     () => lyricVisualizerColor.value,
     () => {
         renderVisualizerPreview();
     }
+);
+
+watch(
+    () => lyricVisualizerOpacity.value,
+    value => {
+        const safe = visualizerOpacityValue.value;
+        if (value !== safe) lyricVisualizerOpacity.value = safe;
+        renderVisualizerPreview();
+    },
+    { immediate: true }
 );
 
 watch(
@@ -629,7 +824,7 @@ watch(
         if (!shouldShowVisualizer.value) return;
         await setupVisualizer();
         if (playing.value) startVisualizerLoop();
-        else stopVisualizerLoop({ clear: true });
+        else stopVisualizerLoop();
     }
 );
 
@@ -638,7 +833,7 @@ watch(shouldShowVisualizer, active => {
         nextTick(async () => {
             await setupVisualizer();
             if (playing.value) startVisualizerLoop();
-            else stopVisualizerLoop({ clear: true });
+            else stopVisualizerLoop();
         });
     } else {
         stopVisualizerLoop({ clear: true, teardown: true });
@@ -664,7 +859,7 @@ watch(playing, isPlaying => {
             startVisualizerLoop();
         });
     } else {
-        stopVisualizerLoop({ clear: true });
+        stopVisualizerLoop();
     }
 });
 
@@ -893,7 +1088,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <div class="lyric-container" :class="{ 'blur-enabled': lyricBlur }">
+    <div class="lyric-container" :class="lyricContainerClasses" :style="lyricBackgroundStyle">
         <canvas
             v-if="shouldShowVisualizer"
             ref="lyricVisualizerCanvas"
@@ -1083,13 +1278,28 @@ onUnmounted(() => {
         mix-blend-mode: multiply;
         transition: opacity 0.35s cubic-bezier(0.3, 0, 0.12, 1);
     }
+    &.lyric-container--custom {
+        background: transparent;
+    }
+    &.lyric-container--custom::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background-image: var(--custom-background-image);
+        background-size: var(--custom-background-size, cover);
+        background-repeat: var(--custom-background-repeat, no-repeat);
+        background-position: var(--custom-background-position, center center);
+        filter: blur(var(--custom-background-blur, 0px)) brightness(var(--custom-background-brightness, 100%));
+        z-index: 0;
+        pointer-events: none;
+    }
     .lyric-area {
         width: calc(100% - 3vh);
         height: calc(100% - 3vh);
         overflow: hidden;
         transition: 0.3s cubic-bezier(0.3, 0, 0.12, 1);
         position: relative;
-        z-index: 1;
+        z-index: 2;
         &.no-flash {
             opacity: 0;
             /* 取消进入过渡的缩放，以免影响布局测量/视觉位置 */
@@ -1299,7 +1509,7 @@ onUnmounted(() => {
         justify-content: center;
         align-items: center;
         position: relative;
-        z-index: 1;
+        z-index: 2;
         .line1,
         .line2 {
             width: 0;
