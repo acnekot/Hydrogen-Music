@@ -81,64 +81,85 @@ const handleTitleBarDoubleClick = () => {
 </script>
 
 <template>
-    <div class="mainWindow" :class="{ 'mainWindow--custom': customBackgroundActive }" :style="customBackgroundStyle">
-        <Transition name="home">
-            <Home class="home" v-show="playerStore.widgetState"></Home>
-        </Transition>
-    </div>
-    <div class="globalWidget">
-        <Title class="widget-title"></Title>
-        <SearchInput class="widget-search"></SearchInput>
-    </div>
-    <div class="dragBar" @dblclick="handleTitleBarDoubleClick">
-        <WindowControl class="window-control"></WindowControl>
-    </div>
-    <Transition name="widget">
-        <div class="musicWidget" v-if="playerStore.songList" v-show="playerStore.widgetState">
-            <MusicWidget></MusicWidget>
-        </div>
-    </Transition>
-    <Transition name="player">
-        <div class="musicPlayer" v-if="playerStore.songList" v-show="!playerStore.widgetState">
-            <MusicPlayer></MusicPlayer>
-        </div>
-    </Transition>
-    <Transition name="video">
-        <div class="videoPlayer" v-if="otherStore.videoPlayerShow">
-            <VideoPlayer></VideoPlayer>
-        </div>
-    </Transition>
-    <div class="contextMune">
-        <ContextMenu></ContextMenu>
-    </div>
-    <div class="globalDialog">
-        <GlobalDialog></GlobalDialog>
-    </div>
-    <div class="globalNotice">
-        <GlobalNotice></GlobalNotice>
-    </div>
-    <Transition name="fade">
-        <div class="update" v-if="otherStore.toUpdate">
-            <Update></Update>
-        </div>
-    </Transition>
+    <q-layout view="lHh Lpr lFf" class="app-layout">
+        <q-page-container class="app-page-container">
+            <q-page class="app-page q-pa-none">
+                <div
+                    class="mainWindow"
+                    :class="{ 'mainWindow--custom': customBackgroundActive }"
+                    :style="customBackgroundStyle"
+                >
+                    <Transition name="home">
+                        <Home class="home" v-show="playerStore.widgetState"></Home>
+                    </Transition>
+                </div>
+                <div class="globalWidget">
+                    <Title class="widget-title"></Title>
+                    <SearchInput class="widget-search"></SearchInput>
+                </div>
+                <div class="dragBar" @dblclick="handleTitleBarDoubleClick">
+                    <WindowControl class="window-control"></WindowControl>
+                </div>
+                <Transition name="widget">
+                    <div class="musicWidget" v-if="playerStore.songList" v-show="playerStore.widgetState">
+                        <MusicWidget></MusicWidget>
+                    </div>
+                </Transition>
+                <Transition name="player">
+                    <div class="musicPlayer" v-if="playerStore.songList" v-show="!playerStore.widgetState">
+                        <MusicPlayer></MusicPlayer>
+                    </div>
+                </Transition>
+                <Transition name="video">
+                    <div class="videoPlayer" v-if="otherStore.videoPlayerShow">
+                        <VideoPlayer></VideoPlayer>
+                    </div>
+                </Transition>
+                <div class="contextMune">
+                    <ContextMenu></ContextMenu>
+                </div>
+                <div class="globalDialog">
+                    <GlobalDialog></GlobalDialog>
+                </div>
+                <div class="globalNotice">
+                    <GlobalNotice></GlobalNotice>
+                </div>
+                <Transition name="fade">
+                    <div class="update" v-if="otherStore.toUpdate">
+                        <Update></Update>
+                    </div>
+                </Transition>
+            </q-page>
+        </q-page-container>
+    </q-layout>
 </template>
 
 <style lang="scss">
+.app-layout {
+    min-height: 100vh;
+    background: transparent;
+}
+
+.app-page-container {
+    min-height: 100vh;
+}
+
+.app-page {
+    position: relative;
+    min-height: 100vh;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+}
+
 #app {
     user-select: none;
     margin: 0;
     padding: 0;
     max-width: 100%;
-    position: fixed;
-    left: 0;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
+    min-height: 100vh;
 }
 .mainWindow {
     width: 100%;

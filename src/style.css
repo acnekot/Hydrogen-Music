@@ -22,10 +22,11 @@ a {
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
   min-width: 320px;
   min-height: 100vh;
+  background-color: var(--layer);
+  color: var(--text);
+  font-family: 'Roboto', 'Source Han Sans CN', 'Helvetica Neue', Arial, sans-serif;
 }
 
 h1 {
@@ -56,5 +57,5 @@ button:focus-visible {
 }
 
 #app {
-  text-align: center;
+  min-height: 100vh;
 }
