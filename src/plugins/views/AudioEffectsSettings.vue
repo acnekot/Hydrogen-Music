@@ -1,99 +1,160 @@
 <template>
-  <div class="ae-wrapper">
-    <header class="ae-header">
-      <h1 class="ae-title">音效增强</h1>
-      <p class="ae-description">
-        通过 Web Audio 为播放器提供低音、高音与空间混响增强效果。
-      </p>
+  <div class="plugin-settings-page">
+    <header class="plugin-settings-header">
+      <button class="back-button" type="button" @click="goBack">
+        <span>返回</span>
+      </button>
+      <div class="header-meta">
+        <h1>音效增强</h1>
+        <p>通过提升低频、高频、存在感与空间混响，为播放带来更具层次感的声音表现。</p>
+      </div>
     </header>
 
-    <section class="ae-card" v-if="state.available">
-      <div class="ae-row">
-        <div class="ae-label">启用音效增强</div>
-        <div class="ae-control">
-          <button class="ae-toggle" type="button" @click="toggleBypass">
-            <span>{{ state.bypass ? '已关闭' : '已开启' }}</span>
+    <section class="plugin-card" v-if="state.available">
+      <div class="plugin-option">
+        <div class="plugin-option-name">启用音效增强</div>
+        <div class="plugin-option-control">
+          <button class="button button--toggle" type="button" @click="toggleBypass">
+            {{ state.bypass ? '已关闭' : '已开启' }}
           </button>
         </div>
       </div>
 
-      <div class="ae-slider-group" :class="{ 'ae-slider-group--disabled': state.bypass }">
-        <div class="ae-row">
-          <div class="ae-label">低音增强</div>
-          <div class="ae-control">
+      <div class="plugin-divider"></div>
+
+      <div class="plugin-option-list" :class="{ 'is-disabled': state.bypass }">
+        <div class="plugin-option">
+          <div class="plugin-option-name">低音增强</div>
+          <div class="plugin-option-control">
             <input
-              class="ae-slider"
+              class="slider"
               type="range"
               min="-12"
               max="12"
               step="1"
-              :disabled="state.bypass"
               :value="state.bass"
               @input="onBassChange($event.target.value)"
             />
-            <span class="ae-value">{{ displayDb(state.bass) }}</span>
+            <span class="option-value">{{ displayDb(state.bass) }}</span>
           </div>
         </div>
 
-        <div class="ae-row">
-          <div class="ae-label">高音增强</div>
-          <div class="ae-control">
+        <div class="plugin-option">
+          <div class="plugin-option-name">存在感增强</div>
+          <div class="plugin-option-control">
             <input
-              class="ae-slider"
+              class="slider"
               type="range"
               min="-12"
               max="12"
               step="1"
-              :disabled="state.bypass"
-              :value="state.treble"
-              @input="onTrebleChange($event.target.value)"
+              :value="state.presence"
+              @input="onPresenceChange($event.target.value)"
             />
-            <span class="ae-value">{{ displayDb(state.treble) }}</span>
+            <span class="option-value">{{ displayDb(state.presence) }}</span>
           </div>
         </div>
 
-        <div class="ae-row">
-          <div class="ae-label">空间混响</div>
-          <div class="ae-control">
+        <div class="plugin-option">
+          <div class="plugin-option-name">高音增强</div>
+          <div class="plugin-option-control">
             <input
-              class="ae-slider"
+              class="slider"
+              type="range"
+              min="-12"
+              max="12"
+              step="1"
+              :value="state.treble"
+              @input="onTrebleChange($event.target.value)"
+            />
+            <span class="option-value">{{ displayDb(state.treble) }}</span>
+          </div>
+        </div>
+
+        <div class="plugin-option">
+          <div class="plugin-option-name">立体声宽度</div>
+          <div class="plugin-option-control">
+            <input
+              class="slider"
+              type="range"
+              min="0"
+              max="2"
+              step="0.05"
+              :value="state.stereoWidth"
+              @input="onWidthChange($event.target.value)"
+            />
+            <span class="option-value">{{ displayWidth(state.stereoWidth) }}</span>
+          </div>
+        </div>
+
+        <div class="plugin-option">
+          <div class="plugin-option-name">空间混响</div>
+          <div class="plugin-option-control">
+            <input
+              class="slider"
               type="range"
               min="0"
               max="1"
               step="0.05"
-              :disabled="state.bypass"
               :value="state.ambience"
               @input="onAmbienceChange($event.target.value)"
             />
-            <span class="ae-value">{{ displayPercent(state.ambience) }}</span>
+            <span class="option-value">{{ displayPercent(state.ambience) }}</span>
+          </div>
+        </div>
+
+        <div class="plugin-option">
+          <div class="plugin-option-name">输出增益</div>
+          <div class="plugin-option-control">
+            <input
+              class="slider"
+              type="range"
+              min="-12"
+              max="6"
+              step="0.5"
+              :value="state.outputGain"
+              @input="onOutputGainChange($event.target.value)"
+            />
+            <span class="option-value">{{ displayDb(state.outputGain) }}</span>
           </div>
         </div>
       </div>
 
-      <div class="ae-actions">
-        <button class="ae-reset" type="button" @click="reset">恢复默认</button>
-        <span class="ae-hint">默认增强值可提供轻微的现场感。</span>
+      <div class="plugin-divider"></div>
+
+      <div class="reset-row">
+        <button class="button" type="button" @click="reset">恢复默认</button>
+        <span class="hint">默认设置提供轻微的现场感，可在此基础上微调至喜好的音色。</span>
       </div>
     </section>
 
-    <section class="ae-card ae-card--unavailable" v-else>
+    <section class="plugin-card plugin-card--unavailable" v-else>
       <h2>当前环境暂不支持</h2>
-      <p>当前浏览器或运行环境未启用 Web Audio，无法应用音效增强。</p>
+      <p>检测到当前浏览器或运行环境未启用 Web Audio，暂无法使用音效增强功能。</p>
     </section>
   </div>
 </template>
 
 <script setup>
+import { useRouter } from 'vue-router'
 import {
   audioEffectsState,
+  resetAudioEffects,
   setAudioEffectsAmbience,
   setAudioEffectsBass,
   setAudioEffectsBypass,
-  setAudioEffectsTreble,
-  resetAudioEffects
+  setAudioEffectsOutputGain,
+  setAudioEffectsPresence,
+  setAudioEffectsStereoWidth,
+  setAudioEffectsTreble
 } from '../modules/audioEffectsPlugin'
 
 const state = audioEffectsState
+const router = useRouter()
+
+const goBack = () => {
+  router.push('/settings')
+}
 
 const toggleBypass = () => {
   setAudioEffectsBypass(!state.bypass)
@@ -103,12 +164,24 @@ const onBassChange = (value) => {
   setAudioEffectsBass(Number(value))
 }
 
+const onPresenceChange = (value) => {
+  setAudioEffectsPresence(Number(value))
+}
+
 const onTrebleChange = (value) => {
   setAudioEffectsTreble(Number(value))
 }
 
+const onWidthChange = (value) => {
+  setAudioEffectsStereoWidth(Number(value))
+}
+
 const onAmbienceChange = (value) => {
   setAudioEffectsAmbience(Number(value))
+}
+
+const onOutputGainChange = (value) => {
+  setAudioEffectsOutputGain(Number(value))
 }
 
 const reset = () => {
@@ -116,71 +189,91 @@ const reset = () => {
 }
 
 const displayDb = (value) => {
-  if (!Number.isFinite(value)) return '0 dB'
-  const rounded = Math.round(Number(value))
-  return `${rounded > 0 ? '+' : ''}${rounded} dB`
+  if (!Number.isFinite(Number(value))) return '0 dB'
+  const numeric = Math.round(Number(value) * 10) / 10
+  const prefix = numeric > 0 ? '+' : ''
+  return `${prefix}${numeric} dB`
 }
 
 const displayPercent = (value) => {
-  if (!Number.isFinite(value)) return '0%'
+  if (!Number.isFinite(Number(value))) return '0%'
+  return `${Math.round(Number(value) * 100)}%`
+}
+
+const displayWidth = (value) => {
+  if (!Number.isFinite(Number(value))) return '100%'
   return `${Math.round(Number(value) * 100)}%`
 }
 </script>
 
 <style scoped>
-.ae-wrapper {
-  padding: 24px;
+.plugin-settings-page {
+  padding: 32px 28px;
   display: flex;
   flex-direction: column;
   gap: 24px;
-}
-
-.ae-header {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.ae-title {
-  font-size: 24px;
-  font-family: SourceHanSansCN-Bold;
   color: #000;
 }
 
-.ae-description {
+.plugin-settings-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.back-button {
+  border: none;
+  background: rgba(0, 0, 0, 0.08);
+  color: #000;
+  font-family: SourceHanSansCN-Bold;
   font-size: 14px;
-  line-height: 1.6;
+  padding: 8px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.back-button:hover {
+  opacity: 0.85;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+.header-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.header-meta h1 {
+  margin: 0;
+  font-size: 28px;
+  font-family: SourceHanSansCN-Bold;
+}
+
+.header-meta p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
   color: rgba(0, 0, 0, 0.65);
 }
 
-.ae-card {
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.55);
+.plugin-card {
+  background: rgba(255, 255, 255, 0.6);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.04);
+  border-radius: 20px;
   padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
 
-.ae-card--unavailable {
-  align-items: flex-start;
-  gap: 12px;
+.plugin-option-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
-.ae-card--unavailable h2 {
-  font-size: 18px;
-  font-family: SourceHanSansCN-Bold;
-  margin: 0;
-}
-
-.ae-card--unavailable p {
-  margin: 0;
-  color: rgba(0, 0, 0, 0.6);
-  line-height: 1.6;
-}
-
-.ae-row {
+.plugin-option {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -188,14 +281,13 @@ const displayPercent = (value) => {
   gap: 16px;
 }
 
-.ae-label {
-  min-width: 120px;
-  font-size: 15px;
+.plugin-option-name {
+  font-size: 16px;
   font-family: SourceHanSansCN-Bold;
-  color: #000;
+  min-width: 140px;
 }
 
-.ae-control {
+.plugin-option-control {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -203,46 +295,45 @@ const displayPercent = (value) => {
   justify-content: flex-end;
 }
 
-.ae-toggle {
-  min-width: 120px;
-  height: 36px;
-  border-radius: 18px;
+.slider {
+  width: 260px;
+}
+
+.option-value {
+  min-width: 68px;
+  text-align: right;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.button {
   border: none;
-  background: rgba(0, 0, 0, 0.12);
+  background: rgba(0, 0, 0, 0.08);
   color: #000;
-  font-size: 14px;
   font-family: SourceHanSansCN-Bold;
+  font-size: 14px;
+  padding: 8px 20px;
+  border-radius: 999px;
   cursor: pointer;
   transition: 0.2s;
 }
 
-.ae-toggle:hover {
+.button:hover {
+  opacity: 0.85;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 
-.ae-slider-group {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+.button--toggle {
+  min-width: 148px;
 }
 
-.ae-slider-group--disabled {
-  opacity: 0.45;
-  pointer-events: none;
+.plugin-divider {
+  height: 1px;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.08);
 }
 
-.ae-slider {
-  width: 220px;
-}
-
-.ae-value {
-  font-size: 13px;
-  color: rgba(0, 0, 0, 0.65);
-  min-width: 56px;
-  text-align: right;
-}
-
-.ae-actions {
+.reset-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -250,40 +341,45 @@ const displayPercent = (value) => {
   gap: 12px;
 }
 
-.ae-reset {
-  height: 36px;
-  padding: 0 18px;
-  border: none;
-  border-radius: 18px;
-  background: rgba(0, 0, 0, 0.08);
-  color: #000;
-  font-size: 13px;
-  font-family: SourceHanSansCN-Bold;
-  cursor: pointer;
-  transition: 0.2s;
-}
-
-.ae-reset:hover {
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
-  opacity: 0.85;
-}
-
-.ae-hint {
+.hint {
   font-size: 12px;
   color: rgba(0, 0, 0, 0.55);
 }
 
+.plugin-card--unavailable {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.plugin-card--unavailable h2 {
+  margin: 0;
+  font-size: 18px;
+  font-family: SourceHanSansCN-Bold;
+}
+
+.plugin-card--unavailable p {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.6);
+  line-height: 1.6;
+}
+
+.is-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 @media (max-width: 768px) {
-  .ae-wrapper {
-    padding: 16px;
+  .plugin-settings-page {
+    padding: 24px 16px;
   }
 
-  .ae-control {
+  .plugin-option-control {
     justify-content: flex-start;
   }
 
-  .ae-slider {
-    width: 160px;
+  .slider {
+    width: 200px;
   }
 }
 </style>

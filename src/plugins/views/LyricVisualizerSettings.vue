@@ -1,10 +1,15 @@
 <template>
   <div class="lv-wrapper">
     <header class="lv-header">
-      <h1 class="lv-title">歌词音频可视化</h1>
-      <p class="lv-description">
-        启用后将在歌词区域绘制实时频谱，可自定义柱状或圆环样式及相关参数。
-      </p>
+      <button class="lv-back" type="button" @click="goBack">
+        <span>返回</span>
+      </button>
+      <div class="lv-header-text">
+        <h1 class="lv-title">歌词音频可视化</h1>
+        <p class="lv-description">
+          启用后将在歌词区域绘制实时频谱，可自定义柱状或圆环样式及相关参数。
+        </p>
+      </div>
     </header>
     <section class="lv-section">
       <div class="lv-option">
@@ -340,11 +345,17 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import Selector from '../../components/Selector.vue'
 import { usePlayerStore } from '../../store/playerStore'
 import { lyricVisualizerDefaults } from '../modules/lyricVisualizerPlugin'
 
 const playerStore = usePlayerStore()
+const router = useRouter()
+
+const goBack = () => {
+  router.push('/settings')
+}
 
 const clampNumber = (value, min, max, fallback = min) => {
   const numeric = Number(value)
@@ -965,8 +976,31 @@ watch(
 
 .lv-header {
   display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.lv-back {
+  border: none;
+  background: rgba(0, 0, 0, 0.08);
+  color: #000;
+  font-family: SourceHanSansCN-Bold;
+  font-size: 14px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.lv-back:hover {
+  opacity: 0.85;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+.lv-header-text {
+  display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .lv-title {
@@ -1180,6 +1214,15 @@ watch(
 }
 
 @media (max-width: 768px) {
+  .lv-header {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .lv-back {
+    align-self: flex-start;
+  }
+
   .lv-wrapper {
     padding: 16px;
   }

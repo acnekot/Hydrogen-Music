@@ -20,6 +20,7 @@ const instance = getCurrentInstance();
 const pluginManager = instance?.appContext?.config?.globalProperties?.$plugins ?? null;
 const pluginList = ref([]);
 const pluginSettingsFileInput = ref(null);
+const pluginPackageFileInput = ref(null);
 const hasPluginManager = computed(() => !!pluginManager);
 const pluginEmptyMessage = computed(() => {
     if (!hasPluginManager.value) return '插件系统未启用';
@@ -27,10 +28,15 @@ const pluginEmptyMessage = computed(() => {
     return '';
 });
 
-const refreshPluginList = () => {
+const refreshPluginList = async () => {
     if (!pluginManager) {
         pluginList.value = [];
         return;
+    }
+    try {
+        await pluginManager.ensurePackagesRestored?.();
+    } catch (error) {
+        console.warn('加载插件列表失败:', error);
     }
     const list = pluginManager.listPlugins();
     pluginList.value = list.sort((a, b) => {
@@ -64,6 +70,29 @@ const getPluginSettingsLabel = plugin => {
     return plugin?.settingsEntry?.label || '插件设置';
 };
 
+const formatPluginMeta = plugin => {
+    const parts = [];
+    if (plugin?.version) {
+        parts.push(`v${plugin.version}`);
+    }
+    if (plugin?.author) {
+        parts.push(plugin.author);
+    }
+    return parts.join(' · ');
+};
+
+const getPluginOriginLabel = plugin => {
+    if (!plugin) return '';
+    switch (plugin.origin) {
+        case 'package':
+            return '插件包';
+        case 'module':
+            return '内置插件';
+        default:
+            return '插件';
+    }
+};
+
 const openPluginSettings = async plugin => {
     if (!pluginManager || !plugin?.name) return;
     if (!pluginHasSettings(plugin)) {
@@ -88,7 +117,9 @@ const confirmRemovePlugin = plugin => {
     const remove = async confirmed => {
         if (!confirmed) return;
         try {
-            await pluginManager.removePlugin(plugin.name);
+            await pluginManager.removePlugin(plugin.name, {
+                forgetState: plugin.origin === 'package',
+            });
             noticeOpen('插件已删除', 2);
         } catch (error) {
             console.error('删除插件失败:', error);
@@ -102,6 +133,10 @@ const confirmRemovePlugin = plugin => {
 
 const triggerPluginSettingsImport = () => {
     pluginSettingsFileInput.value?.click?.();
+};
+
+const triggerPluginPackageImport = () => {
+    pluginPackageFileInput.value?.click?.();
 };
 
 const handlePluginSettingsFileChange = async event => {
@@ -120,6 +155,32 @@ const handlePluginSettingsFileChange = async event => {
     } catch (error) {
         console.error('导入插件设置失败:', error);
         noticeOpen('导入插件设置失败', 2);
+    } finally {
+        refreshPluginList();
+        event.target.value = '';
+    }
+};
+
+const handlePluginPackageFileChange = async event => {
+    const [file] = event?.target?.files ?? [];
+    if (!file) return;
+    if (!pluginManager) {
+        noticeOpen('插件系统未初始化', 2);
+        event.target.value = '';
+        return;
+    }
+    const filename = file.name || '';
+    if (filename && !filename.toLowerCase().endsWith('.hym')) {
+        noticeOpen('请选择 .hym 插件包', 2);
+        event.target.value = '';
+        return;
+    }
+    try {
+        await pluginManager.importPluginPackage(file, { activate: true });
+        noticeOpen('插件导入成功', 2);
+    } catch (error) {
+        console.error('导入插件包失败:', error);
+        noticeOpen(error?.message || '导入插件包失败', 2);
     } finally {
         refreshPluginList();
         event.target.value = '';
@@ -651,15 +712,21 @@ const chooseCustomBackgroundImage = () => {
 const clearCustomBackgroundImage = () => {
     playerStore.customBackgroundImage = '';
 };
-const userLogout = async () => {
-    if (isLogin()) {
-        logout().then(async result => {
-            if (result.code == 200) {
+const userLogout = () => {
+    if (!isLogin()) {
+        noticeOpen('您已退出账号', 2);
+        return;
+    }
+
+    const executeLogout = async confirmed => {
+        if (!confirmed) return;
+        try {
+            const result = await logout();
+            if (result.code === 200) {
                 window.localStorage.clear();
                 userStore.user = null;
                 userStore.biliUser = null;
 
-                // 清理登录session，确保下次一键登录能正常工作
                 try {
                     await window.electronAPI?.clearLoginSession?.();
                     console.log('登录session已清理');
@@ -669,9 +736,16 @@ const userLogout = async () => {
 
                 router.push('/');
                 noticeOpen('已退出账号', 2);
-            } else noticeOpen('退出登录失败', 2);
-        });
-    } else noticeOpen('您已退出账号', 2);
+            } else {
+                noticeOpen('退出登录失败', 2);
+            }
+        } catch (error) {
+            console.error('退出登录失败:', error);
+            noticeOpen('退出登录失败', 2);
+        }
+    };
+
+    dialogOpen('确认退出登录', '退出后将无法同步云端数据，确定要退出当前账号吗？', executeLogout);
 };
 const save = () => {
     selectedShortcut.value = null;
@@ -943,11 +1017,24 @@ const clearFmRecent = () => {
                     <div class="line"></div>
                     <div class="item-options plugin-options">
                         <div class="option plugin-import">
-                            <div class="option-name">导入插件设置</div>
+                            <div class="option-name">导入插件</div>
                             <div class="option-operation plugin-import-actions">
-                                <div class="button" @click="triggerPluginSettingsImport">选择 JSON 文件</div>
-                                <div class="plugin-import-hint">导入通过设置导出的插件配置文件。</div>
+                                <div class="plugin-import-group">
+                                    <div class="button" @click="triggerPluginPackageImport">选择 .hym 插件包</div>
+                                    <div class="plugin-import-hint">导入包含插件代码与资源的专用包格式。</div>
+                                </div>
+                                <div class="plugin-import-group">
+                                    <div class="button" @click="triggerPluginSettingsImport">导入设置 JSON</div>
+                                    <div class="plugin-import-hint">导入先前导出的插件启用状态与偏好。</div>
+                                </div>
                             </div>
+                            <input
+                                ref="pluginPackageFileInput"
+                                class="plugin-import-input"
+                                type="file"
+                                accept=".hym"
+                                @change="handlePluginPackageFileChange"
+                            />
                             <input
                                 ref="pluginSettingsFileInput"
                                 class="plugin-import-input"
@@ -961,7 +1048,13 @@ const clearFmRecent = () => {
                         </div>
                         <div class="option plugin-item" v-for="plugin in pluginList" :key="plugin.name">
                             <div class="option-name plugin-info">
-                                <div class="plugin-title">{{ plugin.displayName || plugin.name }}</div>
+                                <div class="plugin-title-row">
+                                    <div class="plugin-title">{{ plugin.displayName || plugin.name }}</div>
+                                    <span class="plugin-badge" v-if="getPluginOriginLabel(plugin)">
+                                        {{ getPluginOriginLabel(plugin) }}
+                                    </span>
+                                    <div class="plugin-meta" v-if="formatPluginMeta(plugin)">{{ formatPluginMeta(plugin) }}</div>
+                                </div>
                                 <div class="plugin-description" v-if="plugin.description">{{ plugin.description }}</div>
                             </div>
                             <div class="option-operation plugin-actions">
@@ -1555,7 +1648,15 @@ const clearFmRecent = () => {
                             align-items: flex-start;
                         }
                         .plugin-import-actions {
-                            align-items: center;
+                            flex-direction: column;
+                            align-items: stretch;
+                            gap: 16px;
+                        }
+                        .plugin-import-group {
+                            display: flex;
+                            flex-direction: column;
+                            align-items: flex-start;
+                            gap: 8px;
                         }
                         .plugin-import-input {
                             display: none;
@@ -1580,10 +1681,34 @@ const clearFmRecent = () => {
                             gap: 6px;
                             max-width: 420px;
                         }
+                        .plugin-title-row {
+                            display: flex;
+                            flex-direction: row;
+                            align-items: baseline;
+                            gap: 12px;
+                            flex-wrap: wrap;
+                        }
                         .plugin-title {
                             font-family: SourceHanSansCN-Bold;
                             font-size: 16px;
                             color: black;
+                        }
+                        .plugin-badge {
+                            display: inline-flex;
+                            align-items: center;
+                            justify-content: center;
+                            padding: 2px 10px;
+                            border-radius: 999px;
+                            font-size: 12px;
+                            font-family: SourceHanSansCN-Bold;
+                            background: rgba(0, 0, 0, 0.08);
+                            color: rgba(0, 0, 0, 0.7);
+                        }
+                        .plugin-meta {
+                            font-size: 12px;
+                            font-family: SourceHanSansCN-Bold;
+                            font-weight: normal;
+                            color: rgba(0, 0, 0, 0.45);
                         }
                         .plugin-description {
                             font-size: 13px;

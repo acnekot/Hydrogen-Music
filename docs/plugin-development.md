@@ -47,8 +47,19 @@ export default {
 | `pinia` | `Pinia \| null` | Pinia 根实例，可用于注册 store 或访问全局状态 |
 | `manager` | `PluginManager` | 插件管理器本体，可进一步调用 `activatePlugin` 等方法 |
 | `hooks` | `PluginHooks` | 钩子系统，包含 `on`、`off`、`emit` 三个方法 |
+| `plugin` | `PluginMeta` | 当前插件的运行时元信息（包含 `name`、`origin`、`enabled` 等字段） |
+| `assets` | `{ list(): string[]; has(path): boolean; read(path, options?) }` | 便捷访问插件包内的静态资源 |
 
 `setup` 可以是同步或异步函数；若返回一个函数，该函数会在插件被卸载时执行用于清理资源。
+
+当插件以 `.hym` 包的形式安装时，可通过 `context.assets` 读取打包内的文件。例如：
+
+```js
+const text = await context.assets.read('templates/help.md')
+const config = await context.assets.read('config/options.json', { type: 'json' })
+```
+
+`assets.read` 默认返回字符串内容，`options.type` 支持 `text`、`json`、`arrayBuffer` 与 `base64`。`assets.list()` 可以查看所有可用的文件路径。
 
 ## 钩子（Hook）系统
 
@@ -84,6 +95,9 @@ export default {
 - `restorePlugin(name)`：在插件被标记删除后重新恢复，便于调试临时停用的插件。
 - `exportSettings()` / `importSettings(payload, options?)`：导出或导入插件启用/删除等状态。`importSettings` 默认会同步激活状态，可通过 `options.syncActivation = false` 延迟处理。
 - `openPluginSettings(name)`：触发插件声明的二级设置入口。当插件提供设置描述时，设置页会自动渲染对应按钮。
+- `importPluginPackage(file, options?)`：从 `.hym` 插件包安装或更新插件模块，默认会立即启用并在设置存储中记录打包内容。
+- `listPluginAssets(name)` / `readPluginAsset(name, path, options?)`：访问插件包随附的文件资源，`options.type` 支持 `text`、`json`、`arrayBuffer` 与 `base64`，便于在运行时加载额外的配置或模板。
+- `ensurePackagesRestored()`：返回一个 Promise，在所有持久化的插件包被重新加载后 resolve，适合在界面初始化时等待插件就绪。
 
 ### 插件二级设置入口
 
@@ -140,7 +154,60 @@ await pluginManager.importSettings(payload)
 
 如暂不希望立即激活或停用插件，可调用 `pluginManager.importSettings(payload, { syncActivation: false })`，稍后再按需执行 `enablePlugin` / `disablePlugin`。
 
+若某个插件来源于 `.hym` 包，导出的 JSON 会在对应条目下包含 `package` 字段（内含压缩包的 Base64 字符串与清单信息）。导入时插件管理器会自动重新解压并注册该插件，无需手动再次选择 `.hym` 文件。
+
 在 Vue 组件中可以通过 `this.$plugins` 访问这些能力。
+
+## 插件包（.hym）格式
+
+除了在源码中维护插件模块，也可以通过“插件包”在运行时动态安装。Hydrogen Music 约定使用 `.hym` 扩展名的 Zip 压缩文件，内部结构如下：
+
+```
+my-plugin.hym
+├─ plugin.json        # 插件清单，描述名称、版本、入口文件等
+├─ index.js           # 插件入口，可以是 ES Module 或 UMD（推荐 ESM）
+└─ assets/...         # 其他资源文件，运行时可通过 context.assets 访问
+```
+
+### plugin.json 字段
+
+```json
+{
+  "name": "my-plugin",
+  "displayName": "示例插件",
+  "version": "1.0.0",
+  "description": "演示如何通过 .hym 安装插件",
+  "author": "Hydrogen", 
+  "main": "index.js"    // 可省略，默认 index.js；也支持 .json 入口
+}
+```
+
+- `name` 必填且全局唯一。
+- `main` 指向插件入口文件，支持 `.js` 或 `.mjs` 模块；若指向 `.json`，系统会自动解析为插件对象。
+- 其余字段会被同步到插件元信息中，显示在设置界面。
+
+### 入口文件示例
+
+```js
+export default {
+  name: 'my-plugin',
+  description: '通过 .hym 导入的插件',
+  setup({ hooks }) {
+    hooks.emit('example:ready')
+    return () => {
+      console.log('my-plugin disabled')
+    }
+  }
+}
+```
+
+### 打包与导入
+
+1. 将清单、入口文件及附属资源打包为 Zip，推荐使用“存储”模式（不压缩）以获得最佳兼容性；若使用 Deflate，运行环境需要支持 `DecompressionStream`。 
+2. 将扩展名改为 `.hym`。
+3. 在设置页的“导入插件”中选择 `.hym` 文件，或在代码里调用 `pluginManager.importPluginPackage(file)`。
+
+导入成功后，插件会出现在设置页面，可像内置插件一样启用、禁用或删除。通过 `context.assets` 可以读取包内的其他文件，例如 Vue 组件模板或国际化文本。
 
 ### 插件设置存储
 
@@ -162,9 +229,9 @@ Hydrogen Music 默认提供两个可以直接参考的插件模块：
 
 ### 音效增强（`audioEffectsPlugin.js`）
 
-- **功能**：基于 Howler 的 Web Audio 管线，为播放器附加低频提升、高频增强与短混响效果。默认启用并提供 `audio-effects` 插件设置路由 `/plugins/audio-effects`，界面位于 `src/plugins/views/AudioEffectsSettings.vue`，包含可开关的滑杆和重置操作。
-- **技术要点**：插件在 `setup` 中维护一套自定义的 `Gain`、`BiquadFilter`、`Delay`、`Convolver` 节点，并通过导出的响应式状态向设置页面暴露参数；同时利用插件设置存储持久化用户的增益值。
-- **参考价值**：展示了如何安全地接入 Howler 提供的音频上下文、封装共享状态以及保存自定义偏好。
+- **功能**：基于 Howler 的 Web Audio 管线，为播放器提供低音、高音、存在感、立体声宽度、空间混响及输出增益等多项音色调节。默认启用并提供 `audio-effects` 插件设置路由 `/plugins/audio-effects`，界面位于 `src/plugins/views/AudioEffectsSettings.vue`，已更新为与设置页统一的视觉风格并新增返回按钮。
+- **技术要点**：插件在 `setup` 中构建一套 `Gain`、`BiquadFilter`、`Delay`、`Convolver`、`ChannelSplitter`/`ChannelMerger` 节点链路，同时通过响应式状态向设置页面暴露调节参数；所有数值会持久化到插件设置存储中。
+- **参考价值**：展示了如何安全地接入 Howler 提供的音频上下文、封装共享状态、保存自定义偏好，并扩展现有插件以提供更丰富的音效体验。
 
 两个示例都设置了 `removable: true`，用户可以在插件管理界面删除或重新导入它们。开发者也可以复制这些文件作为脚手架，快速搭建具备路由、设置和持久化能力的高级插件。
 

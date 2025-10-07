@@ -6,15 +6,34 @@ const BASS_MIN = -12
 const BASS_MAX = 12
 const TREBLE_MIN = -12
 const TREBLE_MAX = 12
+const PRESENCE_MIN = -12
+const PRESENCE_MAX = 12
 const AMBIENCE_MIN = 0
 const AMBIENCE_MAX = 1
+const WIDTH_MIN = 0
+const WIDTH_MAX = 2
+const OUTPUT_GAIN_MIN = -12
+const OUTPUT_GAIN_MAX = 6
 
-export const audioEffectsState = reactive({
-  available: typeof Howler !== 'undefined' ? Howler.usingWebAudio : false,
+const DEFAULTS = Object.freeze({
   bypass: false,
   bass: 4,
   treble: 2,
+  presence: 1,
   ambience: 0.2,
+  stereoWidth: 1.1,
+  outputGain: 0
+})
+
+export const audioEffectsState = reactive({
+  available: typeof Howler !== 'undefined' ? Howler.usingWebAudio : false,
+  bypass: DEFAULTS.bypass,
+  bass: DEFAULTS.bass,
+  treble: DEFAULTS.treble,
+  presence: DEFAULTS.presence,
+  ambience: DEFAULTS.ambience,
+  stereoWidth: DEFAULTS.stereoWidth,
+  outputGain: DEFAULTS.outputGain,
   active: false
 })
 
@@ -34,6 +53,11 @@ function createImpulseResponse(context) {
   return impulse
 }
 
+function dbToGain(db) {
+  const value = clamp(db, OUTPUT_GAIN_MIN, OUTPUT_GAIN_MAX)
+  return Math.pow(10, value / 20)
+}
+
 function ensureChain() {
   if (!audioEffectsState.available) return null
   if (!Howler.masterGain || !Howler.ctx) return null
@@ -41,9 +65,16 @@ function ensureChain() {
 
   const context = Howler.ctx
   const input = context.createGain()
+
   const bassFilter = context.createBiquadFilter()
   bassFilter.type = 'lowshelf'
   bassFilter.frequency.value = 200
+
+  const presenceFilter = context.createBiquadFilter()
+  presenceFilter.type = 'peaking'
+  presenceFilter.frequency.value = 1250
+  presenceFilter.Q.value = 1.25
+  presenceFilter.gain.value = audioEffectsState.presence
 
   const trebleFilter = context.createBiquadFilter()
   trebleFilter.type = 'highshelf'
@@ -56,8 +87,21 @@ function ensureChain() {
   compressor.attack.value = 0.005
   compressor.release.value = 0.25
 
+  const widthSplitter = context.createChannelSplitter(2)
+  const widthLeftDirect = context.createGain()
+  const widthLeftCross = context.createGain()
+  const widthRightDirect = context.createGain()
+  const widthRightCross = context.createGain()
+  const widthMerger = context.createChannelMerger(2)
+
+  const outputGain = context.createGain()
+  outputGain.gain.value = dbToGain(audioEffectsState.outputGain)
+
   const dryGain = context.createGain()
   dryGain.gain.value = 1
+
+  const ambienceSend = context.createGain()
+  ambienceSend.gain.value = 1
 
   const wetGain = context.createGain()
   wetGain.gain.value = audioEffectsState.ambience
@@ -78,12 +122,27 @@ function ensureChain() {
   const output = context.createGain()
 
   input.connect(bassFilter)
-  bassFilter.connect(trebleFilter)
+  bassFilter.connect(presenceFilter)
+  presenceFilter.connect(trebleFilter)
   trebleFilter.connect(compressor)
-  compressor.connect(dryGain)
+  compressor.connect(widthSplitter)
+
+  widthSplitter.connect(widthLeftDirect, 0)
+  widthSplitter.connect(widthRightCross, 0)
+  widthSplitter.connect(widthRightDirect, 1)
+  widthSplitter.connect(widthLeftCross, 1)
+
+  widthLeftDirect.connect(widthMerger, 0, 0)
+  widthLeftCross.connect(widthMerger, 0, 0)
+  widthRightDirect.connect(widthMerger, 0, 1)
+  widthRightCross.connect(widthMerger, 0, 1)
+
+  widthMerger.connect(outputGain)
+  outputGain.connect(dryGain)
   dryGain.connect(output)
 
-  trebleFilter.connect(delay)
+  widthMerger.connect(ambienceSend)
+  ambienceSend.connect(delay)
   delay.connect(feedback)
   feedback.connect(delay)
   delay.connect(convolver)
@@ -93,9 +152,20 @@ function ensureChain() {
   chain = {
     input,
     bassFilter,
+    presenceFilter,
     trebleFilter,
     compressor,
+    width: {
+      splitter: widthSplitter,
+      leftDirect: widthLeftDirect,
+      leftCross: widthLeftCross,
+      rightDirect: widthRightDirect,
+      rightCross: widthRightCross,
+      merger: widthMerger
+    },
+    outputGain,
     dryGain,
+    ambienceSend,
     wetGain,
     delay,
     feedback,
@@ -137,8 +207,22 @@ function disconnectChain() {
 function applyChainSettings() {
   if (!chain) return
   chain.bassFilter.gain.value = audioEffectsState.bass
+  chain.presenceFilter.gain.value = audioEffectsState.presence
   chain.trebleFilter.gain.value = audioEffectsState.treble
   chain.wetGain.gain.value = audioEffectsState.ambience
+  chain.outputGain.gain.value = dbToGain(audioEffectsState.outputGain)
+  applyStereoWidth()
+}
+
+function applyStereoWidth() {
+  if (!chain?.width) return
+  const width = clamp(audioEffectsState.stereoWidth, WIDTH_MIN, WIDTH_MAX)
+  const direct = 0.5 * (1 + width)
+  const cross = 0.5 * (1 - width)
+  chain.width.leftDirect.gain.value = direct
+  chain.width.rightDirect.gain.value = direct
+  chain.width.leftCross.gain.value = cross
+  chain.width.rightCross.gain.value = cross
 }
 
 function connectChain() {
@@ -190,7 +274,10 @@ function persistState() {
         bypass: audioEffectsState.bypass,
         bass: audioEffectsState.bass,
         treble: audioEffectsState.treble,
-        ambience: audioEffectsState.ambience
+        presence: audioEffectsState.presence,
+        ambience: audioEffectsState.ambience,
+        stereoWidth: audioEffectsState.stereoWidth,
+        outputGain: audioEffectsState.outputGain
       }
     })
   } catch (error) {
@@ -201,11 +288,14 @@ function persistState() {
 function loadState(manager) {
   const stored = manager?.settingsStore?.getState('audio-effects')
   if (!stored?.data) return
-  const { bypass, bass, treble, ambience } = stored.data
+  const { bypass, bass, treble, ambience, presence, stereoWidth, outputGain } = stored.data
   audioEffectsState.bypass = Boolean(bypass)
-  audioEffectsState.bass = clamp(bass, BASS_MIN, BASS_MAX)
-  audioEffectsState.treble = clamp(treble, TREBLE_MIN, TREBLE_MAX)
-  audioEffectsState.ambience = clamp(ambience, AMBIENCE_MIN, AMBIENCE_MAX)
+  audioEffectsState.bass = clamp(bass ?? DEFAULTS.bass, BASS_MIN, BASS_MAX)
+  audioEffectsState.treble = clamp(treble ?? DEFAULTS.treble, TREBLE_MIN, TREBLE_MAX)
+  audioEffectsState.presence = clamp(presence ?? DEFAULTS.presence, PRESENCE_MIN, PRESENCE_MAX)
+  audioEffectsState.ambience = clamp(ambience ?? DEFAULTS.ambience, AMBIENCE_MIN, AMBIENCE_MAX)
+  audioEffectsState.stereoWidth = clamp(stereoWidth ?? DEFAULTS.stereoWidth, WIDTH_MIN, WIDTH_MAX)
+  audioEffectsState.outputGain = clamp(outputGain ?? DEFAULTS.outputGain, OUTPUT_GAIN_MIN, OUTPUT_GAIN_MAX)
 }
 
 export function setAudioEffectsBypass(bypass) {
@@ -239,11 +329,35 @@ export function setAudioEffectsAmbience(value) {
   persistState()
 }
 
+export function setAudioEffectsPresence(value) {
+  audioEffectsState.presence = clamp(value, PRESENCE_MIN, PRESENCE_MAX)
+  connectChain()
+  applyChainSettings()
+  persistState()
+}
+
+export function setAudioEffectsStereoWidth(value) {
+  audioEffectsState.stereoWidth = clamp(value, WIDTH_MIN, WIDTH_MAX)
+  connectChain()
+  applyChainSettings()
+  persistState()
+}
+
+export function setAudioEffectsOutputGain(value) {
+  audioEffectsState.outputGain = clamp(value, OUTPUT_GAIN_MIN, OUTPUT_GAIN_MAX)
+  connectChain()
+  applyChainSettings()
+  persistState()
+}
+
 export function resetAudioEffects() {
-  audioEffectsState.bypass = false
-  audioEffectsState.bass = 4
-  audioEffectsState.treble = 2
-  audioEffectsState.ambience = 0.2
+  audioEffectsState.bypass = DEFAULTS.bypass
+  audioEffectsState.bass = DEFAULTS.bass
+  audioEffectsState.treble = DEFAULTS.treble
+  audioEffectsState.presence = DEFAULTS.presence
+  audioEffectsState.ambience = DEFAULTS.ambience
+  audioEffectsState.stereoWidth = DEFAULTS.stereoWidth
+  audioEffectsState.outputGain = DEFAULTS.outputGain
   connectChain()
   applyChainSettings()
   persistState()
@@ -252,8 +366,8 @@ export function resetAudioEffects() {
 export default {
   name: 'audio-effects',
   displayName: '音效增强',
-  version: '1.0.0',
-  description: '提供低音增强、高音增强与空间混响的音效调节。',
+  version: '1.1.0',
+  description: '提供低音、高音、存在感、立体声宽度与空间混响的综合音效调节。',
   author: 'Hydrogen Music Team',
   enabled: true,
   removable: true,
