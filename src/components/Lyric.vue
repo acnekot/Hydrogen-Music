@@ -744,6 +744,29 @@ const lyricAreaVisible = computed(() => {
 
 const lyricPlaceholderVisible = computed(() => !lyricAreaVisible.value);
 
+const originalLyricDisabled = computed(() => {
+    if (!Array.isArray(lyricType.value)) return false;
+    const types = lyricType.value;
+    return types.indexOf('noOriginal') !== -1 || types.indexOf('original') === -1;
+});
+
+const canRestoreLyricArea = computed(() => {
+    if (!hasLyricsList.value || !hasAnyLyricContent.value) return false;
+    if (!lyricShow.value) return true;
+    return originalLyricDisabled.value;
+});
+
+const restoreLyricArea = () => {
+    if (!Array.isArray(lyricType.value)) {
+        lyricShow.value = true;
+        return;
+    }
+    const nextTypes = lyricType.value.filter(item => item !== 'noOriginal');
+    if (nextTypes.indexOf('original') === -1) nextTypes.push('original');
+    lyricType.value = nextTypes;
+    lyricShow.value = true;
+};
+
 // 计算指定索引之前（含该索引）的累计高度，优先使用实际DOM高度，回退为均匀估算
 function computeCumulativeOffset(index) {
     if (!lyricEle.value || !lyricEle.value.length) {
@@ -1427,6 +1450,11 @@ onUnmounted(() => {
                 <div class="line1"></div>
                 <span class="tip">Lyric-Area</span>
                 <div class="line2"></div>
+                <div v-if="canRestoreLyricArea" class="placeholder-actions">
+                    <button class="placeholder-button" type="button" @click="restoreLyricArea">
+                        显示歌词
+                    </button>
+                </div>
             </div>
         </Transition>
 
@@ -1746,6 +1774,46 @@ onUnmounted(() => {
                     opacity: 1;
                 }
             }
+        }
+        .placeholder-actions {
+            position: absolute;
+            bottom: 48px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            opacity: 0;
+            transform: translateY(16px);
+            animation: nodata-open3 0.2s 1.35s forwards;
+        }
+        @keyframes nodata-open3 {
+            0% {
+                opacity: 0;
+                transform: translateY(16px);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .placeholder-button {
+            padding: 8px 28px;
+            font-size: 13px;
+            letter-spacing: 0.32em;
+            border-radius: 999px;
+            border: 1px solid rgba(0, 0, 0, 0.65);
+            background: rgba(255, 255, 255, 0.6);
+            color: rgba(0, 0, 0, 0.8);
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .placeholder-button:hover {
+            background: rgba(0, 0, 0, 0.85);
+            color: #fff;
+            border-color: rgba(0, 0, 0, 0.85);
+        }
+        .placeholder-button:active {
+            transform: scale(0.97);
         }
         .line1 {
             left: 4%;
