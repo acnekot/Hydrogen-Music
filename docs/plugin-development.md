@@ -15,6 +15,8 @@ src/
 - `pluginManager.js`：提供 `PluginManager` 类和 `createPluginManager` 工厂方法，负责加载插件、管理生命周期、分发钩子事件。
 - `modules/`：放置所有插件定义。新插件只需在该目录（或子目录）内创建一个 `*.js` 文件并导出插件对象即可。
 
+> 💡 **自动导入机制**：`createPluginManager` 内部使用 `import.meta.glob('./modules/**/*.js', { eager: true })` 扫描 `modules` 目录并在构建阶段自动导入所有插件文件。新增插件只要放入该目录，Vite 即会在下一次热更新或重新构建时将其打包并交给插件管理器注册，无需手动改动入口代码。
+
 ## 插件定义
 
 每个插件文件需要默认导出一个对象，推荐结构如下：
@@ -79,6 +81,36 @@ export default {
 - `removePlugin(name, options?)`：移除可删除的插件。默认仅在设置中标记为已删除，传入 `{ forgetState: true }` 将彻底清除相关记录。
 - `restorePlugin(name)`：在插件被标记删除后重新恢复，便于调试临时停用的插件。
 - `exportSettings()` / `importSettings(payload, options?)`：导出或导入插件启用/删除等状态。`importSettings` 默认会同步激活状态，可通过 `options.syncActivation = false` 延迟处理。
+
+### 导入插件设置
+
+`exportSettings()` 会返回如下结构的普通对象，可序列化为 JSON 文件以便备份或迁移：
+
+```json
+{
+  "plugins": {
+    "logger": { "enabled": true, "removed": false }
+  }
+}
+```
+
+在另一环境恢复时，先读取该 JSON，再传入 `importSettings`：
+
+```js
+import settings from './plugin-settings.json'
+
+await pluginManager.importSettings(settings)
+```
+
+若是通过文件选择器或网络请求获取到字符串内容，则需要先 `JSON.parse`：
+
+```js
+const fileContent = await file.text()
+const payload = JSON.parse(fileContent)
+await pluginManager.importSettings(payload)
+```
+
+如暂不希望立即激活或停用插件，可调用 `pluginManager.importSettings(payload, { syncActivation: false })`，稍后再按需执行 `enablePlugin` / `disablePlugin`。
 
 在 Vue 组件中可以通过 `this.$plugins` 访问这些能力。
 
