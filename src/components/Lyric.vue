@@ -731,29 +731,52 @@ const waitForLayoutCommit = async () => {
     await waitForNextFrame();
 };
 
-// 是否存在歌词列表与有效原文内容
+// 是否存在歌词列表与有效内容
 const hasLyricsList = computed(() => Array.isArray(lyricsObjArr.value) && lyricsObjArr.value.length > 0);
-const hasAnyLyricContent = computed(() => {
+const hasOriginalLyricContent = computed(() => {
     if (!Array.isArray(lyricsObjArr.value)) return false;
-    return lyricsObjArr.value.some(item => !!(item && item.lyric && String(item.lyric).trim()))
+    return lyricsObjArr.value.some(item => !!(item && item.lyric && String(item.lyric).trim()));
+});
+const hasTransLyricContent = computed(() => {
+    if (!Array.isArray(lyricsObjArr.value)) return false;
+    return lyricsObjArr.value.some(item => !!(item && item.tlyric && String(item.tlyric).trim()));
+});
+const hasRomaLyricContent = computed(() => {
+    if (!Array.isArray(lyricsObjArr.value)) return false;
+    return lyricsObjArr.value.some(item => !!(item && item.rlyric && String(item.rlyric).trim()));
+});
+const hasAnyLyricContent = computed(
+    () => hasOriginalLyricContent.value || hasTransLyricContent.value || hasRomaLyricContent.value
+);
+
+const wantsOriginalLyric = computed(() => {
+    if (!Array.isArray(lyricType.value)) return true;
+    return lyricType.value.indexOf('noOriginal') === -1 && lyricType.value.indexOf('original') !== -1;
+});
+const wantsTransLyric = computed(() => {
+    if (!Array.isArray(lyricType.value)) return false;
+    return lyricType.value.indexOf('noTrans') === -1 && lyricType.value.indexOf('trans') !== -1;
+});
+const wantsRomaLyric = computed(() => {
+    if (!Array.isArray(lyricType.value)) return false;
+    return lyricType.value.indexOf('noRoma') === -1 && lyricType.value.indexOf('roma') !== -1;
 });
 
+const showOriginalLyric = computed(() => wantsOriginalLyric.value && hasOriginalLyricContent.value);
+const showTransLyric = computed(() => wantsTransLyric.value && hasTransLyricContent.value);
+const showRomaLyric = computed(() => wantsRomaLyric.value && hasRomaLyricContent.value);
+
 const lyricAreaVisible = computed(() => {
-    return !!(hasLyricsList.value && hasAnyLyricContent.value && lyricShow.value && lyricType.value && lyricType.value.indexOf('original') !== -1);
+    if (!hasLyricsList.value || !lyricShow.value) return false;
+    return showOriginalLyric.value || showTransLyric.value || showRomaLyric.value;
 });
 
 const lyricPlaceholderVisible = computed(() => !lyricAreaVisible.value);
 
-const originalLyricDisabled = computed(() => {
-    if (!Array.isArray(lyricType.value)) return false;
-    const types = lyricType.value;
-    return types.indexOf('noOriginal') !== -1 || types.indexOf('original') === -1;
-});
-
 const canRestoreLyricArea = computed(() => {
     if (!hasLyricsList.value || !hasAnyLyricContent.value) return false;
     if (!lyricShow.value) return true;
-    return originalLyricDisabled.value;
+    return !(showOriginalLyric.value || showTransLyric.value || showRomaLyric.value);
 });
 
 const restoreLyricArea = () => {
@@ -761,8 +784,13 @@ const restoreLyricArea = () => {
         lyricShow.value = true;
         return;
     }
-    const nextTypes = lyricType.value.filter(item => item !== 'noOriginal');
-    if (nextTypes.indexOf('original') === -1) nextTypes.push('original');
+    const nextTypes = lyricType.value.filter(item => !String(item).startsWith('no'));
+    const ensureType = type => {
+        if (nextTypes.indexOf(type) === -1) nextTypes.push(type);
+    };
+    if (hasOriginalLyricContent.value) ensureType('original');
+    if (hasTransLyricContent.value) ensureType('trans');
+    if (hasRomaLyricContent.value) ensureType('roma');
     lyricType.value = nextTypes;
     lyricShow.value = true;
 };
@@ -811,13 +839,9 @@ const clearLycAnimation = flag => {
 const setMaxHeight = change => {
     if (!lyricsObjArr.value) return;
 
-    // 判断本首歌实际是否存在翻译/罗马音，避免没有对应内容时仍按照勾选项计算高度
-    const hasAnyTrans = Array.isArray(lyricsObjArr.value) && lyricsObjArr.value.some(item => !!(item.tlyric && item.tlyric.trim()))
-    const hasAnyRoma = Array.isArray(lyricsObjArr.value) && lyricsObjArr.value.some(item => !!(item.rlyric && item.rlyric.trim()))
-
-    const showOriginal = lyricType.value.indexOf('noOriginal') == -1 && lyricType.value.indexOf('original') != -1
-    const showTrans = (lyricType.value.indexOf('noTrans') == -1 && lyricType.value.indexOf('trans') != -1) && hasAnyTrans
-    const showRoma = (lyricType.value.indexOf('noRoma') == -1 && lyricType.value.indexOf('roma') != -1) && hasAnyRoma
+    const showOriginal = showOriginalLyric.value
+    const showTrans = showTransLyric.value
+    const showRoma = showRomaLyric.value
 
     size = (
         parseInt(showOriginal ? lyricSize.value : 0) +
@@ -1299,7 +1323,7 @@ onUnmounted(() => {
             :style="visualizerCanvasStyle"
         ></canvas>
         <Transition name="fade" @after-enter="onLyricAreaAfterEnter">
-            <div v-show="hasLyricsList && hasAnyLyricContent && lyricShow && lyricType.indexOf('original') != -1" class="lyric-area" :class="{ 'no-flash': suppressLyricFlash }" ref="lyricScroll">
+            <div v-show="lyricAreaVisible" class="lyric-area" :class="{ 'no-flash': suppressLyricFlash }" ref="lyricScroll">
                 <div class="lyric-scroll-area" ref="lyricScrollArea"></div>
                 <div class="lyric-line" :style="{ transform: 'translateY(' + lineOffset + 'Px)' }" v-for="(item, index) in lyricsObjArr" v-show="item.lyric" :key="index">
                     <div class="line" @click="changeProgressLyc(item.time, index)" :class="{ 'line-highlight': index == lycCurrentIndex, 'lyric-inactive': !isLyricActive || item.active }">
