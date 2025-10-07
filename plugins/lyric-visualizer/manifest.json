@@ -1,0 +1,8 @@
+{
+  "name": "lyric-visualizer",
+  "displayName": "歌词可视化",
+  "version": "1.0.0",
+  "description": "提供实时的歌词波形与背景动画可视化展示。",
+  "author": "Hydrogen Music Team",
+  "main": "index.js"
+}
