@@ -725,7 +725,29 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
 
                     const hasAuthCookie = cookies.some(cookie => {
                         const name = (cookie.name || '').toLowerCase()
-                        return name.includes('kg_mid') || name.includes('kugou') || name.includes('userid')
+                        let value = cookie.value || ''
+
+                        if (!value) return false
+
+                        try {
+                            value = decodeURIComponent(value)
+                        } catch (_) {
+                            // ignore decode errors, fallback to raw value
+                        }
+
+                        if (name === 'userid' || name === 'kg_userid' || name === 'kugouid') {
+                            return !!value && value !== '0'
+                        }
+
+                        if (name === 'kugoouser' || name === 'kugoouserinfo') {
+                            return /userid=\d+/i.test(value) || /"userid"\s*:\s*\d+/i.test(value)
+                        }
+
+                        if (name.includes('token')) {
+                            return true
+                        }
+
+                        return false
                     })
 
                     if (hasAuthCookie) {
