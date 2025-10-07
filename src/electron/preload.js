@@ -162,6 +162,8 @@ const pluginInstallPackage = payload => ipcRenderer.invoke('plugins:install-pack
 const pluginRemovePackage = payload => ipcRenderer.invoke('plugins:remove-package', payload)
 const pluginReadFile = payload => ipcRenderer.invoke('plugins:read-file', payload)
 const pluginListFiles = payload => ipcRenderer.invoke('plugins:list-files', payload)
+const pluginGetRoot = () => ipcRenderer.invoke('plugins:get-root')
+const pluginSetRoot = payload => ipcRenderer.invoke('plugins:set-root', payload)
 contextBridge.exposeInMainWorld('windowApi', {
     windowMin,
     windowMax,
@@ -258,5 +260,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         removePackage: pluginRemovePackage,
         readFile: pluginReadFile,
         listFiles: pluginListFiles,
+        getRoot: pluginGetRoot,
+        setRoot: pluginSetRoot,
     },
 })

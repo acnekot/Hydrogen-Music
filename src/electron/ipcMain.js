@@ -14,15 +14,97 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     const settingsStore = new Store({ name: 'settings' })
     const lastPlaylistStore = new Store({ name: 'lastPlaylist' })
     const musicVideoStore = new Store({ name: 'musicVideo' })
+    const pluginStorageStore = new Store({ name: 'plugin-storage' })
 
     // 全局存储桌面歌词窗口引用
     let globalLyricWindow = null;
 
-    const pluginsRoot = path.join(app.getPath('userData'), 'plugins', 'installed')
+    const getDefaultPluginsRoot = () => path.join(app.getPath('userData'), 'plugins', 'installed')
+
+    const normalizeDirectory = (directory) => {
+        if (!directory) return ''
+        return path.resolve(directory)
+    }
+
+    let pluginsRoot = normalizeDirectory(pluginStorageStore.get('rootDirectory') || getDefaultPluginsRoot())
+    let managedPluginDirectories = new Set(
+        (pluginStorageStore.get('directories') || []).map((dir) => normalizeDirectory(dir))
+    )
+
+    const persistPluginStorageState = () => {
+        pluginStorageStore.set('rootDirectory', pluginsRoot)
+        pluginStorageStore.set('directories', Array.from(managedPluginDirectories))
+    }
 
     const ensurePluginsRoot = async () => {
+        const target = pluginsRoot || getDefaultPluginsRoot()
+        pluginsRoot = normalizeDirectory(target)
         await fse.ensureDir(pluginsRoot)
+        persistPluginStorageState()
         return pluginsRoot
+    }
+
+    const isManagedDirectory = (directory) => {
+        if (!directory) return false
+        const normalizedDirectory = normalizeDirectory(directory)
+        const normalizedRoot = normalizeDirectory(pluginsRoot)
+        if (!normalizedDirectory) return false
+        if (normalizedRoot && normalizedDirectory.startsWith(`${normalizedRoot}${path.sep}`)) {
+            return true
+        }
+        if (normalizedRoot && normalizedDirectory === normalizedRoot) {
+            return true
+        }
+        return managedPluginDirectories.has(normalizedDirectory)
+    }
+
+    const setPluginsRoot = async (targetDirectory) => {
+        if (!targetDirectory) {
+            throw new Error('插件目录不能为空')
+        }
+        const normalizedTarget = normalizeDirectory(targetDirectory)
+        if (!normalizedTarget) {
+            throw new Error('插件目录无效')
+        }
+        const currentRoot = normalizeDirectory(pluginsRoot)
+        if (normalizedTarget === currentRoot) {
+            await ensurePluginsRoot()
+            return { directory: pluginsRoot, moved: [] }
+        }
+        if (currentRoot && normalizedTarget.startsWith(`${currentRoot}${path.sep}`)) {
+            throw new Error('插件目录不能是当前目录的子目录')
+        }
+        await fse.ensureDir(normalizedTarget)
+
+        const moved = []
+        const previousRoot = await ensurePluginsRoot()
+        const previousExists = await fse.pathExists(previousRoot)
+        if (previousExists) {
+            const entries = await fse.readdir(previousRoot)
+            for (const entry of entries) {
+                const source = path.join(previousRoot, entry)
+                const destination = path.join(normalizedTarget, entry)
+                await fse.move(source, destination, { overwrite: true })
+                const normalizedSource = normalizeDirectory(source)
+                const normalizedDestination = normalizeDirectory(destination)
+                managedPluginDirectories.delete(normalizedSource)
+                managedPluginDirectories.add(normalizedDestination)
+                moved.push({
+                    name: entry,
+                    from: normalizedSource,
+                    to: normalizedDestination,
+                })
+            }
+            try {
+                await fse.remove(previousRoot)
+            } catch (_) {
+                // ignore cleanup failure
+            }
+        }
+
+        pluginsRoot = normalizedTarget
+        persistPluginStorageState()
+        return { directory: pluginsRoot, moved }
     }
 
     const sanitizePackageRelativePath = relPath => {
@@ -35,9 +117,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     }
 
     const ensureDirectoryInRoot = directory => {
-        const normalizedDirectory = path.resolve(directory)
-        const normalizedRoot = path.resolve(pluginsRoot)
-        if (!normalizedDirectory.startsWith(normalizedRoot)) {
+        const normalizedDirectory = normalizeDirectory(directory)
+        if (!isManagedDirectory(normalizedDirectory)) {
             throw new Error('非法的插件目录')
         }
         return normalizedDirectory
@@ -54,7 +135,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     }
 
     const generatePluginDirectory = async (name = 'plugin') => {
-        await ensurePluginsRoot()
+        const root = await ensurePluginsRoot()
         const safeName = String(name || 'plugin')
             .replace(/[^a-zA-Z0-9-_]/g, '_')
             .replace(/_+/g, '_')
@@ -63,7 +144,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         const uniqueSeed = Date.now().toString(36)
         for (let attempt = 0; ; attempt++) {
             const suffix = attempt === 0 ? '' : `-${attempt}`
-            const candidate = path.join(pluginsRoot, `${safeName}-${uniqueSeed}${suffix}`)
+            const candidate = path.join(root, `${safeName}-${uniqueSeed}${suffix}`)
             const exists = await fse.pathExists(candidate)
             if (!exists) {
                 return candidate
@@ -272,7 +353,10 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                 const buffer = typeof file?.data === 'string' ? Buffer.from(file.data, 'base64') : Buffer.alloc(0)
                 await fse.writeFile(targetPath, buffer)
             }
-            return { directory }
+            const directoryName = path.basename(directory)
+            managedPluginDirectories.add(normalizeDirectory(directory))
+            persistPluginStorageState()
+            return { directory, directoryName, root: pluginsRoot }
         } catch (error) {
             await fse.remove(directory).catch(() => {})
             throw error
@@ -288,6 +372,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             return false
         }
         await fse.remove(normalized)
+        managedPluginDirectories.delete(normalized)
+        persistPluginStorageState()
         return true
     })
 
@@ -331,6 +417,20 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             }
         }
         await walk(normalized)
+        return result
+    })
+
+    ipcMain.handle('plugins:get-root', async () => {
+        const directory = await ensurePluginsRoot()
+        return { directory }
+    })
+
+    ipcMain.handle('plugins:set-root', async (_event, payload = {}) => {
+        const targetDirectory = payload?.directory
+        if (!targetDirectory) {
+            throw new Error('未提供插件目录')
+        }
+        const result = await setPluginsRoot(targetDirectory)
         return result
     })
     ipcMain.handle('dialog:openImageFile', async () => {

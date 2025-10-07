@@ -72,9 +72,10 @@ Hydrogen Music 支持将插件打包成自定义的 `.hym` 文件，便于分发
 | manifest 字段 | 建议提供 `name`、`displayName`、`version`、`description`、`author` 等信息，`name` 会作为插件唯一标识 |
 | 资源文件 | 可按需附带任意静态资源，运行时可通过 `context.assets` 访问 |
 
-导入 `.hym` 文件时，渲染进程会解析并校验 manifest，然后将全部文件交由 Electron 主进程解压到 `plugins/installed/<插件名>-<时间戳>` 目录
-（位于 `app.getPath('userData')` 之下）。插件入口脚本会被动态导入，运行时上下文可以立即访问随包提供的资源。卸载插件或彻底移除时，对应目录
-也会被删除；重启应用后会从该目录重新加载插件，无需再次手动导入。
+导入 `.hym` 文件时，渲染进程会解析并校验 manifest，然后将全部文件交由 Electron 主进程解压。默认情况下，解压后的内容会写入
+`app.getPath('userData')/plugins/installed/<插件名>-<时间戳>`；如果用户在设置页或运行时代码中指定了自定义的插件存储目录，则会保存到该路径
+下的唯一子文件夹中。插件入口脚本会被动态导入，运行时上下文可以立即访问随包提供的资源。卸载插件或彻底移除时，对应目录也会被删除；重启
+应用后会从该目录重新加载插件，无需再次手动导入。
 
 > ℹ️ 入口脚本需要导出标准的插件对象。可以直接使用编译后的 `.js`/`.mjs` 模块或 JSON 配置；若希望提供 `.vue` 组件，请提前通过构建流程
 > 输出可直接运行的 JavaScript。
@@ -117,9 +118,11 @@ Hydrogen Music 支持将插件打包成自定义的 `.hym` 文件，便于分发
 - `exportSettings()` / `importSettings(payload, options?)`：导出或导入插件启用/删除等状态。`importSettings` 默认会同步激活状态，可通过 `options.syncActivation = false` 延迟处理。
 - `openPluginSettings(name)`：触发插件声明的二级设置入口。当插件提供设置描述时，设置页会自动渲染对应按钮。
 - `importPluginPackage(file, options?)`：从 `.hym` 插件包安装或更新插件模块，默认会立即启用并在设置存储中记录解压目录与 manifest 信息；
-  Electron 主进程会将文件写入 `plugins/installed` 目录，后续重启会自动从磁盘恢复。
+  插件文件会解压到当前生效的插件存储目录，后续重启会自动从磁盘恢复。
 - `listPluginAssets(name)` / `readPluginAsset(name, path, options?)`：访问插件包随附的文件资源，`options.type` 支持 `text`、`json`、`arrayBuffer` 与 `base64`，便于在运行时加载额外的配置或模板。
 - `ensurePackagesRestored()`：返回一个 Promise，在所有持久化的插件包被重新加载后 resolve，适合在界面初始化时等待插件就绪。
+- `getPackageRootDirectory(options?)`：获取当前插件包存储目录的绝对路径，便于在调试日志或界面上显示。
+- `setPackageRootDirectory(directory)`：调整插件包的存储位置，Electron 主进程会在保持既有插件的情况下迁移文件夹；若提供的路径与当前相同，则不会重复移动。
 
 设置页在首次启用任意插件时都会弹出“目前该功能正在测试中，可能出现 BUG，确认开启？”提示，用户确认后会在插件状态中记录 `experimentalAck`
 字段，后续无需重复提醒。
@@ -162,6 +165,7 @@ export default {
       "removed": false,
       "package": {
         "directory": "C:/Users/<you>/AppData/Roaming/Hydrogen Music/plugins/installed/my-package-plugin-nf42r8",
+        "directoryName": "my-package-plugin-nf42r8",
         "entry": "index.js",
         "files": ["manifest.json", "index.js", "assets/config.json"],
         "manifest": { "name": "my-package-plugin", "displayName": "示例插件", "version": "1.0.0" }
@@ -189,8 +193,8 @@ await pluginManager.importSettings(payload)
 
 如暂不希望立即激活或停用插件，可调用 `pluginManager.importSettings(payload, { syncActivation: false })`，稍后再按需执行 `enablePlugin` / `disablePlugin`。
 
-若某个插件来源于 `.hym` 包，导出的 JSON 会在对应条目下包含 `package` 字段。Electron 环境下会记录解压后的 `directory`、`entry`、`files`
-等信息；如果当前平台不支持磁盘持久化，则会退化为 `archive`（Base64）形式。`importSettings` 会优先尝试使用目录恢复，若不存在则回退至归档数据，确保插件在新环境中可以重新加载。
+若某个插件来源于 `.hym` 包，导出的 JSON 会在对应条目下包含 `package` 字段。Electron 环境下会记录解压后的 `directory`、`directoryName`、`entry`、`files`
+等信息；其中 `directoryName` 表示插件在存储目录中的文件夹名称，便于在用户调整存储路径时重写绝对地址。如果当前平台不支持磁盘持久化，则会退化为 `archive`（Base64）形式。`importSettings` 会优先尝试使用目录恢复，若不存在则回退至归档数据，确保插件在新环境中可以重新加载。
 
 在 Vue 组件中可以通过 `this.$plugins` 访问这些能力。
 

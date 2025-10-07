@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, onActivated, watch, getCurrentInstance, onMounted } from 'vue';
+import { computed, ref, onActivated, watch, getCurrentInstance, onMounted, onBeforeUnmount } from 'vue';
 import { onBeforeRouteLeave, useRouter } from 'vue-router';
 import { logout } from '../api/user';
 import { noticeOpen, dialogOpen } from '../utils/dialog';
@@ -21,6 +21,8 @@ const pluginManager = instance?.appContext?.config?.globalProperties?.$plugins ?
 const pluginList = ref([]);
 const pluginSettingsFileInput = ref(null);
 const pluginPackageFileInput = ref(null);
+const pluginStoragePath = ref('');
+const pluginHookDisposers = [];
 const hasPluginManager = computed(() => !!pluginManager);
 const pluginEmptyMessage = computed(() => {
     if (!hasPluginManager.value) return '插件系统未启用';
@@ -28,15 +30,52 @@ const pluginEmptyMessage = computed(() => {
     return '';
 });
 
+const invokeAndSilence = promise => {
+    if (!promise || typeof promise.catch !== 'function') return;
+    promise.catch(() => {});
+};
+
+const registerPluginManagerHooks = () => {
+    if (!pluginManager?.hooks?.on) return;
+    if (pluginHookDisposers.length > 0) return;
+    const offPluginsChanged = pluginManager.hooks.on('manager:plugins-changed', () => {
+        invokeAndSilence(refreshPluginList());
+    });
+    const offRootChanged = pluginManager.hooks.on('manager:package-root-changed', event => {
+        if (event && Object.prototype.hasOwnProperty.call(event, 'root')) {
+            pluginStoragePath.value = event.root || '';
+        }
+    });
+    [offPluginsChanged, offRootChanged]
+        .filter(disposer => typeof disposer === 'function')
+        .forEach(disposer => pluginHookDisposers.push(disposer));
+};
+
+const cleanupPluginManagerHooks = () => {
+    while (pluginHookDisposers.length) {
+        const disposer = pluginHookDisposers.pop();
+        try {
+            disposer?.();
+        } catch (_) {
+            // ignore cleanup errors
+        }
+    }
+};
+
 const refreshPluginList = async () => {
     if (!pluginManager) {
         pluginList.value = [];
+        pluginStoragePath.value = '';
         return;
     }
+    registerPluginManagerHooks();
     try {
         await pluginManager.ensurePackagesRestored?.();
+        const root = await pluginManager.getPackageRootDirectory?.();
+        pluginStoragePath.value = root || '';
     } catch (error) {
         console.warn('加载插件列表失败:', error);
+        pluginStoragePath.value = '';
     }
     const list = pluginManager.listPlugins();
     pluginList.value = list.sort((a, b) => {
@@ -83,7 +122,7 @@ const togglePluginEnabled = async plugin => {
         console.error('切换插件状态失败:', error);
         noticeOpen('插件状态切换失败', 2);
     } finally {
-        refreshPluginList();
+        await refreshPluginList();
     }
 };
 
@@ -120,6 +159,10 @@ const getPluginOriginLabel = plugin => {
 
 const openPluginSettings = async plugin => {
     if (!pluginManager || !plugin?.name) return;
+    if (plugin.enabled === false) {
+        noticeOpen('请先启用插件', 2);
+        return;
+    }
     if (!pluginHasSettings(plugin)) {
         noticeOpen('该插件未提供可配置项', 2);
         return;
@@ -150,7 +193,7 @@ const confirmRemovePlugin = plugin => {
             console.error('删除插件失败:', error);
             noticeOpen('删除插件失败', 2);
         } finally {
-            refreshPluginList();
+            await refreshPluginList();
         }
     };
     dialogOpen('确认删除插件', `确定要删除插件「${pluginLabel}」吗？`, remove);
@@ -162,6 +205,30 @@ const triggerPluginSettingsImport = () => {
 
 const triggerPluginPackageImport = () => {
     pluginPackageFileInput.value?.click?.();
+};
+
+const selectPluginStoragePath = () => {
+    if (!pluginManager) {
+        noticeOpen('插件系统未初始化', 2);
+        return;
+    }
+    if (typeof pluginManager.setPackageRootDirectory !== 'function') {
+        noticeOpen('当前环境不支持调整插件目录', 2);
+        return;
+    }
+    windowApi.openFile().then(async (path) => {
+        if (!path) return;
+        try {
+            await pluginManager.setPackageRootDirectory?.(path);
+            const updated = await pluginManager.getPackageRootDirectory?.();
+            pluginStoragePath.value = updated || path;
+            noticeOpen('插件存储路径已更新', 2);
+            await refreshPluginList();
+        } catch (error) {
+            console.error('更新插件存储目录失败:', error);
+            noticeOpen('插件存储路径更新失败', 2);
+        }
+    });
 };
 
 const handlePluginSettingsFileChange = async event => {
@@ -181,7 +248,7 @@ const handlePluginSettingsFileChange = async event => {
         console.error('导入插件设置失败:', error);
         noticeOpen('导入插件设置失败', 2);
     } finally {
-        refreshPluginList();
+        await refreshPluginList();
         event.target.value = '';
     }
 };
@@ -204,7 +271,7 @@ const importPluginPackageFile = async file => {
         console.error('导入插件包失败:', error);
         noticeOpen(error?.message || '导入插件包失败', 2);
     } finally {
-        refreshPluginList();
+        await refreshPluginList();
     }
 };
 
@@ -320,6 +387,10 @@ onActivated(() => {
 
 onMounted(() => {
     refreshPluginList();
+});
+
+onBeforeUnmount(() => {
+    cleanupPluginManagerHooks();
 });
 
 // 设置更新监听器
@@ -591,6 +662,7 @@ const resetCustomBackgroundApplyToChrome = () => {
 watch(theme, (val) => setTheme(val));
 
 onBeforeRouteLeave((to, from, next) => {
+    cleanupPluginManagerHooks();
     setAppSettings();
     initSettings();
     next();
@@ -1055,6 +1127,21 @@ const clearFmRecent = () => {
                     <h2 class="item-title">插件</h2>
                     <div class="line"></div>
                     <div class="item-options plugin-options">
+                        <div class="option plugin-storage">
+                            <div class="option-name">插件存储位置</div>
+                            <div class="select-download-folder plugin-storage-selector">
+                                <div class="selected-folder" :title="pluginStoragePath">
+                                    {{ pluginStoragePath || '待选择' }}
+                                </div>
+                                <div
+                                    class="select-option"
+                                    :class="{ disabled: !hasPluginManager }"
+                                    @click="selectPluginStoragePath"
+                                >
+                                    选择
+                                </div>
+                            </div>
+                        </div>
                         <div
                             class="option plugin-import"
                             @dragover.prevent
@@ -1105,7 +1192,7 @@ const clearFmRecent = () => {
                                 <button
                                     type="button"
                                     class="button plugin-settings-button"
-                                    :disabled="!pluginHasSettings(plugin)"
+                                    :disabled="!plugin.enabled || !pluginHasSettings(plugin)"
                                     @click="openPluginSettings(plugin)"
                                 >
                                     {{ getPluginSettingsLabel(plugin) }}
@@ -1622,6 +1709,12 @@ const clearFmRecent = () => {
                                     opacity: 0.8;
                                     box-shadow: 0 0 0 1px black;
                                 }
+                                &.disabled {
+                                    opacity: 0.4;
+                                    cursor: not-allowed;
+                                    pointer-events: none;
+                                    box-shadow: none;
+                                }
                             }
                         }
                         .local-folder {
@@ -1687,6 +1780,15 @@ const clearFmRecent = () => {
                         }
                     }
                     .plugin-options {
+                        .plugin-storage-selector {
+                            .selected-folder {
+                                width: 360px;
+                                padding: 0 12px;
+                                text-align: left;
+                                white-space: nowrap;
+                                text-overflow: ellipsis;
+                            }
+                        }
                         .plugin-import,
                         .plugin-item {
                             align-items: flex-start;

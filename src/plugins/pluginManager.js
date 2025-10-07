@@ -6,6 +6,10 @@ const PACKAGE_DEFAULT_MAIN = 'index.js'
 
 const textDecoder = typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8') : null
 
+function isPromiseLike(value) {
+  return value && typeof value.then === 'function'
+}
+
 function readText(bytes) {
   if (!bytes) return ''
   if (!textDecoder) {
@@ -25,6 +29,52 @@ function sanitizeRelativePath(path) {
     throw new Error(`非法的文件路径：${path}`)
   }
   return normalized
+}
+
+function normalizePathString(path) {
+  if (!path) return ''
+  let normalized = String(path).replace(/\\+/g, '/').trim()
+  if (!normalized) return ''
+  if (normalized === '/') return '/'
+  const driveMatch = normalized.match(/^([A-Za-z]:)(\/.*)?$/)
+  if (driveMatch) {
+    const drive = `${driveMatch[1]}/`
+    const rest = driveMatch[2] ? driveMatch[2].replace(/^\/+/, '') : ''
+    normalized = drive + rest
+  }
+  normalized = normalized.replace(/\/+/g, '/')
+  if (/^[A-Za-z]:\/$/.test(normalized)) {
+    return normalized
+  }
+  if (normalized.endsWith('/') && normalized.length > 1) {
+    normalized = normalized.replace(/\/+$/, '')
+  }
+  return normalized
+}
+
+function normalizeComparablePath(path) {
+  return normalizePathString(path)
+}
+
+function joinPathSegments(base, child) {
+  const normalizedBase = normalizePathString(base)
+  const normalizedChild = normalizePathString(child)
+  if (!normalizedBase) return normalizedChild
+  if (!normalizedChild) return normalizedBase
+  if (normalizedBase === '/') {
+    return `/${normalizedChild.replace(/^\/+/, '')}`
+  }
+  if (/^[A-Za-z]:\/$/.test(normalizedBase)) {
+    return `${normalizedBase}${normalizedChild.replace(/^\/+/, '')}`
+  }
+  return `${normalizedBase.replace(/\/$/, '')}/${normalizedChild.replace(/^\/+/, '')}`.replace(/\/+/g, '/')
+}
+
+function extractDirectoryName(path) {
+  const normalized = normalizePathString(path)
+  if (!normalized) return ''
+  const segments = normalized.split('/')
+  return segments[segments.length - 1] || ''
 }
 
 function uint8ToBase64(view) {
@@ -306,7 +356,10 @@ export class PluginManager {
     })
     this.moduleSources = new Map()
     this.packageUrls = new Map()
+    this.packageRoot = null
+    this.packageRootPromise = null
     this._restorePackagesPromise = null
+    this.getPackageRootDirectory().catch(() => {})
     this._restorePackagesPromise = this._restorePersistedPackages()
   }
 
@@ -316,6 +369,121 @@ export class PluginManager {
     if (!bridge) return null
     if (typeof bridge !== 'object') return null
     return bridge
+  }
+
+  async _fetchPackageRoot(force = false) {
+    if (!force && this.packageRoot) {
+      return this.packageRoot
+    }
+    const bridge = this._getPluginBridge()
+    if (!bridge?.getRoot) {
+      return this.packageRoot ?? null
+    }
+    if (!force && this.packageRootPromise) {
+      return this.packageRootPromise
+    }
+    const task = (async () => {
+      try {
+        const result = await bridge.getRoot()
+        if (result?.directory) {
+          this.packageRoot = result.directory
+        }
+      } catch (error) {
+        console.warn('[PluginManager] 获取插件存储目录失败:', error)
+      }
+      const resolved = this.packageRoot ?? null
+      this.packageRootPromise = null
+      return resolved
+    })()
+    this.packageRootPromise = task
+    return task
+  }
+
+  async getPackageRootDirectory(options = {}) {
+    const { force = false } = options
+    const root = await this._fetchPackageRoot(force)
+    return root ?? null
+  }
+
+  _notePackageRoot(root) {
+    if (!root) return
+    const previous = normalizeComparablePath(this.packageRoot)
+    const next = normalizeComparablePath(root)
+    this.packageRoot = root
+    if (next && next !== previous) {
+      this._emitManagerEvent('manager:package-root-changed', { root })
+    }
+  }
+
+  _emitManagerEvent(name, payload = {}) {
+    try {
+      const result = this.hooks.emit(name, payload, this.getContext())
+      if (isPromiseLike(result)) {
+        result.catch((error) => {
+          console.warn('[PluginManager] Failed to dispatch manager event:', name, error)
+        })
+      }
+    } catch (error) {
+      console.warn('[PluginManager] Failed to notify manager event listeners:', name, error)
+    }
+  }
+
+  _notifyPluginStateChanged(name, action = 'update') {
+    const plugin = this.plugins.get(name) ?? null
+    this._emitManagerEvent('manager:plugins-changed', {
+      name,
+      action,
+      plugin
+    })
+  }
+
+  async _resolvePackageDirectory(packageState = {}) {
+    if (!packageState) return null
+    if (packageState.directoryName) {
+      const root = await this.getPackageRootDirectory()
+      if (root) {
+        return joinPathSegments(root, packageState.directoryName)
+      }
+    }
+    return packageState.directory ?? null
+  }
+
+  async _getPluginPackageMeta(name) {
+    const definition = this.moduleSources.get(name)
+    const storedState = this.settingsStore?.getState(name) ?? null
+    const storedPackage = storedState?.package ?? null
+    let directoryName = storedPackage?.directoryName ?? definition?.meta?.packageDirName ?? null
+    if (!directoryName) {
+      const fallback = storedPackage?.directory ?? definition?.meta?.packageDir ?? null
+      const derived = extractDirectoryName(fallback)
+      if (derived) {
+        directoryName = derived
+        if (storedPackage) {
+          const nextPackage = { ...storedPackage, directoryName }
+          this.settingsStore?.setState(name, { package: nextPackage })
+        }
+      }
+    }
+
+    let directory = definition?.meta?.packageDir ?? null
+    if (directoryName) {
+      const root = await this.getPackageRootDirectory()
+      if (root) {
+        directory = joinPathSegments(root, directoryName)
+      }
+    }
+    if (!directory && storedPackage?.directory) {
+      directory = storedPackage.directory
+    }
+
+    if (definition?.meta) {
+      definition.meta.packageDirName = directoryName ?? definition.meta.packageDirName ?? null
+      if (directory) {
+        definition.meta.packageDir = directory
+      }
+    }
+
+    return { directory, directoryName, storedPackage }
   }
 
   async _persistPackageToDisk(name, files, entryPath) {
@@ -335,6 +503,9 @@ export class PluginManager {
         })
       })
       const result = await bridge.installPackage(payload)
+      if (result?.root) {
+        this._notePackageRoot(result.root)
+      }
       return result ?? null
     } catch (error) {
       console.error('[PluginManager] 保存插件包至磁盘失败:', error)
@@ -461,7 +632,11 @@ export class PluginManager {
       return
     }
     const storedState = this.settingsStore?.getState(name)
+    const storedPackage = storedState?.package ?? null
     const experimentalAck = storedState?.experimentalAck === true || plugin.experimentalAck === true
+    const packageDirName = meta?.packageDirName
+      ?? storedPackage?.directoryName
+      ?? extractDirectoryName(meta?.packageDir ?? storedPackage?.directory ?? '')
     this.moduleSources.set(name, {
       plugin,
       source,
@@ -470,8 +645,9 @@ export class PluginManager {
         manifest,
         files: meta?.files ?? null,
         url: meta?.url ?? null,
-        packageDir: meta?.packageDir ?? storedState?.package?.directory ?? null,
-        packageEntry: meta?.packageEntry ?? storedState?.package?.entry ?? null
+        packageDir: meta?.packageDir ?? storedPackage?.directory ?? null,
+        packageDirName: packageDirName ?? null,
+        packageEntry: meta?.packageEntry ?? storedPackage?.entry ?? null
       }
     })
     if (storedState?.removed) {
@@ -492,6 +668,7 @@ export class PluginManager {
       removable: (meta?.removable ?? plugin.removable) !== false,
       experimentalAck
     })
+    this._notifyPluginStateChanged(name, 'register')
     if (this.settingsStore) {
       this.settingsStore.setState(name, {
         enabled,
@@ -551,9 +728,11 @@ export class PluginManager {
     }
     if (!hasFile) return null
 
-    if (definition.meta?.packageDir) {
+    const { directory } = await this._getPluginPackageMeta(name)
+
+    if (directory) {
       const encoding = options.type === 'json' ? 'text' : options.type === 'base64' || options.type === 'arrayBuffer' ? 'base64' : 'text'
-      const payload = await this._readPackageFileFromDisk(definition.meta.packageDir, normalized, { encoding })
+      const payload = await this._readPackageFileFromDisk(directory, normalized, { encoding })
       if (payload == null) return null
       if (options.type === 'arrayBuffer') {
         const bytes = typeof payload === 'string' ? base64ToUint8(payload) : new Uint8Array([])
@@ -681,9 +860,11 @@ export class PluginManager {
       plugin.enabled = true
       this.settingsStore?.setState(name, { enabled: true, removed: false })
       await this.activatePlugin(name)
+      this._notifyPluginStateChanged(name, 'enable')
       return
     }
     this.settingsStore?.setState(name, { enabled: true, removed: false })
+    this._notifyPluginStateChanged(name, 'enable')
   }
 
   async disablePlugin(name) {
@@ -696,9 +877,11 @@ export class PluginManager {
       plugin.enabled = false
       this.settingsStore?.setState(name, { enabled: false, removed: false })
       await this.deactivatePlugin(name)
+      this._notifyPluginStateChanged(name, 'disable')
       return
     }
     this.settingsStore?.setState(name, { enabled: false, removed: false })
+    this._notifyPluginStateChanged(name, 'disable')
   }
 
   async acknowledgePluginEnable(name) {
@@ -729,7 +912,8 @@ export class PluginManager {
     if (this.settingsStore) {
       if (forgetState) {
         const stored = this.settingsStore.getState(name)
-        const packageDir = definition?.meta?.packageDir ?? stored?.package?.directory ?? null
+        const packageMeta = await this._getPluginPackageMeta(name)
+        const packageDir = packageMeta.directory ?? stored?.package?.directory ?? null
         this.settingsStore.deleteState(name)
         if (definition?.meta?.url) {
           try {
@@ -747,6 +931,7 @@ export class PluginManager {
         this.settingsStore.setState(name, { removed: true, enabled: false })
       }
     }
+    this._notifyPluginStateChanged(name, 'remove')
   }
 
   hasPluginSettings(name) {
@@ -950,15 +1135,27 @@ export class PluginManager {
     const packageState = meta?.package
     if (!packageState) return
     if (this.plugins.has(name)) return
-    if (packageState.directory) {
+    const normalizedState = { ...packageState }
+    if (!normalizedState.directoryName) {
+      const derived = extractDirectoryName(normalizedState.directory)
+      if (derived) {
+        normalizedState.directoryName = derived
+        this.settingsStore?.setState(name, { package: { ...normalizedState } })
+      }
+    }
+    let resolvedDirectory = null
+    if (normalizedState.directory || normalizedState.directoryName) {
+      resolvedDirectory = await this._resolvePackageDirectory(normalizedState)
+    }
+    if (resolvedDirectory) {
       try {
-        const manifest = packageState.manifest ?? {}
-        const entryPath = packageState.entry ?? manifest.main ?? PACKAGE_DEFAULT_MAIN
-        const fileList = Array.isArray(packageState.files)
-          ? packageState.files
-          : await this._listPackageFilesFromDisk(packageState.directory)
+        const manifest = normalizedState.manifest ?? {}
+        const entryPath = normalizedState.entry ?? manifest.main ?? PACKAGE_DEFAULT_MAIN
+        const fileList = Array.isArray(normalizedState.files)
+          ? normalizedState.files
+          : await this._listPackageFilesFromDisk(resolvedDirectory)
         const { plugin, url, files } = await this._loadPackageFromDirectory(
-          packageState.directory,
+          resolvedDirectory,
           manifest,
           entryPath,
           fileList
@@ -971,21 +1168,22 @@ export class PluginManager {
           displayName: manifest?.displayName,
           description: manifest?.description,
           version: manifest?.version,
-          packageDir: packageState.directory,
+          packageDir: resolvedDirectory,
+          packageDirName: normalizedState.directoryName ?? extractDirectoryName(resolvedDirectory),
           packageEntry: entryPath
         })
         return
       } catch (error) {
         console.error(`[PluginManager] 无法通过目录恢复插件 "${name}":`, error)
-        if (!packageState.archive) {
+        if (!normalizedState.archive) {
           return
         }
       }
     }
 
-    if (!packageState.archive) return
+    if (!normalizedState.archive) return
     try {
-      const buffer = base64ToArrayBuffer(packageState.archive)
+      const buffer = base64ToArrayBuffer(normalizedState.archive)
       const { manifest, plugin, url, files, entry } = await this._loadPackageFromBuffer(buffer, name)
       this.registerPlugin(plugin, `package:${name}`, {
         origin: 'package',
@@ -1008,12 +1206,13 @@ export class PluginManager {
       return this._restorePackagesPromise
     }
     const task = (async () => {
+      await this.getPackageRootDirectory().catch(() => null)
       const state = this.settingsStore?.list?.() ?? {}
       const entries = Object.entries(state)
       for (const [name, meta] of entries) {
         const packageState = meta?.package
         if (!packageState) continue
-        if (!packageState.archive && !packageState.directory) continue
+        if (!packageState.archive && !packageState.directory && !packageState.directoryName) continue
         if (this.plugins.has(name)) continue
         await this._registerPackageFromState(name, meta)
       }
@@ -1068,7 +1267,14 @@ export class PluginManager {
     }
     if (diskSnapshot?.directory) {
       packageState.directory = diskSnapshot.directory
-    } else {
+    }
+    if (diskSnapshot?.directoryName) {
+      packageState.directoryName = diskSnapshot.directoryName
+    }
+    if (!packageState.directoryName && packageState.directory) {
+      packageState.directoryName = extractDirectoryName(packageState.directory)
+    }
+    if (diskSnapshot?.directory == null) {
       packageState.archive = arrayBufferToBase64(buffer)
     }
     const enabledDefault = options.enable ?? (manifest?.enabled ?? plugin.enabled !== false)
@@ -1088,6 +1294,7 @@ export class PluginManager {
       description: manifest?.description,
       version: manifest?.version,
       packageDir: diskSnapshot?.directory ?? null,
+      packageDirName: diskSnapshot?.directoryName ?? packageState.directoryName ?? null,
       packageEntry: entry
     })
 
@@ -1102,6 +1309,86 @@ export class PluginManager {
 
     await this.enablePlugin(pluginName)
     return this.getPlugin(pluginName)
+  }
+
+  async setPackageRootDirectory(directory) {
+    if (!directory) {
+      throw new Error('请选择有效的目录')
+    }
+    const bridge = this._getPluginBridge()
+    if (!bridge?.setRoot) {
+      throw new Error('当前环境不支持自定义插件目录')
+    }
+    let result
+    try {
+      result = await bridge.setRoot({ directory })
+    } catch (error) {
+      console.error('[PluginManager] 设置插件存储目录失败:', error)
+      throw error
+    }
+    const root = result?.directory ?? directory
+    this._notePackageRoot(root)
+    const moved = Array.isArray(result?.moved) ? result.moved : []
+    const movedMap = new Map()
+    moved.forEach((item) => {
+      if (item?.from && item?.to) {
+        movedMap.set(normalizeComparablePath(item.from), item.to)
+      }
+    })
+
+    if (this.settingsStore) {
+      const state = this.settingsStore.list()
+      Object.entries(state).forEach(([name, meta]) => {
+        const pkg = meta?.package
+        if (!pkg) return
+        const nextPackage = { ...pkg }
+        if (!nextPackage.directoryName) {
+          const derived = extractDirectoryName(nextPackage.directory)
+          if (derived) {
+            nextPackage.directoryName = derived
+          }
+        }
+        if (nextPackage.directoryName && root) {
+          nextPackage.directory = joinPathSegments(root, nextPackage.directoryName)
+        } else if (nextPackage.directory) {
+          const migrated = movedMap.get(normalizeComparablePath(nextPackage.directory))
+          if (migrated) {
+            nextPackage.directory = migrated
+            nextPackage.directoryName = extractDirectoryName(migrated) || nextPackage.directoryName
+          }
+        }
+        this.settingsStore.setState(name, { package: nextPackage })
+      })
+    }
+
+    this.moduleSources.forEach((definition, pluginName) => {
+      if (definition.meta?.origin !== 'package') return
+      const stored = this.settingsStore?.getState(pluginName)
+      const pkg = stored?.package ?? {}
+      const directoryName =
+        pkg.directoryName ??
+        definition.meta?.packageDirName ??
+        extractDirectoryName(pkg.directory ?? definition.meta?.packageDir ?? '')
+      if (definition.meta) {
+        definition.meta.packageDirName = directoryName ?? null
+        if (root && directoryName) {
+          definition.meta.packageDir = joinPathSegments(root, directoryName)
+        } else if (pkg.directory) {
+          definition.meta.packageDir = pkg.directory
+        }
+      }
+    })
+
+    await this._restorePersistedPackages({ force: true })
+    const state = this.settingsStore?.list?.() ?? {}
+    for (const [name, meta] of Object.entries(state)) {
+      if (meta.removed) continue
+      if (meta.enabled) {
+        await this.enablePlugin(name)
+      }
+    }
+
+    return root
   }
 
   restorePlugin(name) {
