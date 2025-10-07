@@ -1,9 +1,9 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted, nextTick, computed, reactive } from 'vue';
-import { changeProgress, musicVideoCheck, songTime } from '../utils/player';
-import { usePlayerStore } from '../store/playerStore';
-import { getLyricVisualizerAudioEnv } from '../utils/lyricVisualizerAudio';
-import { computeCustomBackgroundStyle } from '../utils/customBackground';
+import { changeProgress, musicVideoCheck, songTime } from '@/utils/player';
+import { usePlayerStore } from '@/store/playerStore';
+import { getLyricVisualizerAudioEnv } from '@/utils/lyricVisualizerAudio';
+import { computeCustomBackgroundStyle } from '@/utils/customBackground';
 import { storeToRefs } from 'pinia';
 
 const playerStore = usePlayerStore();

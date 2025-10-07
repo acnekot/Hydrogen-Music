@@ -1,6 +1,7 @@
 const { ipcMain, shell, dialog, globalShortcut, Menu, clipboard, BrowserWindow, session } = require('electron')
 const axios = require('axios')
 const fs = require('fs')
+const fse = require('fs-extra')
 const path = require('path')
 const { parseFile } = require('music-metadata')
 // const jsmediatags = require("jsmediatags");
@@ -11,6 +12,7 @@ let cancel = null
 
 module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     const settingsStore = new Store({ name: 'settings' })
+    const pluginSettingsStore = new Store({ name: 'pluginSettings' })
     const lastPlaylistStore = new Store({ name: 'lastPlaylist' })
     const musicVideoStore = new Store({ name: 'musicVideo' })
 
@@ -19,6 +21,251 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     // win.on('restore', () => {
     // win.webContents.send('lyric-control')
     // })
+    const defaultPluginSettings = () => {
+        const defaultRoot = path.join(app.getPath('userData'), 'plugins')
+        return {
+            rootDir: defaultRoot,
+            systemEnabled: false,
+            categories: {
+                thirdPartyApi: true,
+                theme: true,
+                sound: true,
+                integration: true,
+            },
+            enabledPlugins: {},
+            pluginData: {},
+            firstConfirmationDismissed: false,
+        }
+    }
+
+    const ensurePluginDirectory = (dir) => {
+        try {
+            if (!dir) return null
+            fse.ensureDirSync(dir)
+            return dir
+        } catch (err) {
+            console.error('[Plugin] Failed to ensure plugin directory', err)
+            return null
+        }
+    }
+
+    const getPluginSettings = () => {
+        let settings = pluginSettingsStore.get('settings')
+        if (!settings) {
+            settings = defaultPluginSettings()
+            pluginSettingsStore.set('settings', settings)
+        } else {
+            settings = Object.assign(defaultPluginSettings(), settings)
+        }
+        ensurePluginDirectory(settings.rootDir)
+        return settings
+    }
+
+    const setPluginSettings = (patch) => {
+        const current = getPluginSettings()
+        const next = {
+            ...current,
+            ...patch,
+            categories: {
+                ...current.categories,
+                ...(patch?.categories || {}),
+            },
+            enabledPlugins: {
+                ...current.enabledPlugins,
+                ...(patch?.enabledPlugins || {}),
+            },
+            pluginData: {
+                ...current.pluginData,
+                ...(patch?.pluginData || {}),
+            },
+        }
+        if (patch?.rootDir && patch.rootDir !== current.rootDir) {
+            ensurePluginDirectory(patch.rootDir)
+        }
+        pluginSettingsStore.set('settings', next)
+        return next
+    }
+
+    const readPluginManifest = (pluginDir) => {
+        const manifestPath = path.join(pluginDir, 'plugin.json')
+        if (!fs.existsSync(manifestPath)) return null
+        try {
+            const raw = fs.readFileSync(manifestPath, 'utf-8')
+            const manifest = JSON.parse(raw)
+            manifest.id = manifest.id || path.basename(pluginDir)
+            manifest.name = manifest.name || manifest.id
+            manifest.version = manifest.version || '0.0.0'
+            manifest.entry = manifest.entry || 'index.js'
+            manifest.categories = manifest.categories || []
+            manifest.keywords = manifest.keywords || []
+            manifest.description = manifest.description || ''
+            manifest.author = manifest.author || ''
+            return {
+                ...manifest,
+                pluginDir,
+                entryPath: path.join(pluginDir, manifest.entry),
+            }
+        } catch (err) {
+            console.error('[Plugin] Failed to parse manifest', manifestPath, err)
+            return {
+                id: path.basename(pluginDir),
+                name: path.basename(pluginDir),
+                version: '0.0.0',
+                entry: 'index.js',
+                description: 'Failed to parse manifest',
+                categories: [],
+                keywords: [],
+                author: '',
+                pluginDir,
+                entryPath: path.join(pluginDir, 'index.js'),
+                manifestError: err?.message || String(err),
+            }
+        }
+    }
+
+    const listPlugins = () => {
+        const settings = getPluginSettings()
+        const rootDir = ensurePluginDirectory(settings.rootDir)
+        if (!rootDir) return []
+        let dirs = []
+        try {
+            dirs = fs.readdirSync(rootDir, { withFileTypes: true })
+        } catch (err) {
+            console.error('[Plugin] Failed to read plugin directory', rootDir, err)
+            return []
+        }
+        const plugins = []
+        for (const dirent of dirs) {
+            if (!dirent.isDirectory()) continue
+            const pluginDir = path.join(rootDir, dirent.name)
+            const manifest = readPluginManifest(pluginDir)
+            if (!manifest) continue
+            manifest.enabled = !!settings.enabledPlugins[manifest.id]
+            manifest.hasError = !!manifest.manifestError
+            plugins.push(manifest)
+        }
+        return plugins
+    }
+
+    ipcMain.handle('plugins:get-settings', async () => {
+        return getPluginSettings()
+    })
+
+    ipcMain.handle('plugins:set-settings', async (_event, patch) => {
+        return setPluginSettings(patch || {})
+    })
+
+    ipcMain.handle('plugins:list', async () => {
+        return listPlugins()
+    })
+
+    ipcMain.handle('plugins:refresh', async () => {
+        return listPlugins()
+    })
+
+    ipcMain.handle('plugins:ensure-root', async (_event, dir) => {
+        const target = dir || getPluginSettings().rootDir
+        ensurePluginDirectory(target)
+        return target
+    })
+
+    ipcMain.handle('plugins:read-entry', async (_event, pluginId) => {
+        const settings = getPluginSettings()
+        const rootDir = ensurePluginDirectory(settings.rootDir)
+        if (!rootDir) return null
+        const pluginDir = path.join(rootDir, pluginId)
+        const manifest = readPluginManifest(pluginDir)
+        if (!manifest) return null
+        try {
+            return fs.readFileSync(manifest.entryPath, 'utf-8')
+        } catch (err) {
+            console.error('[Plugin] Failed to read entry', manifest.entryPath, err)
+            throw err
+        }
+    })
+
+    ipcMain.handle('plugins:read-file', async (_event, pluginId, relativePath, encoding = 'utf-8') => {
+        const settings = getPluginSettings()
+        const rootDir = ensurePluginDirectory(settings.rootDir)
+        if (!rootDir) return null
+        const pluginDir = path.join(rootDir, pluginId)
+        const filePath = path.join(pluginDir, relativePath || '')
+        if (!fs.existsSync(filePath)) return null
+        try {
+            return fs.readFileSync(filePath, encoding || null)
+        } catch (err) {
+            console.error('[Plugin] Failed to read file', filePath, err)
+            throw err
+        }
+    })
+
+    ipcMain.handle('plugins:delete', async (_event, pluginId) => {
+        const settings = getPluginSettings()
+        const rootDir = ensurePluginDirectory(settings.rootDir)
+        if (!rootDir) return false
+        const target = path.join(rootDir, pluginId)
+        try {
+            await fse.remove(target)
+            const nextEnabled = { ...settings.enabledPlugins }
+            delete nextEnabled[pluginId]
+            setPluginSettings({ enabledPlugins: nextEnabled })
+            return true
+        } catch (err) {
+            console.error('[Plugin] Failed to delete plugin', target, err)
+            throw err
+        }
+    })
+
+    ipcMain.handle('plugins:choose-folder', async () => {
+        const result = await dialog.showOpenDialog({ properties: ['openDirectory'] })
+        if (result.canceled || !result.filePaths || !result.filePaths.length) return null
+        return result.filePaths[0]
+    })
+
+    ipcMain.handle('plugins:import', async (_event, sourcePath) => {
+        if (!sourcePath) return null
+        const settings = getPluginSettings()
+        const rootDir = ensurePluginDirectory(settings.rootDir)
+        if (!rootDir) return null
+        const manifest = readPluginManifest(sourcePath)
+        if (!manifest) {
+            throw new Error('插件缺少 plugin.json 文件或文件不可读取')
+        }
+        const targetDir = path.join(rootDir, manifest.id)
+        try {
+            await fse.remove(targetDir)
+            await fse.copy(sourcePath, targetDir)
+            return readPluginManifest(targetDir)
+        } catch (err) {
+            console.error('[Plugin] Failed to import plugin', sourcePath, err)
+            throw err
+        }
+    })
+
+    ipcMain.handle('plugins:get-plugin-data', async (_event, pluginId) => {
+        const settings = getPluginSettings()
+        return settings.pluginData?.[pluginId] || {}
+    })
+
+    ipcMain.handle('plugins:update-plugin-data', async (_event, pluginId, dataPatch) => {
+        const settings = getPluginSettings()
+        const current = settings.pluginData?.[pluginId] || {}
+        const next = {
+            ...current,
+            ...(dataPatch || {}),
+        }
+        const pluginData = {
+            ...settings.pluginData,
+            [pluginId]: next,
+        }
+        setPluginSettings({ pluginData })
+        return next
+    })
+
+    ipcMain.on('plugins:report-error', (_event, pluginId, message) => {
+        console.error('[Plugin Error]', pluginId, message)
+    })
+
     ipcMain.on('window-min', () => {
         win.minimize()
     })

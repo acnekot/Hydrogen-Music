@@ -11,7 +11,8 @@ import { usePlayerStore } from '../store/playerStore';
 import { useLocalStore } from '../store/localStore';
 import { useOtherStore } from '../store/otherStore';
 import { storeToRefs } from 'pinia';
-import { toggleDesktopLyric } from '../utils/desktopLyric';
+import { usePluginStore } from '../store/pluginStore';
+import { noticeOpen } from '../utils/dialog';
 
 // 定义 props 和 emit
 const props = defineProps({
@@ -33,6 +34,7 @@ const userStore = useUserStore();
 const localStore = useLocalStore();
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
+const pluginStore = usePluginStore();
 const {
     playing,
     progress,
@@ -87,6 +89,24 @@ watch(djRid, () => { djSubed.value = false; if (djRid.value) loadDjSubStatus(); 
 const checkIsLike = computed(() => id => {
     return userStore.likelist.includes(id);
 });
+
+const desktopLyricContribution = computed(() => pluginStore.desktopLyricContribution);
+const desktopLyricAvailable = computed(() =>
+    pluginStore.pluginSystemEnabled && !!desktopLyricContribution.value?.toggle
+);
+
+const handleDesktopLyricToggle = () => {
+    if (!desktopLyricAvailable.value) {
+        noticeOpen('桌面歌词插件未启用', 2);
+        return;
+    }
+    try {
+        desktopLyricContribution.value?.toggle?.();
+    } catch (err) {
+        console.error('[Plugin] 调用桌面歌词插件失败', err);
+        noticeOpen('桌面歌词插件运行异常', 2);
+    }
+};
 
 // 智能判断当前歌曲有哪些类型的歌词
 const hasOriginalLyric = computed(() => {
@@ -697,8 +717,8 @@ const toggleDjSub = async (isSubscribe) => {
                 </svg>
                 <!-- 桌面歌词控制按钮 -->
                 <svg
-                    @click="toggleDesktopLyric"
-                    :class="{ active: isDesktopLyricOpen }"
+                    @click="handleDesktopLyricToggle"
+                    :class="{ active: isDesktopLyricOpen, 'desktop-lyric-btn--disabled': !desktopLyricAvailable }"
                     class="icon desktop-lyric-btn"
                     viewBox="0 0 1024 1024"
                     xmlns="http://www.w3.org/2000/svg"

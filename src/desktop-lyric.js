@@ -1,5 +1,5 @@
 import { createApp } from 'vue'
-import DesktopLyric from './components/DesktopLyric.vue'
+import DesktopLyric from './plugins/runtime/desktopLyric/DesktopLyric.vue'
 import './assets/css/common.css'
 import './assets/css/fonts.css'
 import './assets/css/theme.css'

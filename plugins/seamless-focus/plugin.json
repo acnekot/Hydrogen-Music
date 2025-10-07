@@ -1,0 +1,10 @@
+{
+  "id": "seamless-focus",
+  "name": "播放器聚焦",
+  "version": "0.1.0",
+  "description": "新歌曲播放时自动回到歌词界面，演示与主应用的无缝衔接。",
+  "author": "Hydrogen Music",
+  "entry": "index.js",
+  "categories": ["integration"],
+  "keywords": ["integration", "router"]
+}

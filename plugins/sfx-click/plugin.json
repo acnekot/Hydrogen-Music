@@ -1,0 +1,10 @@
+{
+  "id": "sfx-click",
+  "name": "节奏提示音",
+  "version": "0.1.0",
+  "description": "在切换歌曲时播放轻柔提示音，展示声音插件的挂钩能力。",
+  "author": "Hydrogen Music",
+  "entry": "index.js",
+  "categories": ["sound"],
+  "keywords": ["sound", "demo"]
+}

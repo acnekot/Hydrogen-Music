@@ -1,0 +1,10 @@
+{
+  "id": "skyline-theme",
+  "name": "天际线主题",
+  "version": "0.1.0",
+  "description": "注入带有霓虹渐变的播放器主题示例，演示主题类插件能力。",
+  "author": "Hydrogen Music",
+  "entry": "index.js",
+  "categories": ["theme"],
+  "keywords": ["theme", "gradient", "demo"]
+}

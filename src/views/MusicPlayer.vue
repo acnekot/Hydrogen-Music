@@ -1,17 +1,23 @@
 <script setup>
 import Player from '../components/Player.vue';
-import Lyric from '../components/Lyric.vue';
 import ProgramIntro from '../components/ProgramIntro.vue';
 import Comments from '../components/Comments.vue';
 import MusicVideo from '../components/MusicVideo.vue';
 import PlayerVideo from '../components/PlayerVideo.vue';
 import { ref, watch, nextTick, computed } from 'vue';
 import { usePlayerStore } from '../store/playerStore';
+import { usePluginStore } from '../store/pluginStore';
 const playerStore = usePlayerStore();
+const pluginStore = usePluginStore();
 
 // 右侧内容切换状态 (0: 歌词, 1: 评论)
 const rightPanelMode = ref(0);
 const lyricKey = ref(0);
+const lyricComponent = computed(() => pluginStore.lyricRendererContribution?.component || null);
+const lyricComponentProps = computed(() => pluginStore.lyricRendererContribution?.props || {});
+const lyricFallbackMessage = computed(
+    () => pluginStore.lyricRendererContribution?.emptyMessage || '未安装歌词插件'
+);
 
 // 监听面板模式变化，当切换到歌词时刷新歌词组件
 watch(rightPanelMode, (newMode, oldMode) => {
@@ -58,7 +64,16 @@ const applyCustomBackgroundToPlayer = computed(
             <!-- 内容区域 -->
             <Transition name="panel-switch" mode="out-in">
                 <ProgramIntro v-if="rightPanelMode === 0 && isDj" key="program-intro" />
-                <Lyric class="lyric-container" v-else-if="rightPanelMode === 0" :key="`lyric-${lyricKey}`"></Lyric>
+                <component
+                    v-else-if="rightPanelMode === 0 && lyricComponent"
+                    :is="lyricComponent"
+                    class="lyric-container"
+                    :key="`lyric-${lyricKey}`"
+                    v-bind="lyricComponentProps"
+                ></component>
+                <div class="lyric-empty" v-else-if="rightPanelMode === 0">
+                    {{ lyricFallbackMessage }}
+                </div>
                 <Comments class="comments-container" v-else-if="rightPanelMode === 1" key="comments"></Comments>
             </Transition>
         </div>
@@ -145,6 +160,16 @@ const applyCustomBackgroundToPlayer = computed(
         .comments-container {
             width: 100%;
             height: 100%;
+        }
+        .lyric-empty {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            letter-spacing: 2px;
+            color: rgba(0, 0, 0, 0.45);
         }
     }
     .panel-hide {

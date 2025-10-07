@@ -1,0 +1,10 @@
+{
+  "id": "lyric-visualizer",
+  "name": "歌词可视化",
+  "version": "1.0.0",
+  "description": "在歌词面板中呈现音乐频谱，可定制样式与动画。",
+  "author": "Hydrogen Music",
+  "entry": "index.js",
+  "categories": ["visual", "theme"],
+  "keywords": ["visualizer", "lyrics", "spectrum"]
+}

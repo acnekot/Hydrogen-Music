@@ -8,13 +8,16 @@ import { getVipInfo } from '../api/user';
 import { isLogin } from '../utils/authority';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
+import { usePluginStore } from '../store/pluginStore';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
+import PluginManagerPanel from '../components/plugins/PluginManagerPanel.vue';
 import { setTheme, getSavedTheme } from '../utils/theme';
 
 const router = useRouter();
 const userStore = useUserStore();
 const playerStore = usePlayerStore();
+const pluginStore = usePluginStore();
 
 const vipInfo = ref(null);
 const musicLevel = ref('standard');
@@ -1362,6 +1365,7 @@ const clearFmRecent = () => {
                                 </div>
                             </div>
                         </div>
+                        <template v-if="!pluginStore.pluginSystemEnabled">
                         <div
                             class="option"
                             v-if="playerStore.lyricVisualizer"
@@ -1685,6 +1689,7 @@ const clearFmRecent = () => {
                                 <div class="option-reset" @click="resetLyricVisualizerTransitionDelay">重置</div>
                             </div>
                         </div>
+                        </template>
                         <div class="option">
                             <div class="option-name">歌词字体大小</div>
                             <div class="option-operation">
@@ -1727,6 +1732,9 @@ const clearFmRecent = () => {
                             </div>
                         </div>
                     </div>
+                </div>
+                <div class="settings-item settings-item--plugins">
+                    <PluginManagerPanel />
                 </div>
                 <div class="settings-item">
                     <h2 class="item-title">本地</h2>

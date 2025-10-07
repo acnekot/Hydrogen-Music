@@ -151,6 +151,58 @@ function updateDockMenu(songInfo) {
         // ignore
     }
 }
+
+function getPluginSettings() {
+    return ipcRenderer.invoke('plugins:get-settings')
+}
+
+function setPluginSettings(settings) {
+    return ipcRenderer.invoke('plugins:set-settings', settings)
+}
+
+function listPlugins() {
+    return ipcRenderer.invoke('plugins:list')
+}
+
+function refreshPlugins() {
+    return ipcRenderer.invoke('plugins:refresh')
+}
+
+function ensurePluginRoot(dir) {
+    return ipcRenderer.invoke('plugins:ensure-root', dir)
+}
+
+function readPluginEntry(pluginId) {
+    return ipcRenderer.invoke('plugins:read-entry', pluginId)
+}
+
+function readPluginFile(pluginId, relativePath, encoding) {
+    return ipcRenderer.invoke('plugins:read-file', pluginId, relativePath, encoding)
+}
+
+function deletePlugin(pluginId) {
+    return ipcRenderer.invoke('plugins:delete', pluginId)
+}
+
+function choosePluginFolder() {
+    return ipcRenderer.invoke('plugins:choose-folder')
+}
+
+function importPlugin(sourcePath) {
+    return ipcRenderer.invoke('plugins:import', sourcePath)
+}
+
+function getPluginData(pluginId) {
+    return ipcRenderer.invoke('plugins:get-plugin-data', pluginId)
+}
+
+function updatePluginData(pluginId, patch) {
+    return ipcRenderer.invoke('plugins:update-plugin-data', pluginId, patch)
+}
+
+function reportPluginError(pluginId, message) {
+    ipcRenderer.send('plugins:report-error', pluginId, message)
+}
 function openNeteaseLogin() {
     return ipcRenderer.invoke('open-netease-login')
 }
@@ -223,6 +275,21 @@ contextBridge.exposeInMainWorld('windowApi', {
     setWindowTile,
     updatePlaylistStatus,
     updateDockMenu,
+    plugins: {
+        getSettings: getPluginSettings,
+        setSettings: setPluginSettings,
+        list: listPlugins,
+        refresh: refreshPlugins,
+        ensureRoot: ensurePluginRoot,
+        readEntry: readPluginEntry,
+        readFile: readPluginFile,
+        delete: deletePlugin,
+        chooseFolder: choosePluginFolder,
+        import: importPlugin,
+        getData: getPluginData,
+        updateData: updatePluginData,
+        reportError: reportPluginError,
+    },
 })
 
 // 新的API用于处理登录功能和桌面歌词

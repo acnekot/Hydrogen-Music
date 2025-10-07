@@ -10,14 +10,15 @@ import ContextMenu from './components/ContextMenu.vue';
 import GlobalDialog from './components/GlobalDialog.vue';
 import GlobalNotice from './components/GlobalNotice.vue';
 import Update from './components/Update.vue';
-import { initDesktopLyric } from './utils/desktopLyric';
-import { onMounted, computed } from 'vue';
+import { onMounted, computed, watch } from 'vue';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
+import { usePluginStore } from './store/pluginStore';
 
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
+const pluginStore = usePluginStore();
 
 const customBackgroundActive = computed(
     () => playerStore.customBackgroundEnabled && !!playerStore.customBackgroundImage
@@ -65,9 +66,25 @@ const customBackgroundStyle = computed(() => {
     };
 });
 
+const ensureDesktopLyricInitialized = contribution => {
+    try {
+        contribution?.init?.();
+    } catch (err) {
+        console.error('[Plugin] 桌面歌词初始化失败', err);
+    }
+};
+
 onMounted(() => {
-    initDesktopLyric();
+    ensureDesktopLyricInitialized(pluginStore.desktopLyricContribution);
 });
+
+watch(
+    () => pluginStore.desktopLyricContribution,
+    (contribution, previous) => {
+        if (contribution === previous) return;
+        ensureDesktopLyricInitialized(contribution);
+    }
+);
 
 windowApi.checkUpdate((event, version) => {
     otherStore.toUpdate = true;

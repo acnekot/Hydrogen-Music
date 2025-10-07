@@ -11,6 +11,7 @@ import './assets/css/fonts.css'
 import './assets/css/theme.css'
 import { initTheme } from './utils/theme'
 import { initMediaSession } from './utils/mediaSession'
+import { initializePluginSystem } from './plugins/pluginManager'
 const app = createApp(App)
 app.use(router)
 app.use(pinia)
@@ -19,6 +20,7 @@ app.directive('lazy', lazy)
 initTheme()
 app.mount('#app')
 init()
+initializePluginSystem().catch(err => console.error('[Plugin] 初始化失败', err))
 // Initialize System Media Transport Controls (Windows SMTC / macOS Now Playing)
 try { initMediaSession() } catch (_) {}
 

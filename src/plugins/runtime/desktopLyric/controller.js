@@ -1,5 +1,5 @@
 import { watch } from 'vue';
-import { usePlayerStore } from '../store/playerStore';
+import { usePlayerStore } from '@/store/playerStore';
 import { storeToRefs } from 'pinia';
 
 let lyricProgressInterval = null;

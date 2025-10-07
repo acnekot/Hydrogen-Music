@@ -1,0 +1,10 @@
+{
+  "id": "desktop-lyric",
+  "name": "桌面歌词",
+  "version": "1.0.0",
+  "description": "提供 Hydrogen Music 经典的桌面歌词体验，可与插件系统无缝协作。",
+  "author": "Hydrogen Music",
+  "entry": "index.js",
+  "categories": ["integration", "ui"],
+  "keywords": ["lyric", "desktop", "overlay"]
+}
