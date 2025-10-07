@@ -33,7 +33,7 @@
         await window.electronAPI.clearKugouSession()
       }
 
-      loginStatus.value = '登录窗口已打开，请在新窗口中完成登录'
+      loginStatus.value = '登录窗口已打开，请在酷狗官网中完成登录'
       const result = await window.electronAPI?.openKugouLogin?.({ clearSession: true })
 
       if (result?.success) {
@@ -90,7 +90,7 @@
       <div class="login-description">
         <div class="description-content">
           <div class="main-text">酷狗账号登录</div>
-          <div class="sub-text">点击下方按钮，在弹出的窗口中完成酷狗音乐的登录流程</div>
+          <div class="sub-text">点击下方按钮，在弹出的酷狗官网页面中完成登录流程</div>
         </div>
       </div>
 
@@ -105,7 +105,7 @@
 
     <div class="embedded-operation">
       <div class="login-button" @click="startEmbeddedLogin()" :class="{'loading': loginAnimation}">
-        <span v-if="!loginAnimation">打开酷狗登录窗口</span>
+        <span v-if="!loginAnimation">打开酷狗官网登录</span>
         <span v-else>登录中...</span>
       </div>
     </div>
