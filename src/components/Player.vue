@@ -722,10 +722,26 @@ const toggleDjSub = async (isSubscribe) => {
                     ></path>
                 </svg>
 
-                <!-- 歌词/评论切换按钮 -->
+                <!-- 歌词面板切换按钮 -->
+                <svg
+                    class="icon lyric-panel-icon"
+                    :class="{
+                        'lyric-panel-icon--active': props.rightPanelMode === 0,
+                        'lyric-panel-icon--inactive': props.rightPanelMode !== 0,
+                    }"
+                    viewBox="0 0 32 32"
+                    role="button"
+                    aria-label="显示歌词"
+                    focusable="false"
+                    @click="props.rightPanelMode !== 0 && switchRightPanel(0)"
+                >
+                    <path d="M4 6h24v4H18v16h-4V10H4z" fill="currentColor"></path>
+                </svg>
+
+                <!-- 评论面板切换按钮 -->
                 <svg
                     t="1673520001"
-                    @click="switchRightPanel(props.rightPanelMode === 0 ? 1 : 0)"
+                    @click="props.rightPanelMode !== 1 && switchRightPanel(1)"
                     :class="{ 'comment-icon-active': props.rightPanelMode === 1, 'comment-icon-inactive': props.rightPanelMode === 0 }"
                     class="icon comment-icon"
                     viewBox="0 0 1024 1024"
@@ -1169,6 +1185,31 @@ const toggleDjSub = async (isSubscribe) => {
     .border4 {
         bottom: $boderPosition;
         left: $boderPosition;
+    }
+
+    // 歌词面板图标样式
+    .lyric-panel-icon {
+        width: 32px;
+        height: 32px;
+        padding: 4px;
+        border-radius: 8px;
+        color: rgba(0, 0, 0, 0.35);
+        cursor: pointer;
+        transition: all 0.3s ease;
+
+        &--inactive {
+            opacity: 0.55;
+        }
+
+        &--active {
+            color: #000;
+            opacity: 1;
+        }
+
+        &:hover {
+            opacity: 0.85;
+            transform: scale(1.05);
+        }
     }
 
     // 评论图标样式
