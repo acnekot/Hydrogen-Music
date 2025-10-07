@@ -157,6 +157,13 @@ function openNeteaseLogin() {
 function clearLoginSession() {
     return ipcRenderer.invoke('clear-login-session')
 }
+
+const pluginInstallPackage = payload => ipcRenderer.invoke('plugins:install-package', payload)
+const pluginRemovePackage = payload => ipcRenderer.invoke('plugins:remove-package', payload)
+const pluginReadFile = payload => ipcRenderer.invoke('plugins:read-file', payload)
+const pluginListFiles = payload => ipcRenderer.invoke('plugins:list-files', payload)
+const pluginGetRoot = () => ipcRenderer.invoke('plugins:get-root')
+const pluginSetRoot = payload => ipcRenderer.invoke('plugins:set-root', payload)
 contextBridge.exposeInMainWorld('windowApi', {
     windowMin,
     windowMax,
@@ -248,4 +255,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setLyricWindowAspectRatio: (aspectRatio) => ipcRenderer.send('set-lyric-window-aspect-ratio', { aspectRatio }),
     getLyricWindowContentBounds: () => ipcRenderer.invoke('get-lyric-window-content-bounds'),
     moveLyricWindowContentTo: (x, y, width, height) => ipcRenderer.send('move-lyric-window-content-to', { x, y, width, height }),
+    plugins: {
+        installPackage: pluginInstallPackage,
+        removePackage: pluginRemovePackage,
+        readFile: pluginReadFile,
+        listFiles: pluginListFiles,
+        getRoot: pluginGetRoot,
+        setRoot: pluginSetRoot,
+    },
 })
