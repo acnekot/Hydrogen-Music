@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, onActivated, watch } from 'vue';
+import { computed, ref, onActivated, watch, getCurrentInstance, onMounted } from 'vue';
 import { onBeforeRouteLeave, useRouter } from 'vue-router';
 import { logout } from '../api/user';
 import { noticeOpen, dialogOpen } from '../utils/dialog';
@@ -15,6 +15,72 @@ import { setTheme, getSavedTheme } from '../utils/theme';
 const router = useRouter();
 const userStore = useUserStore();
 const playerStore = usePlayerStore();
+
+const instance = getCurrentInstance();
+const pluginManager = instance?.appContext?.config?.globalProperties?.$plugins ?? null;
+const pluginList = ref([]);
+const pluginSettingsFileInput = ref(null);
+const hasPluginManager = computed(() => !!pluginManager);
+const pluginEmptyMessage = computed(() => {
+    if (!hasPluginManager.value) return '插件系统未启用';
+    if (!pluginList.value || pluginList.value.length === 0) return '暂无可用插件';
+    return '';
+});
+
+const refreshPluginList = () => {
+    if (!pluginManager) {
+        pluginList.value = [];
+        return;
+    }
+    const list = pluginManager.listPlugins();
+    pluginList.value = list.sort((a, b) => {
+        const nameA = (a.displayName || a.name || '').toLowerCase();
+        const nameB = (b.displayName || b.name || '').toLowerCase();
+        return nameA.localeCompare(nameB, 'zh-Hans-CN');
+    });
+};
+
+const togglePluginEnabled = async plugin => {
+    if (!pluginManager || !plugin?.name) return;
+    try {
+        if (plugin.enabled) {
+            await pluginManager.disablePlugin(plugin.name);
+        } else {
+            await pluginManager.enablePlugin(plugin.name);
+        }
+    } catch (error) {
+        console.error('切换插件状态失败:', error);
+        noticeOpen('插件状态切换失败', 2);
+    } finally {
+        refreshPluginList();
+    }
+};
+
+const triggerPluginSettingsImport = () => {
+    pluginSettingsFileInput.value?.click?.();
+};
+
+const handlePluginSettingsFileChange = async event => {
+    const [file] = event?.target?.files ?? [];
+    if (!file) return;
+    if (!pluginManager) {
+        noticeOpen('插件系统未初始化', 2);
+        event.target.value = '';
+        return;
+    }
+    try {
+        const text = await file.text();
+        const payload = JSON.parse(text);
+        await pluginManager.importSettings(payload, { merge: true, syncActivation: true });
+        noticeOpen('插件设置已导入', 2);
+    } catch (error) {
+        console.error('导入插件设置失败:', error);
+        noticeOpen('导入插件设置失败', 2);
+    } finally {
+        refreshPluginList();
+        event.target.value = '';
+    }
+};
 
 const vipInfo = ref(null);
 const musicLevel = ref('standard');
@@ -104,6 +170,12 @@ onActivated(() => {
     
     // 设置更新事件监听器
     setupUpdateListeners();
+
+    refreshPluginList();
+});
+
+onMounted(() => {
+    refreshPluginList();
 });
 
 // 设置更新监听器
@@ -1675,6 +1747,45 @@ const clearFmRecent = () => {
                     </div>
                 </div>
                 <div class="settings-item">
+                    <h2 class="item-title">插件</h2>
+                    <div class="line"></div>
+                    <div class="item-options plugin-options">
+                        <div class="option plugin-import">
+                            <div class="option-name">导入插件设置</div>
+                            <div class="option-operation plugin-import-actions">
+                                <div class="button" @click="triggerPluginSettingsImport">选择 JSON 文件</div>
+                                <div class="plugin-import-hint">导入通过设置导出的插件配置文件。</div>
+                            </div>
+                            <input
+                                ref="pluginSettingsFileInput"
+                                class="plugin-import-input"
+                                type="file"
+                                accept="application/json,.json"
+                                @change="handlePluginSettingsFileChange"
+                            />
+                        </div>
+                        <div class="option plugin-empty" v-if="pluginEmptyMessage">
+                            <div class="option-name">{{ pluginEmptyMessage }}</div>
+                        </div>
+                        <div class="option plugin-item" v-for="plugin in pluginList" :key="plugin.name">
+                            <div class="plugin-info">
+                                <div class="plugin-title">{{ plugin.displayName || plugin.name }}</div>
+                                <div class="plugin-description" v-if="plugin.description">{{ plugin.description }}</div>
+                            </div>
+                            <div class="option-operation plugin-operation">
+                                <div class="toggle" @click="togglePluginEnabled(plugin)">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': plugin.enabled }">
+                                        {{ plugin.enabled ? '已开启' : '已关闭' }}
+                                    </div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="plugin.enabled"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-item">
                     <h2 class="item-title">快捷键</h2>
                     <div class="line"></div>
                     <div class="item-options" tabindex="0" @keydown="inputShortcut($event)">
@@ -2228,6 +2339,57 @@ const clearFmRecent = () => {
                         .title-shortcuts,
                         .title-globalShortcuts {
                             min-width: 200px;
+                        }
+                    }
+                    .plugin-options {
+                        .plugin-import,
+                        .plugin-item {
+                            align-items: flex-start;
+                        }
+                        .plugin-import-actions {
+                            align-items: center;
+                        }
+                        .plugin-import-input {
+                            display: none;
+                        }
+                        .plugin-import-hint {
+                            font-size: 12px;
+                            font-family: SourceHanSansCN-Bold;
+                            font-weight: normal;
+                            color: rgba(0, 0, 0, 0.65);
+                            line-height: 1.5;
+                            max-width: 360px;
+                            text-align: left;
+                        }
+                        .plugin-info {
+                            display: flex;
+                            flex-direction: column;
+                            align-items: flex-start;
+                            gap: 6px;
+                            max-width: 420px;
+                        }
+                        .plugin-title {
+                            font-family: SourceHanSansCN-Bold;
+                            font-size: 16px;
+                            color: black;
+                        }
+                        .plugin-description {
+                            font-size: 13px;
+                            font-family: SourceHanSansCN-Bold;
+                            font-weight: normal;
+                            color: rgba(0, 0, 0, 0.65);
+                            line-height: 1.5;
+                            text-align: left;
+                        }
+                        .plugin-operation {
+                            .toggle {
+                                width: 160px;
+                            }
+                        }
+                        .plugin-empty .option-name {
+                            font: 14px SourceHanSansCN-Bold;
+                            font-weight: normal;
+                            color: rgba(0, 0, 0, 0.6);
                         }
                     }
                     .shortcuts {
