@@ -16,6 +16,7 @@ import quasarLang from 'quasar/lang/zh-CN'
 import '@quasar/extras/material-icons/material-icons.css'
 import '@quasar/extras/roboto-font/roboto-font.css'
 import 'quasar/src/css/index.sass'
+import { loadPlugins } from './plugins/pluginManager'
 const app = createApp(App)
 app.use(router)
 app.use(pinia)
@@ -44,6 +45,7 @@ app.use(Quasar, {
   }
 })
 app.directive('lazy', lazy)
+loadPlugins(app, { router, pinia })
 // Initialize theme before app renders
 initTheme()
 app.mount('#app')

@@ -8,13 +8,34 @@ import { getVipInfo } from '../api/user';
 import { isLogin } from '../utils/authority';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
+import { usePluginStore } from '../store/pluginStore';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
 import { setTheme, getSavedTheme } from '../utils/theme';
+import { enablePlugin, disablePlugin } from '../plugins/pluginManager';
 
 const router = useRouter();
 const userStore = useUserStore();
 const playerStore = usePlayerStore();
+const pluginStore = usePluginStore();
+
+const pluginList = computed(() => pluginStore.pluginList || []);
+
+const isPluginEnabled = (pluginId) => pluginStore.isEnabled(pluginId);
+
+const togglePluginState = (plugin) => {
+    const enabled = isPluginEnabled(plugin.id);
+    if (enabled) {
+        disablePlugin(plugin.id);
+    } else {
+        enablePlugin(plugin.id);
+    }
+};
+
+const openPluginEntry = (plugin) => {
+    if (!plugin.entryRouteName) return;
+    router.push({ name: plugin.entryRouteName });
+};
 
 const vipInfo = ref(null);
 const musicLevel = ref('standard');
@@ -1715,6 +1736,54 @@ const clearFmRecent = () => {
                     </div>
                 </div>
                 <div class="settings-item">
+                    <h2 class="item-title">插件</h2>
+                    <div class="line"></div>
+                    <div class="item-options">
+                        <template v-if="pluginList.length">
+                            <div class="option option--plugin" v-for="plugin in pluginList" :key="plugin.id">
+                                <div class="option-name">
+                                    <div class="plugin-name">{{ plugin.name }}</div>
+                                    <div class="plugin-meta">
+                                        <span>版本 {{ plugin.version }}</span>
+                                        <span v-if="plugin.author">作者 {{ plugin.author }}</span>
+                                    </div>
+                                    <div class="plugin-description" v-if="plugin.description">{{ plugin.description }}</div>
+                                    <a
+                                        class="plugin-homepage"
+                                        v-if="plugin.homepage"
+                                        :href="plugin.homepage"
+                                        target="_blank"
+                                        rel="noopener"
+                                    >访问主页</a>
+                                </div>
+                                <div class="option-operation option-operation--plugin">
+                                    <div class="toggle" @click="togglePluginState(plugin)">
+                                        <div
+                                            class="toggle-off"
+                                            :class="{ 'toggle-on-in': isPluginEnabled(plugin.id) }"
+                                        >
+                                            {{ isPluginEnabled(plugin.id) ? '已开启' : '已关闭' }}
+                                        </div>
+                                        <Transition name="toggle">
+                                            <div class="toggle-on" v-show="isPluginEnabled(plugin.id)"></div>
+                                        </Transition>
+                                    </div>
+                                    <div
+                                        class="plugin-open"
+                                        v-if="plugin.entryRouteName && isPluginEnabled(plugin.id)"
+                                        @click="openPluginEntry(plugin)"
+                                    >
+                                        打开插件
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                        <div class="option option--plugin-empty" v-else>
+                            <div class="plugin-empty-text">尚未检测到可用插件。</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-item">
                     <h2 class="item-title">其他</h2>
                     <div class="line"></div>
                     <div class="item-options">
@@ -2067,6 +2136,70 @@ const clearFmRecent = () => {
                                 text-overflow: ellipsis;
                                 white-space: nowrap;
                                 box-sizing: border-box;
+                            }
+                        }
+                        .option--plugin {
+                            align-items: flex-start;
+                            gap: 24px;
+                            .option-name {
+                                flex: 1 1 auto;
+                                display: flex;
+                                flex-direction: column;
+                                gap: 6px;
+                            }
+                            .plugin-name {
+                                font-size: 18px;
+                                font-family: SourceHanSansCN-Bold;
+                                color: black;
+                            }
+                            .plugin-meta {
+                                display: flex;
+                                flex-wrap: wrap;
+                                gap: 12px;
+                                font-size: 13px;
+                                color: rgba(0, 0, 0, 0.68);
+                            }
+                            .plugin-description {
+                                font-size: 14px;
+                                line-height: 1.6;
+                                color: rgba(0, 0, 0, 0.8);
+                            }
+                            .plugin-homepage {
+                                width: fit-content;
+                                font-size: 13px;
+                                color: #007aff;
+                                text-decoration: none;
+                                &:hover {
+                                    text-decoration: underline;
+                                }
+                            }
+                            .option-operation--plugin {
+                                display: flex;
+                                align-items: center;
+                                gap: 12px;
+                                flex-wrap: wrap;
+                            }
+                            .plugin-open {
+                                padding: 8px 18px;
+                                font-size: 13px;
+                                background: rgba(0, 0, 0, 0.85);
+                                color: white;
+                                border-radius: 18px;
+                                transition: 0.2s;
+                                &:hover {
+                                    cursor: pointer;
+                                    opacity: 0.85;
+                                }
+                                &:active {
+                                    transform: scale(0.97);
+                                }
+                            }
+                        }
+                        .option--plugin-empty {
+                            justify-content: center;
+                            .plugin-empty-text {
+                                font-size: 14px;
+                                color: rgba(0, 0, 0, 0.6);
                             }
                         }
                         .selector-wrapper {

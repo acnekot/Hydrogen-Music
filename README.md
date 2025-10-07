@@ -77,6 +77,11 @@ npm start
 - 如需在国内网络环境安装依赖，可手动指定镜像源执行 `npm install --registry=https://registry.npmmirror.com`。
 - 若遇到无法下载 `@quasar/*` 作用域包的情况，请切换至可访问 npm 官方源或具备代理能力的环境后重新执行安装命令。
 
+## 🧩 插件系统
+
+- 在设置页中可以启用或禁用插件，并打开插件自带的页面。
+- 插件开发指南请参阅 [docs/plugin-development.md](docs/plugin-development.md)，了解 manifest 规范与可用的上下文 API。
+
 ## 📜 开源许可
 
 本项目仅供个人学习研究使用，禁止用于商业及非法用途。

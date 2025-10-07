@@ -1,0 +1,9 @@
+{
+  "id": "hydrogen.example.hello",
+  "name": "示例插件：你好世界",
+  "version": "1.0.0",
+  "description": "展示如何通过插件系统向 Hydrogen Music 增加一个简单的页面。",
+  "author": "Hydrogen Music Team",
+  "enabledByDefault": true,
+  "entry": "plugin-example-hello"
+}
