@@ -1,17 +1,18 @@
 {
   "name": "hydrogenmusic",
   "private": true,
-  "version": "0.5.5",
+  "version": "0.5.6",
   "description": "A modern music player built with Electron and Vue.js",
   "main": "background.js",
   "author": {
-    "name": "ldx123000",
-    "email": "ldx123000@gmail.com"
+    "name": "acnekot",
+    "email": "acnekot@gmail.com"
   },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "kugou:mock": "node mock/kugouApiServer.js",
     "start": "nodemon --exec electron . --watch ./ --ext .html",
     "_dist": "如果想要发布到github中去：vite build && electron-builder -p always",
     "dist": "vite build && node scripts/build.js"
@@ -26,6 +27,7 @@
     "howler": "^2.2.3",
     "js-cookie": "^3.0.1",
     "js-md5": "^0.7.3",
+    "kugou-music-api": "github:MakcRe/KuGouMusicApi#main",
     "music-metadata": "^7.13.0",
     "nanoid": "^3.3.4",
     "NeteaseCloudMusicApi": "^4.8.9",
@@ -120,7 +122,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "ldx123000",
+        "owner": "acnekot",
         "repo": "Hydrogen-Music",
         "releaseType": "draft"
       }

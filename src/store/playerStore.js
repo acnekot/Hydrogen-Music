@@ -54,6 +54,7 @@ export const usePlayerStore = defineStore('playerStore', {
             lyricVisualizerRadialSize: 100, // 辐射样式尺寸（百分比）
             lyricVisualizerRadialOffsetX: 0, // 辐射样式X轴偏移（百分比）
             lyricVisualizerRadialOffsetY: 0, // 辐射样式Y轴偏移（百分比）
+            lyricVisualizerRadialCoreSize: 62, // 辐射样式中心圆比例（百分比）
             customBackgroundEnabled: false, // 是否启用自定义全局背景
             customBackgroundImage: '', // 自定义背景图片路径
             customBackgroundMode: 'cover', // 自定义背景展示模式
@@ -93,6 +94,7 @@ export const usePlayerStore = defineStore('playerStore', {
             'lyricVisualizerRadialSize',
             'lyricVisualizerRadialOffsetX',
             'lyricVisualizerRadialOffsetY',
+            'lyricVisualizerRadialCoreSize',
             'customBackgroundEnabled',
             'customBackgroundImage',
             'customBackgroundMode',

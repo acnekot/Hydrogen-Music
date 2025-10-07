@@ -1,45 +1,45 @@
-const startNeteaseMusicApi = require('./src/electron/services')
-const IpcMainEvent = require('./src/electron/ipcMain')
-const MusicDownload = require('./src/electron/download')
-const LocalFiles = require('./src/electron/localmusic')
-const InitTray = require('./src/electron/tray')
-const registerShortcuts = require('./src/electron/shortcuts')
-const { updateApplicationMenu } = require('./src/electron/shortcuts')
+const startNeteaseMusicApi = require('./src/electron/services');
+const IpcMainEvent = require('./src/electron/ipcMain');
+const MusicDownload = require('./src/electron/download');
+const LocalFiles = require('./src/electron/localmusic');
+const InitTray = require('./src/electron/tray');
+const registerShortcuts = require('./src/electron/shortcuts');
+const { updateApplicationMenu } = require('./src/electron/shortcuts');
 
-const { app, BrowserWindow, globalShortcut, Menu, ipcMain } = require('electron')
-const Winstate = require('electron-win-state').default
+const { app, BrowserWindow, globalShortcut, Menu, ipcMain } = require('electron');
+const Winstate = require('electron-win-state').default;
 const { autoUpdater } = require("electron-updater");
-const path = require('path')
+const path = require('path');
 const Store = require('electron-store');
 const settingsStore = new Store({ name: 'settings' });
 
-let myWindow = null
-let lyricWindow = null
+let myWindow = null;
+let lyricWindow = null;
 let forceQuit = false;
 // 标记是否为“设置里手动检查更新”流程，以避免弹出大窗
 let manualUpdateCheckInProgress = false;
 
 //electron单例
-const gotTheLock = app.requestSingleInstanceLock()
+const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
-    app.quit()
+    app.quit();
 } else {
     app.on('second-instance', (event, commandLine, workingDirectory) => {
         if (myWindow) {
-            if (myWindow.isMinimized()) myWindow.restore()
-            if (!myWindow.isVisible()) myWindow.show()
-            myWindow.focus()
+            if (myWindow.isMinimized()) myWindow.restore();
+            if (!myWindow.isVisible()) myWindow.show();
+            myWindow.focus();
         }
-    })
+    });
 
-    app.whenReady().then(() => {
-        createWindow()
+    app.whenReady().then(async () => {
+        createWindow();
         app.on('activate', () => {
             // 在macOS上，当点击dock图标并且没有其他窗口打开时，
             // 应该重新创建一个窗口。
             if (BrowserWindow.getAllWindows().length === 0) {
-                createWindow()
+                createWindow();
             } else if (myWindow) {
                 // 如果窗口只是被隐藏了，则显示它
                 if (!myWindow.isVisible()) {
@@ -47,25 +47,25 @@ if (!gotTheLock) {
                 }
                 myWindow.focus();
             }
-        })
-    })
+        });
+    });
 
     // 监听渲染进程触发的手动检查更新事件
     // 与 src/electron/ipcMain.js 中的处理并存，仅用于设置标记
     ipcMain.on('check-for-update', () => {
-        manualUpdateCheckInProgress = true
-    })
+        manualUpdateCheckInProgress = true;
+    });
 
     app.on('window-all-closed', () => {
-        if (process.platform !== 'darwin') app.quit()
-    })
+        if (process.platform !== 'darwin') app.quit();
+    });
 
     app.on('will-quit', () => {
         // 注销所有快捷键
-        globalShortcut.unregisterAll()
-    })
+        globalShortcut.unregisterAll();
+    });
 
-    app.on('before-quit', () => {
+app.on('before-quit', () => {
         forceQuit = true;
     });
 }

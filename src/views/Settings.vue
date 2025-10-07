@@ -159,6 +159,7 @@ const lyricVisualizerDefaults = Object.freeze({
     radialSize: 100,
     radialOffsetX: 0,
     radialOffsetY: 0,
+    radialCoreSize: 62,
 });
 
 const customBackgroundDefaults = Object.freeze({
@@ -290,6 +291,12 @@ const sanitizeRadialOffset = value => {
     return clampNumber(Math.round(numeric), -100, 100, 0);
 };
 
+const sanitizeRadialCoreSize = value => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return lyricVisualizerDefaults.radialCoreSize;
+    return clampNumber(Math.round(numeric), 10, 95, lyricVisualizerDefaults.radialCoreSize);
+};
+
 const sanitizeBackgroundBlur = value => {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return customBackgroundDefaults.blur;
@@ -311,6 +318,7 @@ const lyricVisualizerTransitionDelayBaseValues = Object.freeze([0, 0.25, 0.5, 0.
 const lyricVisualizerOpacityBaseValues = Object.freeze([20, 40, 60, 80, 100]);
 const lyricVisualizerRadialSizeBaseValues = Object.freeze([60, 80, 100, 120, 160]);
 const lyricVisualizerRadialOffsetBaseValues = Object.freeze([-50, -25, 0, 25, 50]);
+const lyricVisualizerRadialCoreSizeBaseValues = Object.freeze([40, 52, 62, 72, 84]);
 const customBackgroundBlurBaseValues = Object.freeze([0, 5, 10, 15, 20]);
 const customBackgroundBrightnessBaseValues = Object.freeze([50, 75, 100, 125, 150]);
 
@@ -324,6 +332,7 @@ const lyricVisualizerOpacityValues = ref([...lyricVisualizerOpacityBaseValues]);
 const lyricVisualizerRadialSizeValues = ref([...lyricVisualizerRadialSizeBaseValues]);
 const lyricVisualizerRadialOffsetXValues = ref([...lyricVisualizerRadialOffsetBaseValues]);
 const lyricVisualizerRadialOffsetYValues = ref([...lyricVisualizerRadialOffsetBaseValues]);
+const lyricVisualizerRadialCoreSizeValues = ref([...lyricVisualizerRadialCoreSizeBaseValues]);
 const lyricVisualizerStyleOptions = [
     { label: '柱状条形（默认）', value: 'bars' },
     { label: '辐射圆环', value: 'radial' },
@@ -406,6 +415,12 @@ const lyricVisualizerRadialOffsetYOptions = computed(() =>
         value,
     }))
 );
+const lyricVisualizerRadialCoreSizeOptions = computed(() =>
+    lyricVisualizerRadialCoreSizeValues.value.map(value => ({
+        label: formatOptionLabel(value, '%', lyricVisualizerDefaults.radialCoreSize),
+        value,
+    }))
+);
 
 const customBackgroundBlurOptions = computed(() =>
     customBackgroundBlurValues.value.map(value => ({
@@ -431,6 +446,7 @@ const lyricVisualizerOpacityCustom = ref('');
 const lyricVisualizerRadialSizeCustom = ref('');
 const lyricVisualizerRadialOffsetXCustom = ref('');
 const lyricVisualizerRadialOffsetYCustom = ref('');
+const lyricVisualizerRadialCoreSizeCustom = ref('');
 const customBackgroundBlurCustom = ref('');
 const customBackgroundBrightnessCustom = ref('');
 
@@ -473,6 +489,11 @@ const lyricVisualizerRadialOffsetYAction = createCustomActionState(
     lyricVisualizerRadialOffsetYCustom,
     sanitizeRadialOffset,
     lyricVisualizerRadialOffsetYValues
+);
+const lyricVisualizerRadialCoreSizeAction = createCustomActionState(
+    lyricVisualizerRadialCoreSizeCustom,
+    sanitizeRadialCoreSize,
+    lyricVisualizerRadialCoreSizeValues
 );
 const customBackgroundBlurAction = createCustomActionState(
     customBackgroundBlurCustom,
@@ -663,6 +684,21 @@ const addLyricVisualizerRadialOffsetYOption = () => {
     lyricVisualizerRadialOffsetYCustom.value = '';
 };
 
+const addLyricVisualizerRadialCoreSizeOption = () => {
+    const { mode, value } = lyricVisualizerRadialCoreSizeAction.value;
+    if (value === null) return;
+    if (mode === 'remove') {
+        removeChoiceValue(lyricVisualizerRadialCoreSizeValues, value);
+        if (playerStore.lyricVisualizerRadialCoreSize === value) {
+            playerStore.lyricVisualizerRadialCoreSize = lyricVisualizerDefaults.radialCoreSize;
+        }
+    } else {
+        addChoiceValue(lyricVisualizerRadialCoreSizeValues, value);
+        playerStore.lyricVisualizerRadialCoreSize = value;
+    }
+    lyricVisualizerRadialCoreSizeCustom.value = '';
+};
+
 const resetLyricVisualizerStyle = () => {
     playerStore.lyricVisualizerStyle = lyricVisualizerDefaults.style;
 };
@@ -799,6 +835,16 @@ watch(
 );
 
 watch(
+    () => playerStore.lyricVisualizerRadialCoreSize,
+    value => {
+        const safe = sanitizeRadialCoreSize(value);
+        if (value !== safe) playerStore.lyricVisualizerRadialCoreSize = safe;
+        addChoiceValue(lyricVisualizerRadialCoreSizeValues, safe);
+    },
+    { immediate: true }
+);
+
+watch(
     () => playerStore.lyricVisualizerColor,
     value => {
         if (value !== 'black' && value !== 'white') {
@@ -896,6 +942,10 @@ const resetLyricVisualizerRadialOffsetX = () => {
 
 const resetLyricVisualizerRadialOffsetY = () => {
     playerStore.lyricVisualizerRadialOffsetY = lyricVisualizerDefaults.radialOffsetY;
+};
+
+const resetLyricVisualizerRadialCoreSize = () => {
+    playerStore.lyricVisualizerRadialCoreSize = lyricVisualizerDefaults.radialCoreSize;
 };
 
 const resetCustomBackgroundBlur = () => {
@@ -1312,7 +1362,10 @@ const clearFmRecent = () => {
                                 </div>
                             </div>
                         </div>
-                        <div class="option" v-if="playerStore.lyricVisualizer">
+                        <div
+                            class="option"
+                            v-if="playerStore.lyricVisualizer"
+                        >
                             <div class="option-name">可视化样式</div>
                             <div class="option-operation option-operation--selector">
                                 <div class="selector-wrapper">
@@ -1349,6 +1402,37 @@ const clearFmRecent = () => {
                                     </div>
                                 </div>
                                 <div class="option-reset" @click="resetLyricVisualizerRadialSize">重置</div>
+                            </div>
+                        </div>
+                        <div
+                            class="option"
+                            v-if="playerStore.lyricVisualizer && playerStore.lyricVisualizerStyle === 'radial'"
+                        >
+                            <div class="option-name">中心圆尺寸</div>
+                            <div class="option-operation option-operation--selector">
+                                <div class="selector-wrapper">
+                                    <Selector
+                                        v-model="playerStore.lyricVisualizerRadialCoreSize"
+                                        :options="lyricVisualizerRadialCoreSizeOptions"
+                                    />
+                                </div>
+                                <div class="option-add-group">
+                                    <input
+                                        type="number"
+                                        min="10"
+                                        max="95"
+                                        v-model="lyricVisualizerRadialCoreSizeCustom"
+                                        @keyup.enter="addLyricVisualizerRadialCoreSizeOption"
+                                    />
+                                    <div
+                                        class="option-add"
+                                        :class="{ 'option-add--remove': lyricVisualizerRadialCoreSizeAction.mode === 'remove' }"
+                                        @click="addLyricVisualizerRadialCoreSizeOption"
+                                    >
+                                        {{ lyricVisualizerRadialCoreSizeAction.mode === 'remove' ? '删除' : '添加' }}
+                                    </div>
+                                </div>
+                                <div class="option-reset" @click="resetLyricVisualizerRadialCoreSize">重置</div>
                             </div>
                         </div>
                         <div
@@ -1776,12 +1860,12 @@ const clearFmRecent = () => {
                 <div class="app-icon">
                     <img src="../assets/icon/icon.ico" alt="" />
                 </div>
-                <div class="version">V0.5.5</div>
+                <div class="version">V0.5.6 AC.1</div>
                 <div class="update-check">
                     <button class="check-update-btn" @click="checkForUpdates">检查更新</button>
                 </div>
-                <div class="app-author" @click="toGithub()">Fix by ldx123000 | Modified from Hydrogen Music</div>
-                <div class="app-author" @click="toGithub2()">Made by acnekot</div>                
+                <div class="app-author" @click="toGithub2()">Made by acnekot</div>      
+                <div class="app-author" @click="toGithub()">Fix by ldx123000 | Modified from Hydrogen Music</div>          
             </div>
         </div>
         

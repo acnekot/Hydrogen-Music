@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue';
+import { ref, watch, onMounted, onUnmounted, nextTick, computed, reactive } from 'vue';
 import { changeProgress, musicVideoCheck, songTime } from '../utils/player';
 import { usePlayerStore } from '../store/playerStore';
 import { getLyricVisualizerAudioEnv } from '../utils/lyricVisualizerAudio';
@@ -38,6 +38,7 @@ const {
     lyricVisualizerRadialSize,
     lyricVisualizerRadialOffsetX,
     lyricVisualizerRadialOffsetY,
+    lyricVisualizerRadialCoreSize,
     customBackgroundEnabled,
     customBackgroundImage,
     customBackgroundMode,
@@ -77,6 +78,7 @@ const suppressLyricFlash = ref(true);
 const syncingLayout = ref(false);
 
 const lyricVisualizerCanvas = ref(null);
+const visualizerContainerSize = reactive({ width: 0, height: 0 });
 
 const clampNumber = (value, min, max, fallback = min) => {
     const numeric = Number(value);
@@ -119,8 +121,24 @@ const fallbackNumber = (value, fallback) => {
 const DEFAULT_FREQ_MIN = 20;
 const DEFAULT_FREQ_MAX = 8000;
 const VISUALIZER_HEIGHT_OFFSET = 3;
+// Preserve the original configuration value as a baseline so the rendered height scales with layout changes
+const VISUALIZER_REFERENCE_CONTAINER_HEIGHT = 720;
 
-const visualizerHeightPx = computed(() => Math.max(0, fallbackNumber(lyricVisualizerHeight.value ?? 220, 220)));
+const visualizerBaseHeightPx = computed(() => Math.max(0, fallbackNumber(lyricVisualizerHeight.value ?? 220, 220)));
+const visualizerHeightPx = computed(() => {
+    const baseHeight = visualizerBaseHeightPx.value;
+    const containerHeight =
+        visualizerContainerSize.height ||
+        lyricScroll.value?.clientHeight ||
+        lyricVisualizerCanvas.value?.parentElement?.clientHeight ||
+        0;
+    if (!containerHeight) return baseHeight;
+    if (containerHeight <= baseHeight) return containerHeight;
+    const scaleFactor = containerHeight / VISUALIZER_REFERENCE_CONTAINER_HEIGHT;
+    const scaled = baseHeight * scaleFactor;
+    const target = Math.min(containerHeight, Math.max(baseHeight, scaled));
+    return Math.round(clampNumber(target, baseHeight, containerHeight, baseHeight));
+});
 const visualizerCanvasHeightPx = computed(() => Math.max(0, visualizerHeightPx.value + VISUALIZER_HEIGHT_OFFSET));
 
 const normalizeFrequencyRange = (minValue, maxValue) => {
@@ -207,6 +225,14 @@ const visualizerRadialOffsetYValue = computed(() => {
     return clampNumber(Math.round(value), -100, 100, 0);
 });
 
+const visualizerRadialCoreSizeValue = computed(() => {
+    const value = Number(lyricVisualizerRadialCoreSize.value);
+    if (!Number.isFinite(value)) return 62;
+    return clampNumber(Math.round(value), 10, 95, 62);
+});
+
+const visualizerRadialCoreSizeRatio = computed(() => visualizerRadialCoreSizeValue.value / 100);
+
 const lyricBackgroundActive = computed(
     () =>
         customBackgroundEnabled.value &&
@@ -282,6 +308,8 @@ let animationFrameId = null;
 let resizeObserver = null;
 let resizeHandler = null;
 let resizeTarget = null;
+let visualizerBarLevels = null;
+let visualizerPauseState = false;
 
 const syncAnalyserConfig = () => {
     const analyser = audioEnv.analyser;
@@ -296,6 +324,51 @@ const syncAnalyserConfig = () => {
     analyser.smoothingTimeConstant = visualizerSmoothing.value;
 };
 
+const ensureVisualizerLevels = size => {
+    if (size <= 0) {
+        visualizerBarLevels = null;
+        return visualizerBarLevels;
+    }
+    if (!visualizerBarLevels || visualizerBarLevels.length !== size) {
+        visualizerBarLevels = new Float32Array(size);
+    }
+    return visualizerBarLevels;
+};
+
+const resetVisualizerLevels = () => {
+    visualizerBarLevels = null;
+};
+
+const updateVisualizerLevels = (size, resolveTarget, { paused = false } = {}) => {
+    const levels = ensureVisualizerLevels(size);
+    if (!levels) return 0;
+    const smoothing = visualizerSmoothing.value;
+    const attackBase = Math.min(0.85, Math.max(0.25, 0.55 + (1 - smoothing) * 0.35));
+    const attack = paused ? Math.max(0.12, attackBase * 0.5) : attackBase;
+    const releaseBase = 0.02 + smoothing * 0.045;
+    const release = paused ? releaseBase * 0.35 : releaseBase;
+    let peak = 0;
+    for (let index = 0; index < size; index++) {
+        const target = Math.max(0, Math.min(1, resolveTarget(index) ?? 0));
+        const current = levels[index] ?? 0;
+        let nextValue;
+        if (target >= current) {
+            nextValue = current + (target - current) * attack;
+        } else {
+            const drop = release + current * 0.04;
+            nextValue = current - Math.min(current - target, drop);
+        }
+        if (paused && target === 0 && nextValue < current) {
+            nextValue = Math.max(0, nextValue);
+        }
+        if (!Number.isFinite(nextValue)) nextValue = 0;
+        nextValue = Math.max(0, Math.min(1, nextValue));
+        levels[index] = nextValue;
+        if (nextValue > peak) peak = nextValue;
+    }
+    return peak;
+};
+
 const renderVisualizerPreview = () => {
     if (!shouldShowVisualizer.value || !lyricVisualizerCanvas.value) return;
     if (!animationFrameId) {
@@ -303,22 +376,51 @@ const renderVisualizerPreview = () => {
     }
 };
 
+const syncVisualizerContainerMetrics = element => {
+    if (!element) return;
+    const rect = element.getBoundingClientRect?.();
+    if (!rect) return;
+    const width = Math.max(0, Math.round(rect.width));
+    const height = Math.max(0, Math.round(rect.height));
+    if (visualizerContainerSize.width !== width || visualizerContainerSize.height !== height) {
+        visualizerContainerSize.width = width;
+        visualizerContainerSize.height = height;
+    }
+};
+
+const resetVisualizerContainerMetrics = () => {
+    if (visualizerContainerSize.width !== 0 || visualizerContainerSize.height !== 0) {
+        visualizerContainerSize.width = 0;
+        visualizerContainerSize.height = 0;
+    }
+};
+
 const updateVisualizerCanvasSize = () => {
-    if (!lyricVisualizerCanvas.value || !canvasCtx) return;
     const canvas = lyricVisualizerCanvas.value;
-    const containerWidth = canvas.clientWidth || lyricScroll.value?.clientWidth || 0;
-    const containerHeight = canvas.clientHeight || lyricScroll.value?.clientHeight || 0;
-    if (!containerWidth || !containerHeight) return;
+    if (!canvas) {
+        resetVisualizerContainerMetrics();
+        return;
+    }
+
+    const hostElement = lyricScroll.value || canvas.parentElement || canvas;
+    syncVisualizerContainerMetrics(hostElement);
+
+    const displayWidth = Math.max(canvas.clientWidth, visualizerContainerSize.width);
+    const isRadial = visualizerStyleValue.value === 'radial';
+    const displayHeight = isRadial
+        ? Math.max(canvas.clientHeight || 0, visualizerContainerSize.height)
+        : Math.max(visualizerCanvasHeightPx.value, canvas.clientHeight || 0);
+    if (!displayWidth || !displayHeight) return;
+
+    if (!canvasCtx) return;
 
     const dpr = window.devicePixelRatio || 1;
-    const targetWidth = Math.round(containerWidth * dpr);
-    const targetHeight = Math.round(containerHeight * dpr);
+    const targetWidth = Math.round(displayWidth * dpr);
+    const targetHeight = Math.round(displayHeight * dpr);
 
     if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
         canvas.width = targetWidth;
         canvas.height = targetHeight;
-        canvas.style.width = containerWidth + 'px';
-        canvas.style.height = containerHeight + 'px';
     }
 
     if (typeof canvasCtx.resetTransform === 'function') canvasCtx.resetTransform();
@@ -333,7 +435,30 @@ const ensureVisualizerSizeTracking = () => {
     if (typeof ResizeObserver !== 'undefined') {
         if (!target) return;
         if (!resizeObserver) {
-            resizeObserver = new ResizeObserver(() => updateVisualizerCanvasSize());
+            resizeObserver = new ResizeObserver(entries => {
+                let handled = false;
+                for (const entry of entries) {
+                    if (!entry) continue;
+                    const { contentRect, target: entryTarget } = entry;
+                    if (contentRect) {
+                        const width = Math.max(0, Math.round(contentRect.width));
+                        const height = Math.max(0, Math.round(contentRect.height));
+                        if (
+                            visualizerContainerSize.width !== width ||
+                            visualizerContainerSize.height !== height
+                        ) {
+                            visualizerContainerSize.width = width;
+                            visualizerContainerSize.height = height;
+                        }
+                        handled = true;
+                    } else if (entryTarget) {
+                        syncVisualizerContainerMetrics(entryTarget);
+                        handled = true;
+                    }
+                }
+                if (!handled && target) syncVisualizerContainerMetrics(target);
+                updateVisualizerCanvasSize();
+            });
         }
         if (resizeTarget && resizeTarget !== target) {
             resizeObserver.unobserve(resizeTarget);
@@ -362,6 +487,7 @@ const detachVisualizerSizeTracking = () => {
         window.removeEventListener('resize', resizeHandler);
         resizeHandler = null;
     }
+    resetVisualizerContainerMetrics();
 };
 
 const setupVisualizer = async () => {
@@ -427,59 +553,82 @@ const setupVisualizer = async () => {
 };
 
 const renderVisualizerFrame = () => {
-    const analyser = audioEnv.analyser;
-    if (!shouldShowVisualizer.value || !analyser || !canvasCtx || !lyricVisualizerCanvas.value || !analyserDataArray) return;
+    if (!shouldShowVisualizer.value || !canvasCtx || !lyricVisualizerCanvas.value) return false;
     const canvas = lyricVisualizerCanvas.value;
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
-    if (!width || !height) return;
+    if (!width || !height) return true;
 
-    analyser.getByteFrequencyData(analyserDataArray);
-    canvasCtx.clearRect(0, 0, width, height);
+    const analyser = audioEnv.analyser;
+    if (analyser && analyserDataArray) {
+        try {
+            analyser.getByteFrequencyData(analyserDataArray);
+        } catch (_) {}
+    }
 
     const { r, g, b } = visualizerColorRGB.value;
     const opacityRatio = visualizerOpacityRatio.value;
     const styleMode = visualizerStyleValue.value;
 
     const nyquist = audioEnv.audioContext ? audioEnv.audioContext.sampleRate / 2 : 22050;
-    const binCount = analyserDataArray.length;
+    const binCount = analyserDataArray ? analyserDataArray.length : 0;
     const frequencyMin = Math.max(0, Math.min(visualizerFrequencyMinValue.value, nyquist));
     const frequencyMax = Math.max(frequencyMin + 10, Math.min(visualizerFrequencyMaxValue.value, nyquist));
-    const minIndex = Math.min(binCount - 1, Math.max(0, Math.floor((frequencyMin / nyquist) * binCount)));
-    const maxIndex = Math.max(minIndex + 1, Math.min(binCount, Math.floor((frequencyMax / nyquist) * binCount)));
+    const minIndex = binCount
+        ? Math.min(binCount - 1, Math.max(0, Math.floor((frequencyMin / nyquist) * binCount)))
+        : 0;
+    const maxIndex = binCount
+        ? Math.max(minIndex + 1, Math.min(binCount, Math.floor((frequencyMax / nyquist) * binCount)))
+        : 1;
     const rangeSize = Math.max(1, maxIndex - minIndex);
-
     const barCount = Math.max(1, visualizerBarCountValue.value);
     const step = rangeSize / barCount;
+
+    const levels = ensureVisualizerLevels(barCount);
+    if (!levels) return false;
+
+    const paused = !playing.value || visualizerPauseState;
+    const peakLevel = updateVisualizerLevels(
+        barCount,
+        index => {
+            if (!analyserDataArray || !binCount) return 0;
+            const samplePosition = minIndex + (index + 0.5) * step;
+            const dataIndex = Math.min(binCount - 1, Math.max(0, Math.floor(samplePosition)));
+            return analyserDataArray[dataIndex] / 255;
+        },
+        { paused }
+    );
+
+    canvasCtx.clearRect(0, 0, width, height);
+
     if (styleMode === 'radial') {
         const maxBaseRadius = Math.min(width, height) / 2;
-        if (maxBaseRadius <= 0) return;
+        if (maxBaseRadius <= 0) return true;
         const sizeRatio = Math.max(visualizerRadialSizeRatio.value, 0.05);
         const outerRadius = Math.max(8, maxBaseRadius * sizeRatio);
         const halfWidth = width / 2;
         const halfHeight = height / 2;
         const offsetX = (visualizerRadialOffsetXValue.value / 100) * halfWidth;
         const offsetY = (visualizerRadialOffsetYValue.value / 100) * halfHeight;
-        let centerX = halfWidth + offsetX;
-        let centerY = halfHeight + offsetY;
+        const centerX = halfWidth + offsetX;
+        const centerY = halfHeight + offsetY;
 
-        const innerRadius = outerRadius * 0.62;
-        const startRadius = innerRadius * 0.92;
-        const maxRadius = outerRadius * 0.98;
-        const circumference = 2 * Math.PI * Math.max(innerRadius, 1);
+        const coreRatio = Math.min(Math.max(visualizerRadialCoreSizeRatio.value, 0.1), 0.95);
+        const innerRadius = Math.min(Math.max(outerRadius * coreRatio, 6), outerRadius * 0.96);
+        const startGap = Math.max(innerRadius * 0.08, outerRadius * 0.02, 3);
+        const startRadius = Math.min(innerRadius + startGap, outerRadius * 0.98);
+        const radialExtent = Math.max(outerRadius - startRadius, 2);
+        const circumference = 2 * Math.PI * Math.max(startRadius, 1);
         const widthRatio = Math.min(Math.max(visualizerBarWidthRatio.value, 0.05), 1);
-        const lineWidth = Math.max(1.25, (circumference / barCount) * widthRatio);
+        const lineWidth = Math.max(1.2, (circumference / barCount) * widthRatio);
 
         canvasCtx.save();
         canvasCtx.lineCap = 'round';
         canvasCtx.lineWidth = lineWidth;
 
         for (let i = 0; i < barCount; i++) {
-            const samplePosition = minIndex + (i + 0.5) * step;
-            const dataIndex = Math.min(binCount - 1, Math.max(0, Math.floor(samplePosition)));
-            const value = analyserDataArray[dataIndex] / 255;
-            const expansion = Math.min(Math.max(value, 0), 1);
-            const endRadius = startRadius + expansion * (maxRadius - startRadius);
+            const value = levels[i] ?? 0;
+            const endRadius = startRadius + value * radialExtent;
             const angle = (i / barCount) * Math.PI * 2;
             const cos = Math.cos(angle);
             const sin = Math.sin(angle);
@@ -487,7 +636,7 @@ const renderVisualizerFrame = () => {
             const y1 = centerY + startRadius * sin;
             const x2 = centerX + endRadius * cos;
             const y2 = centerY + endRadius * sin;
-            const baseAlpha = 0.2 + expansion * 0.6;
+            const baseAlpha = 0.18 + value * 0.55;
             const alpha = Math.min(Math.max(baseAlpha * opacityRatio, 0), 1);
             canvasCtx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
             canvasCtx.beginPath();
@@ -498,40 +647,51 @@ const renderVisualizerFrame = () => {
 
         const coreAlpha = Math.min(Math.max(0.18 * opacityRatio, 0), 1);
         if (coreAlpha > 0) {
+            const coreFillRadius = Math.max(0, Math.min(innerRadius * 0.95, startRadius - startGap * 0.4));
             canvasCtx.fillStyle = `rgba(${r}, ${g}, ${b}, ${coreAlpha})`;
             canvasCtx.beginPath();
-            canvasCtx.arc(centerX, centerY, innerRadius * 0.7, 0, Math.PI * 2);
+            canvasCtx.arc(centerX, centerY, coreFillRadius, 0, Math.PI * 2);
             canvasCtx.fill();
         }
 
         canvasCtx.restore();
-        return;
+    } else {
+        const barWidth = width / barCount;
+        const innerWidth = barWidth * Math.min(Math.max(visualizerBarWidthRatio.value, 0.01), 1);
+        const offset = (barWidth - innerWidth) / 2;
+
+        for (let i = 0; i < barCount; i++) {
+            const value = levels[i] ?? 0;
+            const barHeight = height * value;
+            const x = i * barWidth + offset;
+            const y = height - barHeight;
+            const baseAlpha = 0.12 + value * 0.45;
+            const alpha = Math.min(Math.max(baseAlpha * opacityRatio, 0), 1);
+            canvasCtx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+            canvasCtx.fillRect(x, y, innerWidth, barHeight);
+        }
     }
 
-    const barWidth = width / barCount;
-    const innerWidth = barWidth * Math.min(Math.max(visualizerBarWidthRatio.value, 0.01), 1);
-    const offset = (barWidth - innerWidth) / 2;
-
-    for (let i = 0; i < barCount; i++) {
-        const samplePosition = minIndex + (i + 0.5) * step;
-        const dataIndex = Math.min(binCount - 1, Math.max(0, Math.floor(samplePosition)));
-        const value = analyserDataArray[dataIndex] / 255;
-        const barHeight = height * value;
-        const x = i * barWidth + offset;
-        const y = height - barHeight;
-        const baseAlpha = 0.12 + value * 0.45;
-        const alpha = Math.min(Math.max(baseAlpha * opacityRatio, 0), 1);
-        canvasCtx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
-        canvasCtx.fillRect(x, y, innerWidth, barHeight);
+    if (!playing.value && peakLevel < 0.002) {
+        return false;
     }
+    return true;
 };
 
-const startVisualizerLoop = () => {
-    if (!shouldShowVisualizer.value || !audioEnv.analyser || !canvasCtx) return;
+const startVisualizerLoop = ({ force = false } = {}) => {
+    if (!shouldShowVisualizer.value || !lyricVisualizerCanvas.value || !canvasCtx) return;
     updateVisualizerCanvasSize();
-    stopVisualizerLoop();
+    if (animationFrameId) {
+        if (!force) return;
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+    }
     const draw = () => {
-        renderVisualizerFrame();
+        const keepGoing = renderVisualizerFrame();
+        if (keepGoing === false) {
+            animationFrameId = null;
+            return;
+        }
         animationFrameId = requestAnimationFrame(draw);
     };
     draw();
@@ -542,10 +702,14 @@ const stopVisualizerLoop = ({ clear = false, teardown = false } = {}) => {
         cancelAnimationFrame(animationFrameId);
         animationFrameId = null;
     }
-    if (clear && canvasCtx && lyricVisualizerCanvas.value) {
+    if (canvasCtx && lyricVisualizerCanvas.value && clear) {
         const width = lyricVisualizerCanvas.value.clientWidth;
         const height = lyricVisualizerCanvas.value.clientHeight;
         canvasCtx.clearRect(0, 0, width, height);
+    }
+    if (clear || teardown) {
+        resetVisualizerLevels();
+        visualizerPauseState = false;
     }
     if (teardown) {
         detachVisualizerSizeTracking();
@@ -703,7 +867,7 @@ watch([visualizerFrequencyMinValue, visualizerFrequencyMaxValue], () => {
 watch(
     () => lyricVisualizerHeight.value,
     value => {
-        const safe = visualizerHeightPx.value;
+        const safe = visualizerBaseHeightPx.value;
         if (value !== safe) lyricVisualizerHeight.value = safe;
     },
     { immediate: true }
@@ -736,6 +900,7 @@ watch(visualizerHeightPx, () => {
 });
 
 watch(visualizerBarCountValue, () => {
+    resetVisualizerLevels();
     renderVisualizerPreview();
 });
 
@@ -760,7 +925,11 @@ watch(
 );
 
 watch(visualizerStyleValue, () => {
-    renderVisualizerPreview();
+    resetVisualizerLevels();
+    nextTick(() => {
+        updateVisualizerCanvasSize();
+        renderVisualizerPreview();
+    });
 });
 
 watch(
@@ -788,6 +957,16 @@ watch(
     value => {
         const safe = visualizerRadialOffsetYValue.value;
         if (value !== safe) lyricVisualizerRadialOffsetY.value = safe;
+        renderVisualizerPreview();
+    },
+    { immediate: true }
+);
+
+watch(
+    () => lyricVisualizerRadialCoreSize.value,
+    value => {
+        const safe = visualizerRadialCoreSizeValue.value;
+        if (value !== safe) lyricVisualizerRadialCoreSize.value = safe;
         renderVisualizerPreview();
     },
     { immediate: true }
@@ -823,8 +1002,8 @@ watch(
         renderVisualizerPreview();
         if (!shouldShowVisualizer.value) return;
         await setupVisualizer();
-        if (playing.value) startVisualizerLoop();
-        else stopVisualizerLoop();
+        visualizerPauseState = !playing.value;
+        startVisualizerLoop({ force: true });
     }
 );
 
@@ -832,8 +1011,8 @@ watch(shouldShowVisualizer, active => {
     if (active) {
         nextTick(async () => {
             await setupVisualizer();
-            if (playing.value) startVisualizerLoop();
-            else stopVisualizerLoop();
+            visualizerPauseState = !playing.value;
+            startVisualizerLoop({ force: true });
         });
     } else {
         stopVisualizerLoop({ clear: true, teardown: true });
@@ -846,21 +1025,21 @@ watch(
         if (!shouldShowVisualizer.value) return;
         nextTick(async () => {
             await setupVisualizer();
-            if (playing.value) startVisualizerLoop();
+            visualizerPauseState = !playing.value;
+            if (playing.value) startVisualizerLoop({ force: true });
+            else startVisualizerLoop();
         });
     }
 );
 
 watch(playing, isPlaying => {
+    visualizerPauseState = !isPlaying;
     if (!shouldShowVisualizer.value) return;
-    if (isPlaying) {
-        nextTick(async () => {
-            await setupVisualizer();
-            startVisualizerLoop();
-        });
-    } else {
-        stopVisualizerLoop();
-    }
+    nextTick(async () => {
+        await setupVisualizer();
+        if (isPlaying) startVisualizerLoop({ force: true });
+        else startVisualizerLoop();
+    });
 });
 
 // 根据显示配置（翻译/原文/罗马音、字号）动态调整高度与位置
@@ -1028,11 +1207,12 @@ watch(
 );
 
 onMounted(() => {
+    visualizerPauseState = !playing.value;
     if (shouldShowVisualizer.value) {
         nextTick(async () => {
             await setupVisualizer();
-            if (playing.value) startVisualizerLoop();
-            else stopVisualizerLoop({ clear: true });
+            visualizerPauseState = !playing.value;
+            startVisualizerLoop({ force: true });
         });
     }
 

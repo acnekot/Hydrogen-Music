@@ -22,6 +22,9 @@
   const loginByCK = ref(null)
   const loginByEM = ref(null)
   const jumpPage = ref(false)
+  const goBack = () => {
+    router.push('/login')
+  }
 
   onActivated(() => {
     accountMode.value = parseInt(route.query.mode) || 0
@@ -94,6 +97,10 @@
 <template>
   <div class="login-content" :class="{'jumpPage': jumpPage}">
     <div class="login-container">
+        <div class="login-back" @click="goBack">
+            <span class="back-icon">←</span>
+            <span class="back-text">返回登录选项</span>
+        </div>
         <div class="login-header">
             <div class="login-icon">
                 <img src="../assets/img/netease-music.png" alt="">
@@ -153,7 +160,24 @@
         display: flex;
         flex-direction: column;
         justify-content: center;
+        align-items: center;
         height: calc(100% - 120px);
+
+        .login-back{
+            align-self: flex-start;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 2vh;
+            font: 12px SourceHanSansCN-Bold;
+            color: rgb(111, 111, 111);
+            transition: 0.2s;
+
+            &:hover{
+                cursor: pointer;
+                color: black;
+            }
+        }
         .login-header{
             display: flex;
             flex-direction: column;
