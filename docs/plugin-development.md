@@ -11,8 +11,6 @@ Hydrogen-Music/
 ├── plugins/
 │   ├── desktop-lyric/
 │   │   └── plugin.json
-│   ├── lyric-visualizer/
-│   │   └── plugin.json
 │   ├── sound-effects/
 │   │   └── plugin.json
 │   ├── seamless-playback/
@@ -113,7 +111,7 @@ Hydrogen-Music/
 
 1. Electron 主进程提供插件目录管理、导入/删除 API，并支持默认示例插件复制。
 2. 渲染端引入 `pluginStore` 管理状态与持久化，设置页完成 UI 框架搭建。
-3. 添加示例清单与开发者文档，方便后续迁移歌词可视化、桌面歌词等功能。
+3. 添加示例清单与开发者文档，方便后续迁移桌面歌词等功能（播放页歌词及其动效仍保留在核心体验中）。
 
-下一阶段将把歌词可视化、自定义主题、桌面歌词逻辑迁移到插件驱动，并补充声音效果、无缝衔接等扩展的实际实现。
+下一阶段将把桌面歌词逻辑完全迁移到插件驱动，并补充声音效果、无缝衔接等扩展的实际实现。
 
