@@ -10,14 +10,16 @@ import ContextMenu from './components/ContextMenu.vue';
 import GlobalDialog from './components/GlobalDialog.vue';
 import GlobalNotice from './components/GlobalNotice.vue';
 import Update from './components/Update.vue';
-import { initDesktopLyric } from './utils/desktopLyric';
-import { onMounted, computed } from 'vue';
+import { initDesktopLyric, destroyDesktopLyric } from './utils/desktopLyric';
+import { onMounted, onBeforeUnmount, computed, watch } from 'vue';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
+import { usePluginStore } from './store/pluginStore';
 
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
+const pluginStore = usePluginStore();
 
 const customBackgroundActive = computed(
     () => playerStore.customBackgroundEnabled && !!playerStore.customBackgroundImage
@@ -65,8 +67,29 @@ const customBackgroundStyle = computed(() => {
     };
 });
 
-onMounted(() => {
-    initDesktopLyric();
+let stopDesktopLyricWatcher = null;
+
+onMounted(async () => {
+    await pluginStore.initialize();
+    stopDesktopLyricWatcher = watch(
+        () => pluginStore.isPluginEnabled('desktop-lyric'),
+        (enabled) => {
+            if (enabled) {
+                initDesktopLyric();
+            } else {
+                destroyDesktopLyric();
+            }
+        },
+        { immediate: true }
+    );
+});
+
+onBeforeUnmount(() => {
+    if (typeof stopDesktopLyricWatcher === 'function') {
+        stopDesktopLyricWatcher();
+        stopDesktopLyricWatcher = null;
+    }
+    destroyDesktopLyric();
 });
 
 windowApi.checkUpdate((event, version) => {

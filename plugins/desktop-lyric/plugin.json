@@ -1,0 +1,34 @@
+{
+  "id": "desktop-lyric",
+  "name": "桌面歌词插件",
+  "version": "0.1.0",
+  "description": "为播放器提供桌面歌词窗口入口与状态管理。",
+  "author": "Hydrogen Labs",
+  "capabilities": ["desktop-lyric"],
+  "features": [
+    "桌面歌词窗口控制",
+    "桌面歌词同步提示"
+  ],
+  "settings": {
+    "sections": [
+      {
+        "title": "基础配置",
+        "description": "启用后，可在播放器面板中显示桌面歌词按钮。",
+        "fields": [
+          {
+            "type": "toggle",
+            "label": "显示桌面歌词入口",
+            "key": "entryEnabled",
+            "default": true,
+            "description": "切换播放器底部的桌面歌词按钮。"
+          },
+          {
+            "type": "button",
+            "label": "重载桌面歌词模块",
+            "action": "reload"
+          }
+        ]
+      }
+    ]
+  }
+}

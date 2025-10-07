@@ -1,0 +1,33 @@
+{
+  "id": "sound-effects",
+  "name": "声音增强插件",
+  "version": "0.1.0",
+  "description": "提供交互提示音与播放反馈示例。",
+  "author": "Hydrogen Labs",
+  "capabilities": ["sound-effects"],
+  "features": [
+    "播放控制提示音",
+    "界面交互音效"
+  ],
+  "settings": {
+    "sections": [
+      {
+        "title": "交互提示",
+        "fields": [
+          {
+            "type": "toggle",
+            "label": "播放/暂停提示音",
+            "key": "playbackTone",
+            "default": false
+          },
+          {
+            "type": "toggle",
+            "label": "界面点击提示音",
+            "key": "uiTone",
+            "default": false
+          }
+        ]
+      }
+    ]
+  }
+}

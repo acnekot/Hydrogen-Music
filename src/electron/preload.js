@@ -258,3 +258,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getLyricWindowContentBounds: () => ipcRenderer.invoke('get-lyric-window-content-bounds'),
     moveLyricWindowContentTo: (x, y, width, height) => ipcRenderer.send('move-lyric-window-content-to', { x, y, width, height }),
 })
+
+contextBridge.exposeInMainWorld('pluginApi', {
+    getConfig: () => ipcRenderer.invoke('plugins:get-config'),
+    listPlugins: () => ipcRenderer.invoke('plugins:list'),
+    updateConfig: (config) => ipcRenderer.invoke('plugins:update-config', config),
+    chooseDirectory: (currentDir) => ipcRenderer.invoke('plugins:choose-directory', currentDir),
+    importPlugin: () => ipcRenderer.invoke('plugins:import'),
+    deletePlugin: (pluginId) => ipcRenderer.invoke('plugins:delete', pluginId),
+    reloadPlayer: () => ipcRenderer.invoke('plugins:reload-player'),
+})

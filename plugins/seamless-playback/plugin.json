@@ -1,0 +1,26 @@
+{
+  "id": "seamless-playback",
+  "name": "无缝衔接插件",
+  "version": "0.1.0",
+  "description": "展示重载播放器与缓存控制的示例插件。",
+  "author": "Hydrogen Labs",
+  "capabilities": ["seamless-playback"],
+  "features": [
+    "软重启播放器",
+    "刷新插件缓存"
+  ],
+  "settings": {
+    "sections": [
+      {
+        "title": "示例操作",
+        "fields": [
+          {
+            "type": "button",
+            "label": "重载播放器",
+            "action": "reload"
+          }
+        ]
+      }
+    ]
+  }
+}

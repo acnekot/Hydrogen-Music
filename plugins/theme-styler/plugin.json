@@ -1,0 +1,39 @@
+{
+  "id": "theme-styler",
+  "name": "主题美化插件",
+  "version": "0.1.0",
+  "description": "提供背景、亮度与模式的快速美化方案。",
+  "author": "Hydrogen Labs",
+  "capabilities": ["theme"],
+  "features": [
+    "自定义背景",
+    "亮度/模糊调节"
+  ],
+  "settings": {
+    "sections": [
+      {
+        "title": "背景设置",
+        "fields": [
+          {
+            "type": "toggle",
+            "label": "启用自定义背景",
+            "key": "customBackground",
+            "default": false
+          },
+          {
+            "type": "select",
+            "label": "显示模式",
+            "key": "backgroundMode",
+            "options": [
+              { "label": "填充", "value": "cover" },
+              { "label": "拉伸", "value": "stretch" },
+              { "label": "适应", "value": "contain" },
+              { "label": "居中", "value": "center" }
+            ],
+            "default": "cover"
+          }
+        ]
+      }
+    ]
+  }
+}

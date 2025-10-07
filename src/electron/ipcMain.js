@@ -1,6 +1,7 @@
 const { ipcMain, shell, dialog, globalShortcut, Menu, clipboard, BrowserWindow, session } = require('electron')
 const axios = require('axios')
 const fs = require('fs')
+const fsExtra = require('fs-extra')
 const path = require('path')
 const { parseFile } = require('music-metadata')
 // const jsmediatags = require("jsmediatags");
@@ -116,12 +117,157 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         }
         return null
     })
-    ipcMain.on('set-settings', (e, settings) => {
-        settingsStore.set('settings', JSON.parse(settings))
-        registerShortcuts(win)
+    const fsp = fs.promises
+
+    const PLUGIN_MANIFEST_NAME = 'plugin.json'
+
+    const ensureDirSync = dirPath => {
+        if (!dirPath) return
+        try {
+            if (!fs.existsSync(dirPath)) {
+                fs.mkdirSync(dirPath, { recursive: true })
+            }
+        } catch (error) {
+            console.error('创建目录失败:', dirPath, error)
+        }
+    }
+
+    const getDefaultPluginDirectory = () => {
+        const userData = app.getPath('userData')
+        const dir = path.join(userData, 'plugins')
+        ensureDirSync(dir)
+        return dir
+    }
+
+    const ensurePluginsConfig = (settings = {}) => {
+        const defaults = {
+            enabled: false,
+            warningAcknowledged: false,
+            directory: getDefaultPluginDirectory(),
+            installed: {},
+        }
+        if (!settings.plugins || typeof settings.plugins !== 'object') {
+            settings.plugins = { ...defaults }
+        } else {
+            settings.plugins = {
+                ...defaults,
+                ...settings.plugins,
+                installed: { ...(settings.plugins.installed || {}) },
+            }
+            if (!settings.plugins.directory) {
+                settings.plugins.directory = defaults.directory
+            }
+        }
+        ensureDirSync(settings.plugins.directory)
+        return settings
+    }
+
+    const savePluginsConfig = async updater => {
+        try {
+            const current = ensurePluginsConfig(await settingsStore.get('settings'))
+            const updatedPlugins = await updater({ ...current.plugins })
+            const merged = { ...current, plugins: { ...updatedPlugins } }
+            settingsStore.set('settings', merged)
+            return merged.plugins
+        } catch (error) {
+            console.error('保存插件配置失败:', error)
+            throw error
+        }
+    }
+
+    const readPluginManifest = async (directory, entryName = PLUGIN_MANIFEST_NAME) => {
+        try {
+            const manifestPath = path.join(directory, entryName)
+            const content = await fsp.readFile(manifestPath, 'utf-8')
+            const manifest = JSON.parse(content)
+            if (!manifest || typeof manifest !== 'object') return null
+            if (!manifest.id || !manifest.name) return null
+            return {
+                ...manifest,
+                absolutePath: directory,
+                manifestPath,
+            }
+        } catch (error) {
+            console.warn(`读取插件清单失败: ${directory}`, error)
+            return null
+        }
+    }
+
+    const listInstalledPlugins = async pluginsDir => {
+        const manifests = []
+        try {
+            const items = await fsp.readdir(pluginsDir, { withFileTypes: true })
+            for (const item of items) {
+                if (!item.isDirectory()) continue
+                const abs = path.join(pluginsDir, item.name)
+                const manifest = await readPluginManifest(abs)
+                if (manifest) {
+                    manifests.push(manifest)
+                }
+            }
+        } catch (error) {
+            console.error('读取插件目录失败:', pluginsDir, error)
+        }
+        return manifests
+    }
+
+    const copyDirectory = async (source, destination) => {
+        try {
+            await fsExtra.ensureDir(path.dirname(destination))
+            await fsExtra.copy(source, destination, { overwrite: true, errorOnExist: false })
+            return true
+        } catch (error) {
+            console.error(`复制插件目录失败: ${source} -> ${destination}`, error)
+            throw error
+        }
+    }
+
+    const removeDirectory = async target => {
+        try {
+            await fsExtra.remove(target)
+            return true
+        } catch (error) {
+            console.error('删除插件目录失败:', target, error)
+            throw error
+        }
+    }
+
+    const seedDefaultPlugins = async pluginsDir => {
+        try {
+            const appPluginsDir = path.join(app.getAppPath(), 'plugins')
+            if (!fs.existsSync(appPluginsDir)) return
+            ensureDirSync(pluginsDir)
+            const existing = await fsp.readdir(pluginsDir)
+            if (existing && existing.length > 0) return
+            const seeds = await fsp.readdir(appPluginsDir, { withFileTypes: true })
+            for (const entry of seeds) {
+                if (!entry.isDirectory()) continue
+                const source = path.join(appPluginsDir, entry.name)
+                const manifest = await readPluginManifest(source)
+                if (!manifest || !manifest.id) continue
+                const target = path.join(pluginsDir, manifest.id)
+                if (!fs.existsSync(target)) {
+                    await copyDirectory(source, target)
+                }
+            }
+        } catch (error) {
+            console.warn('初始化默认插件失败:', error)
+        }
+    }
+
+    ipcMain.on('set-settings', async (_e, settings) => {
+        try {
+            const parsed = JSON.parse(settings)
+            const current = ensurePluginsConfig(await settingsStore.get('settings'))
+            const merged = { ...current, ...parsed, plugins: current.plugins }
+            settingsStore.set('settings', merged)
+            registerShortcuts(win)
+        } catch (error) {
+            console.error('保存设置失败:', error)
+        }
     })
     ipcMain.handle('get-settings', async () => {
-        const settings = await settingsStore.get('settings')
+        const settings = ensurePluginsConfig(await settingsStore.get('settings'))
         if (settings) return settings
         else {
             let initSettings = {
@@ -184,8 +330,15 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                 other: {
                     globalShortcuts: true,
                     quitApp: 'minimize'
+                },
+                plugins: {
+                    enabled: false,
+                    warningAcknowledged: false,
+                    directory: getDefaultPluginDirectory(),
+                    installed: {},
                 }
             }
+            ensurePluginsConfig(initSettings)
             settingsStore.set('settings', initSettings)
             registerShortcuts(win)
             return initSettings
@@ -197,6 +350,113 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             return null
         } else {
             return filePaths[0]
+        }
+    })
+
+    ipcMain.handle('plugins:get-config', async () => {
+        const settings = ensurePluginsConfig(await settingsStore.get('settings'))
+        return settings.plugins
+    })
+
+    ipcMain.handle('plugins:list', async () => {
+        const settings = ensurePluginsConfig(await settingsStore.get('settings'))
+        const pluginsDir = settings.plugins.directory
+        await seedDefaultPlugins(pluginsDir)
+        const manifests = await listInstalledPlugins(pluginsDir)
+        return {
+            directory: pluginsDir,
+            plugins: manifests,
+        }
+    })
+
+    ipcMain.handle('plugins:update-config', async (_event, incomingConfig) => {
+        const updated = await savePluginsConfig(async previous => {
+            const next = {
+                ...previous,
+                ...incomingConfig,
+                installed: {
+                    ...(previous.installed || {}),
+                    ...(incomingConfig?.installed || {}),
+                },
+            }
+            ensureDirSync(next.directory)
+            return next
+        })
+        return updated
+    })
+
+    ipcMain.handle('plugins:choose-directory', async (_event, currentDir) => {
+        const { canceled, filePaths } = await dialog.showOpenDialog({
+            properties: ['openDirectory', 'createDirectory'],
+            defaultPath: currentDir && fs.existsSync(currentDir) ? currentDir : getDefaultPluginDirectory(),
+        })
+        if (canceled || !filePaths || !filePaths[0]) return null
+        const selected = filePaths[0]
+        await savePluginsConfig(async previous => {
+            const next = { ...previous, directory: selected }
+            ensureDirSync(next.directory)
+            return next
+        })
+        return selected
+    })
+
+    ipcMain.handle('plugins:import', async () => {
+        const current = ensurePluginsConfig(await settingsStore.get('settings'))
+        const pluginsDir = current.plugins.directory
+        ensureDirSync(pluginsDir)
+
+        const { canceled, filePaths } = await dialog.showOpenDialog({
+            properties: ['openDirectory'],
+            title: '选择插件目录',
+        })
+        if (canceled || !filePaths || !filePaths[0]) return { success: false, reason: 'canceled' }
+
+        const sourceDir = filePaths[0]
+        const manifest = await readPluginManifest(sourceDir)
+        if (!manifest) {
+            return { success: false, reason: 'manifest-invalid' }
+        }
+
+        const targetDir = path.join(pluginsDir, manifest.id)
+        try {
+            await copyDirectory(sourceDir, targetDir)
+        } catch (error) {
+            return { success: false, reason: 'copy-failed', error: error?.message }
+        }
+
+        return { success: true, manifest }
+    })
+
+    ipcMain.handle('plugins:delete', async (_event, pluginId) => {
+        const current = ensurePluginsConfig(await settingsStore.get('settings'))
+        const pluginsDir = current.plugins.directory
+        if (!pluginId) return { success: false, reason: 'missing-id' }
+        const targetDir = path.join(pluginsDir, pluginId)
+        if (!fs.existsSync(targetDir)) {
+            return { success: false, reason: 'not-found' }
+        }
+        try {
+            await removeDirectory(targetDir)
+        } catch (error) {
+            return { success: false, reason: 'delete-failed', error: error?.message }
+        }
+
+        await savePluginsConfig(async previous => {
+            const nextInstalled = { ...(previous.installed || {}) }
+            delete nextInstalled[pluginId]
+            return { ...previous, installed: nextInstalled }
+        })
+
+        return { success: true }
+    })
+
+    ipcMain.handle('plugins:reload-player', async () => {
+        try {
+            win.reload()
+            return { success: true }
+        } catch (error) {
+            console.error('重载播放器失败:', error)
+            return { success: false, error: error?.message }
         }
     })
     ipcMain.handle('dialog:openImageFile', async () => {

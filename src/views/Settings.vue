@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, onActivated, watch } from 'vue';
+import { computed, ref, onActivated, watch, nextTick } from 'vue';
 import { onBeforeRouteLeave, useRouter } from 'vue-router';
 import { logout } from '../api/user';
 import { noticeOpen, dialogOpen } from '../utils/dialog';
@@ -11,10 +11,13 @@ import { usePlayerStore } from '../store/playerStore';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
 import { setTheme, getSavedTheme } from '../utils/theme';
+import { usePluginStore } from '../store/pluginStore';
+import { runPluginAction } from '../plugins/runtime';
 
 const router = useRouter();
 const userStore = useUserStore();
 const playerStore = usePlayerStore();
+const pluginStore = usePluginStore();
 
 const vipInfo = ref(null);
 const musicLevel = ref('standard');
@@ -74,6 +77,61 @@ const shortcutCharacter = ['=', '-', '~', '@', '#', '$', '[', ']', ';', "'", ','
 const showUpdateDialog = ref(false);
 const newVersion = ref('');
 
+const pluginDetailId = ref(null);
+const pluginSettingsScrollRef = ref(null);
+
+const installedPlugins = computed(() => pluginStore.installedPlugins);
+const pluginSystemEnabled = computed(() => pluginStore.enabled);
+const selectedPlugin = computed(() => {
+    if (!pluginDetailId.value) return null;
+    return installedPlugins.value.find(plugin => plugin.id === pluginDetailId.value) || null;
+});
+const selectedPluginSettings = computed(() => {
+    if (!pluginDetailId.value) return {};
+    return pluginStore.getPluginSettings(pluginDetailId.value) || {};
+});
+const hasPluginsInstalled = computed(() => installedPlugins.value.length > 0);
+
+const openPluginSettingsPanel = pluginId => {
+    pluginDetailId.value = pluginId;
+    nextTick(() => {
+        if (pluginSettingsScrollRef.value) {
+            pluginSettingsScrollRef.value.scrollTop = 0;
+        }
+    });
+};
+
+const closePluginSettingsPanel = () => {
+    pluginDetailId.value = null;
+};
+
+const handlePluginToggle = manifest => {
+    const current = pluginStore.isPluginEnabled(manifest.id);
+    pluginStore.togglePlugin(manifest.id, manifest, !current);
+};
+
+const handlePluginSettingChange = (manifest, field, value) => {
+    pluginStore.updatePluginSetting(manifest.id, field.key, value, manifest);
+};
+
+const triggerPluginImport = () => pluginStore.importPlugin();
+const triggerPluginRefresh = () => pluginStore.refreshManifests();
+const triggerPluginReload = () => pluginStore.reloadPlayer();
+const choosePluginDirectory = () => pluginStore.chooseDirectory();
+const removePlugin = manifest => pluginStore.deletePlugin(manifest.id, manifest);
+const togglePluginSystem = () => pluginStore.setGlobalEnabled(!pluginStore.enabled);
+const triggerPluginActionField = (manifest, field) => runPluginAction(manifest, field, pluginStore);
+
+const isPluginFieldChecked = (manifest, field) => {
+    const settings = pluginStore.getPluginSettings(manifest.id) || {};
+    return !!settings[field.key];
+};
+
+const getPluginFieldValue = (manifest, field) => {
+    const settings = pluginStore.getPluginSettings(manifest.id) || {};
+    return settings[field.key];
+};
+
 if (isLogin()) {
     getVipInfo().then(result => {
         vipInfo.value = result.data;
@@ -101,9 +159,11 @@ onActivated(() => {
     } catch (_) {
         theme.value = 'system';
     }
-    
+
     // 设置更新事件监听器
     setupUpdateListeners();
+
+    pluginStore.refreshManifests();
 });
 
 // 设置更新监听器
@@ -1243,6 +1303,189 @@ const clearFmRecent = () => {
                         </div>
                     </div>
                 </div>
+                <div class="settings-item settings-item--plugins">
+                    <h2 class="item-title">插件</h2>
+                    <div class="line"></div>
+                    <div class="item-options" v-if="!selectedPlugin">
+                        <div class="option">
+                            <div class="option-name">插件功能</div>
+                            <div class="option-operation">
+                                <div class="toggle" @click.stop="togglePluginSystem()">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': pluginSystemEnabled }">
+                                        {{ pluginSystemEnabled ? '已开启' : '已关闭' }}
+                                    </div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="pluginSystemEnabled"></div>
+                                    </Transition>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="option">
+                            <div class="option-name">插件目录</div>
+                            <div class="option-operation option-operation--file">
+                                <div class="option-file-path" :title="pluginStore.pluginDirectory || '未指定'">
+                                    {{ pluginStore.pluginDirectory || '未指定' }}
+                                </div>
+                                <div class="option-add" @click.stop="choosePluginDirectory">指定</div>
+                            </div>
+                        </div>
+                        <div class="plugin-toolbar">
+                            <div class="plugin-toolbar-button" @click.stop="triggerPluginImport">导入</div>
+                            <div class="plugin-toolbar-button" @click.stop="triggerPluginRefresh">刷新</div>
+                            <div class="plugin-toolbar-button plugin-toolbar-button--reload" @click.stop="triggerPluginReload">
+                                重载播放器
+                            </div>
+                        </div>
+                        <div class="plugin-list" v-if="hasPluginsInstalled">
+                            <div class="plugin-list-header">
+                                <div class="plugin-list-title">标题</div>
+                                <div class="plugin-list-settings">插件设置</div>
+                                <div class="plugin-list-toggle">启用/关闭</div>
+                                <div class="plugin-list-delete">删除</div>
+                            </div>
+                            <div class="plugin-list-row" v-for="manifest in installedPlugins" :key="manifest.id">
+                                <div class="plugin-list-title" :title="manifest.description || manifest.name">
+                                    <div class="plugin-name">{{ manifest.name }}</div>
+                                    <div class="plugin-meta">
+                                        <span v-if="manifest.version">v{{ manifest.version }}</span>
+                                        <span v-if="manifest.author">{{ manifest.author }}</span>
+                                    </div>
+                                </div>
+                                <div class="plugin-list-settings">
+                                    <div class="plugin-action" @click.stop="openPluginSettingsPanel(manifest.id)">插件设置</div>
+                                </div>
+                                <div class="plugin-list-toggle">
+                                    <div
+                                        class="toggle"
+                                        :class="{ 'toggle--disabled': !pluginSystemEnabled }"
+                                        @click.stop="pluginSystemEnabled && handlePluginToggle(manifest)"
+                                    >
+                                        <div
+                                            class="toggle-off"
+                                            :class="{ 'toggle-on-in': pluginStore.isPluginEnabled(manifest.id) }"
+                                        >
+                                            {{ pluginStore.isPluginEnabled(manifest.id) ? '已开启' : '已关闭' }}
+                                        </div>
+                                        <Transition name="toggle">
+                                            <div class="toggle-on" v-show="pluginStore.isPluginEnabled(manifest.id)"></div>
+                                        </Transition>
+                                    </div>
+                                </div>
+                                <div class="plugin-list-delete">
+                                    <div class="plugin-delete" @click.stop="removePlugin(manifest)">删除</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="plugin-empty" v-else>暂无安装插件</div>
+                    </div>
+                    <div class="plugin-settings-panel" v-else>
+                        <div class="plugin-settings-header">
+                            <div class="plugin-back" @click="closePluginSettingsPanel">返回</div>
+                            <div class="plugin-settings-title">{{ selectedPlugin?.name }}</div>
+                        </div>
+                        <div class="plugin-settings-body" ref="pluginSettingsScrollRef">
+                            <div class="plugin-settings-meta">
+                                <p class="plugin-description" v-if="selectedPlugin?.description">
+                                    {{ selectedPlugin.description }}
+                                </p>
+                                <div class="plugin-meta-info">
+                                    <span v-if="selectedPlugin?.version">版本：{{ selectedPlugin.version }}</span>
+                                    <span v-if="selectedPlugin?.author">作者：{{ selectedPlugin.author }}</span>
+                                </div>
+                                <div class="plugin-feature-list" v-if="selectedPlugin?.features && selectedPlugin.features.length">
+                                    <div class="plugin-feature-title">相关功能</div>
+                                    <ul>
+                                        <li v-for="feature in selectedPlugin.features" :key="feature">{{ feature }}</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <div class="plugin-settings-content">
+                                <template
+                                    v-if="selectedPlugin?.settings && selectedPlugin.settings.sections && selectedPlugin.settings.sections.length"
+                                >
+                                    <div
+                                        class="plugin-settings-section"
+                                        v-for="section in selectedPlugin.settings.sections"
+                                        :key="section.id || section.title"
+                                    >
+                                        <h3>{{ section.title }}</h3>
+                                        <p v-if="section.description" class="plugin-section-desc">{{ section.description }}</p>
+                                        <div
+                                            class="plugin-settings-field"
+                                            v-for="field in section.fields"
+                                            :key="field.key"
+                                        >
+                                            <div class="plugin-field-header">
+                                                <span class="plugin-field-label">{{ field.label }}</span>
+                                                <span class="plugin-field-help" v-if="field.description">{{ field.description }}</span>
+                                            </div>
+                                            <div class="plugin-field-control">
+                                                <template v-if="field.type === 'toggle'">
+                                                    <div
+                                                        class="toggle"
+                                                        @click.stop="handlePluginSettingChange(selectedPlugin, field, !getPluginFieldValue(selectedPlugin, field))"
+                                                    >
+                                                        <div
+                                                            class="toggle-off"
+                                                            :class="{ 'toggle-on-in': getPluginFieldValue(selectedPlugin, field) }"
+                                                        >
+                                                            {{ getPluginFieldValue(selectedPlugin, field) ? '已开启' : '已关闭' }}
+                                                        </div>
+                                                        <Transition name="toggle">
+                                                            <div class="toggle-on" v-show="getPluginFieldValue(selectedPlugin, field)"></div>
+                                                        </Transition>
+                                                    </div>
+                                                </template>
+                                                <template v-else-if="field.type === 'select'">
+                                                    <Selector
+                                                        :modelValue="getPluginFieldValue(selectedPlugin, field)"
+                                                        :options="field.options || []"
+                                                        @update:modelValue="value => handlePluginSettingChange(selectedPlugin, field, value)"
+                                                    />
+                                                </template>
+                                                <template v-else-if="field.type === 'text'">
+                                                    <input
+                                                        type="text"
+                                                        :placeholder="field.placeholder || ''"
+                                                        :value="getPluginFieldValue(selectedPlugin, field)"
+                                                        @input="event => handlePluginSettingChange(selectedPlugin, field, event.target.value)"
+                                                    />
+                                                </template>
+                                                <template v-else-if="field.type === 'textarea'">
+                                                    <textarea
+                                                        :rows="field.rows || 3"
+                                                        :placeholder="field.placeholder || ''"
+                                                        :value="getPluginFieldValue(selectedPlugin, field)"
+                                                        @input="event => handlePluginSettingChange(selectedPlugin, field, event.target.value)"
+                                                    ></textarea>
+                                                </template>
+                                                <template v-else-if="field.type === 'number'">
+                                                    <input
+                                                        type="number"
+                                                        :min="field.min"
+                                                        :max="field.max"
+                                                        :step="field.step || 1"
+                                                        :value="getPluginFieldValue(selectedPlugin, field)"
+                                                        @input="event => handlePluginSettingChange(selectedPlugin, field, Number(event.target.value))"
+                                                    />
+                                                </template>
+                                                <template v-else-if="field.type === 'button'">
+                                                    <div class="plugin-action" @click.stop="triggerPluginActionField(selectedPlugin, field)">
+                                                        {{ field.label }}
+                                                    </div>
+                                                </template>
+                                                <template v-else>
+                                                    <span class="plugin-field-unsupported">暂不支持的字段类型</span>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+                                <div class="plugin-settings-empty" v-else>该插件暂无可配置项。</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div class="logout" @click="userLogout()">
                     <span>退出</span>
                 </div>
@@ -2356,6 +2599,263 @@ const clearFmRecent = () => {
                         &:hover {
                             cursor: pointer;
                             box-shadow: 0 0 0 1px black;
+                        }
+                    }
+                }
+                &.settings-item--plugins {
+                    .item-options {
+                        .plugin-toolbar {
+                            display: flex;
+                            gap: 12px;
+                            margin-bottom: 24px;
+                            flex-wrap: wrap;
+                            .plugin-toolbar-button {
+                                padding: 6px 16px;
+                                background-color: rgba(255, 255, 255, 0.35);
+                                font: 13px SourceHanSansCN-Bold;
+                                color: black;
+                                transition: 0.2s;
+                                &:hover {
+                                    cursor: pointer;
+                                    box-shadow: 0 0 0 1px black;
+                                }
+                            }
+                            .plugin-toolbar-button--reload {
+                                background-color: rgba(0, 0, 0, 0.75);
+                                color: white;
+                                &:hover {
+                                    box-shadow: 0 0 0 1px black;
+                                    opacity: 0.92;
+                                }
+                            }
+                        }
+                        .plugin-list {
+                            width: 100%;
+                            border: 1px solid rgba(0, 0, 0, 0.1);
+                            border-radius: 8px;
+                            overflow: hidden;
+                            .plugin-list-header,
+                            .plugin-list-row {
+                                display: grid;
+                                grid-template-columns: 2fr 1fr 1fr 0.8fr;
+                                align-items: stretch;
+                                text-align: left;
+                            }
+                            .plugin-list-header {
+                                background: rgba(0, 0, 0, 0.08);
+                                font: 13px SourceHanSansCN-Bold;
+                                color: black;
+                                > div {
+                                    padding: 12px 16px;
+                                }
+                            }
+                            .plugin-list-row {
+                                border-top: 1px solid rgba(0, 0, 0, 0.08);
+                                font: 13px SourceHanSansCN-Bold;
+                                color: black;
+                                &:hover {
+                                    background: rgba(0, 0, 0, 0.04);
+                                }
+                                > div {
+                                    display: flex;
+                                    flex-direction: column;
+                                    justify-content: center;
+                                    padding: 12px 16px;
+                                }
+                                .plugin-list-title {
+                                    .plugin-name {
+                                        font-size: 14px;
+                                        font-weight: 600;
+                                        margin-bottom: 4px;
+                                    }
+                                    .plugin-meta {
+                                        display: flex;
+                                        flex-wrap: wrap;
+                                        gap: 8px;
+                                        font-size: 12px;
+                                        color: rgba(0, 0, 0, 0.6);
+                                    }
+                                }
+                                .plugin-list-settings,
+                                .plugin-list-delete {
+                                    align-items: center;
+                                }
+                                .plugin-list-toggle {
+                                    align-items: center;
+                                }
+                            }
+                        }
+                        .plugin-action,
+                        .plugin-delete {
+                            padding: 6px 16px;
+                            background-color: rgba(255, 255, 255, 0.35);
+                            display: inline-flex;
+                            justify-content: center;
+                            align-items: center;
+                            transition: 0.2s;
+                            &:hover {
+                                cursor: pointer;
+                                box-shadow: 0 0 0 1px black;
+                            }
+                        }
+                        .plugin-delete {
+                            color: #bb2a2a;
+                            &:hover {
+                                color: #ff3434;
+                            }
+                        }
+                        .plugin-empty {
+                            margin-top: 24px;
+                            font: 14px SourceHanSansCN-Bold;
+                            color: rgba(0, 0, 0, 0.6);
+                        }
+                        .toggle--disabled {
+                            opacity: 0.4;
+                            pointer-events: none;
+                        }
+                    }
+                    .plugin-settings-panel {
+                        display: flex;
+                        flex-direction: column;
+                        .plugin-settings-header {
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            margin-bottom: 20px;
+                            .plugin-back {
+                                padding: 6px 16px;
+                                background-color: rgba(255, 255, 255, 0.35);
+                                font: 13px SourceHanSansCN-Bold;
+                                color: black;
+                                transition: 0.2s;
+                                &:hover {
+                                    cursor: pointer;
+                                    box-shadow: 0 0 0 1px black;
+                                }
+                            }
+                            .plugin-settings-title {
+                                font: 18px SourceHanSansCN-Bold;
+                                color: black;
+                            }
+                        }
+                        .plugin-settings-body {
+                            max-height: 520px;
+                            overflow-y: auto;
+                            padding-right: 8px;
+                            display: flex;
+                            flex-direction: column;
+                            gap: 24px;
+                        }
+                        .plugin-settings-meta {
+                            display: flex;
+                            flex-direction: column;
+                            gap: 12px;
+                            .plugin-description {
+                                font: 14px SourceHanSansCN-Regular;
+                                color: rgba(0, 0, 0, 0.75);
+                                text-align: left;
+                            }
+                            .plugin-meta-info {
+                                display: flex;
+                                flex-wrap: wrap;
+                                gap: 16px;
+                                font: 12px SourceHanSansCN-Bold;
+                                color: rgba(0, 0, 0, 0.65);
+                            }
+                            .plugin-feature-list {
+                                text-align: left;
+                                .plugin-feature-title {
+                                    font: 13px SourceHanSansCN-Bold;
+                                    color: rgba(0, 0, 0, 0.7);
+                                    margin-bottom: 6px;
+                                }
+                                ul {
+                                    padding-left: 20px;
+                                    margin: 0;
+                                    li {
+                                        font: 13px SourceHanSansCN-Regular;
+                                        color: rgba(0, 0, 0, 0.7);
+                                        margin-bottom: 4px;
+                                    }
+                                }
+                            }
+                        }
+                        .plugin-settings-content {
+                            display: flex;
+                            flex-direction: column;
+                            gap: 24px;
+                            .plugin-settings-section {
+                                background: rgba(255, 255, 255, 0.35);
+                                padding: 20px;
+                                border-radius: 8px;
+                                h3 {
+                                    margin: 0 0 12px 0;
+                                    font: 16px SourceHanSansCN-Bold;
+                                    color: black;
+                                    text-align: left;
+                                }
+                                .plugin-section-desc {
+                                    margin-top: -4px;
+                                    margin-bottom: 16px;
+                                    font: 13px SourceHanSansCN-Regular;
+                                    color: rgba(0, 0, 0, 0.7);
+                                    text-align: left;
+                                }
+                                .plugin-settings-field {
+                                    display: flex;
+                                    flex-direction: column;
+                                    gap: 12px;
+                                    margin-bottom: 20px;
+                                    .plugin-field-header {
+                                        display: flex;
+                                        justify-content: space-between;
+                                        align-items: baseline;
+                                        text-align: left;
+                                        .plugin-field-label {
+                                            font: 14px SourceHanSansCN-Bold;
+                                            color: black;
+                                        }
+                                        .plugin-field-help {
+                                            font: 12px SourceHanSansCN-Regular;
+                                            color: rgba(0, 0, 0, 0.55);
+                                        }
+                                    }
+                                    .plugin-field-control {
+                                        display: flex;
+                                        flex-direction: column;
+                                        gap: 12px;
+                                        input,
+                                        textarea {
+                                            width: 100%;
+                                            padding: 8px 12px;
+                                            border: none;
+                                            outline: none;
+                                            font: 13px SourceHanSansCN-Regular;
+                                            color: black;
+                                            background: rgba(255, 255, 255, 0.9);
+                                            border-radius: 4px;
+                                            box-sizing: border-box;
+                                            transition: 0.2s;
+                                            &:focus {
+                                                box-shadow: 0 0 0 1px black;
+                                            }
+                                        }
+                                        textarea {
+                                            resize: vertical;
+                                            min-height: 90px;
+                                        }
+                                        .plugin-field-unsupported {
+                                            font: 12px SourceHanSansCN-Regular;
+                                            color: rgba(0, 0, 0, 0.45);
+                                        }
+                                    }
+                                }
+                            }
+                            .plugin-settings-empty {
+                                font: 14px SourceHanSansCN-Regular;
+                                color: rgba(0, 0, 0, 0.6);
+                                text-align: left;
+                            }
                         }
                     }
                 }
