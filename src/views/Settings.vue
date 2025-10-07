@@ -1118,6 +1118,9 @@ const save = () => {
 const toGithub = () => {
     windowApi.toRegister('https://github.com/ldx123000/Hydrogen-Music');
 };
+const toGithub2 = () => {
+    windowApi.toRegister('https://github.com/acnekot/Hydrogen-Music');
+};
 
 // 检查更新功能
 const checkForUpdates = () => {
@@ -1237,34 +1240,6 @@ const clearFmRecent = () => {
                                 </div>
                                 <div class="option-add" @click="chooseCustomBackgroundImage">选择</div>
                                 <div class="option-reset" v-if="playerStore.customBackgroundImage" @click="clearCustomBackgroundImage">清除</div>
-                            </div>
-                        </div>
-                        <div class="option" v-if="playerStore.customBackgroundEnabled">
-                            <div class="option-name">应用到全界面</div>
-                            <div class="option-operation option-operation--selector">
-                                <div class="selector-wrapper">
-                                    <Selector
-                                        v-model="playerStore.customBackgroundApplyToChrome"
-                                        :options="customBackgroundApplyScopeOptions"
-                                    />
-                                </div>
-                                <div class="option-reset" @click="resetCustomBackgroundApplyToChrome">重置</div>
-                            </div>
-                        </div>
-                        <div class="option" v-if="playerStore.customBackgroundEnabled">
-                            <div class="option-name">应用到播放页</div>
-                            <div class="option-operation">
-                                <div class="toggle" @click="toggleCustomBackgroundApplyToPlayer()">
-                                    <div
-                                        class="toggle-off"
-                                        :class="{ 'toggle-on-in': playerStore.customBackgroundApplyToPlayer }"
-                                    >
-                                        {{ playerStore.customBackgroundApplyToPlayer ? '已开启' : '已关闭' }}
-                                    </div>
-                                    <Transition name="toggle">
-                                        <div class="toggle-on" v-show="playerStore.customBackgroundApplyToPlayer"></div>
-                                    </Transition>
-                                </div>
                             </div>
                         </div>
                         <div class="option" v-if="playerStore.customBackgroundEnabled">
@@ -1805,7 +1780,8 @@ const clearFmRecent = () => {
                 <div class="update-check">
                     <button class="check-update-btn" @click="checkForUpdates">检查更新</button>
                 </div>
-                <div class="app-author" @click="toGithub()">Made by ldx123000 | Modified from Hydrogen Music</div>
+                <div class="app-author" @click="toGithub()">Fix by ldx123000 | Modified from Hydrogen Music</div>
+                <div class="app-author" @click="toGithub2()">Made by acnekot</div>                
             </div>
         </div>
         

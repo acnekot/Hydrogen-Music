@@ -1,9 +1,8 @@
 <br />
 <p align="center">
 
-  <h2 align="center" style="font-weight: 600">Hydrogen Music 复活版 新特性试验场</h2>
-  <h3>这个分支的维护和ldx123000没有关系，属于我@acnekot的另外分支</h3>
-  <h3>在此感谢ldx123000大佬的维护</h3>
+  <h2 align="center" style="font-weight: 600">Hydrogen Music 复活版 试验场</h2>
+
   <p align="center">
     首先感谢原作者的绝佳创意和辛勤付出：<a href="https://github.com/Kaidesuyo/Hydrogen-Music" target="blank"><strong>Hydrogen-Music</strong></a>
     <br />
@@ -13,14 +12,19 @@
     ⚠️ 如果原作者觉得不妥可以与我联系，我将删除该仓库
     <br />
     <a href="#%EF%B8%8F-安装" target="blank"><strong>📦️ 下载安装包</strong></a>
+    <h3 align="center">此分支是独立于<a href="https://github.com/Kaidesuyo/Hydrogen-Music" target="blank"><strong>Hydrogen-Music</strong></a>的分支
+    <br />将由我acnekot进行维护 </h3>
+    <h3 align="center">在此感谢ldx123000大佬的维护</h3>
     <br />
     <br />
   </p>
 </p>
 
-## 注意
-- 此分支代码部分由AI编写，容易出现BUG过多的情况
-- 如果出现了bug尽管提issue
+# 注意
+- ### 此分支代码部分由AI编写，容易出现BUG过多的情况
+- ### 如果出现了bug尽管提issue
+<br/>
+<br/>
 
 ## 🌟 主要特性
 
@@ -34,11 +38,13 @@
 - 新增 **电台** 功能，可以在我的音乐-收藏-电台中找到，目前仅允许收听已收藏的电台节目
 - 新增 **深色模式**功能，可在设置中自行调节浅色/深色模式
 - 支持了多系统版本的安装包
+- 新增 **音频可视化**功能，可以在设置种进行调整，拥有两个样式
+- 新增 **自定义背景**功能，可以在设置设置壁纸和其的模糊度、亮度（目前在播放页无效）
 
   
 ## 📦️ 安装
 
-访问 [Releases](https://github.com/ldx123000/Hydrogen-Music/releases)
+访问 [Releases](https://github.com/acnekot/Hydrogen-Music/releases)
 页面下载安装包。
 
 ## 👷‍♂️ 打包客户端
@@ -81,6 +87,7 @@ npm start
 ![desktop-lyric][desktop-lyric-screenshot]
 ![comment][comment-screenshot]
 ![privateFM][privateFM-screenshot]
+![music_view][music_view-screenshot]
 ![dark_mode][dark_mode-screenshot]
 ![music_video][music_video-screenshot]
 
@@ -94,3 +101,4 @@ npm start
 [privateFM-screenshot]: img/privateFM.png
 [dark_mode-screenshot]: img/dark_mode.png
 [music_video-screenshot]: img/music_video.png
+[music_view-screenshot]: img/music_view.png
