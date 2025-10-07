@@ -12,6 +12,7 @@ import { useLocalStore } from '../store/localStore';
 import { useOtherStore } from '../store/otherStore';
 import { storeToRefs } from 'pinia';
 import { toggleDesktopLyric } from '../utils/desktopLyric';
+import { noticeOpen } from '../utils/dialog';
 import { usePluginStore } from '../store/pluginStore';
 
 // 定义 props 和 emit
@@ -106,7 +107,45 @@ const hasRomaLyric = computed(() => {
     return lyricsObjArr.value.some(item => item.rlyric && item.rlyric.trim() !== '');
 });
 
-const desktopLyricAvailable = computed(() => pluginStore.isPluginEnabled('desktop-lyric'));
+const hasDesktopLyricPlugin = computed(() =>
+    (pluginStore.installedPlugins || []).some(plugin => plugin?.id === 'desktop-lyric')
+);
+
+const desktopLyricEntryEnabled = computed(() => {
+    if (!pluginStore.enabled) return false;
+    if (!pluginStore.isPluginEnabled('desktop-lyric')) return false;
+    const settings = pluginStore.getPluginSettings('desktop-lyric') || {};
+    if (Object.prototype.hasOwnProperty.call(settings, 'entryEnabled')) {
+        return !!settings.entryEnabled;
+    }
+    return true;
+});
+
+const desktopLyricButtonState = computed(() => {
+    if (!hasDesktopLyricPlugin.value) {
+        return { enabled: false, reason: '未安装桌面歌词插件，请在设置-插件中导入。' };
+    }
+    if (!pluginStore.enabled) {
+        return { enabled: false, reason: '请先在设置-插件中开启插件功能。' };
+    }
+    if (!pluginStore.isPluginEnabled('desktop-lyric')) {
+        return { enabled: false, reason: '请在插件列表中启用桌面歌词插件。' };
+    }
+    if (!desktopLyricEntryEnabled.value) {
+        return { enabled: false, reason: '桌面歌词入口已在插件设置中关闭。' };
+    }
+    return { enabled: true, reason: '' };
+});
+
+const handleDesktopLyricClick = () => {
+    if (!desktopLyricButtonState.value.enabled) {
+        if (desktopLyricButtonState.value.reason) {
+            noticeOpen(desktopLyricButtonState.value.reason, 2);
+        }
+        return;
+    }
+    toggleDesktopLyric();
+};
 
 const toAlbum = () => {
     const currentSong = songList.value?.[currentIndex.value];
@@ -701,9 +740,11 @@ const toggleDjSub = async (isSubscribe) => {
                 </svg>
                 <!-- 桌面歌词控制按钮 -->
                 <svg
-                    v-if="desktopLyricAvailable"
-                    @click="toggleDesktopLyric"
-                    :class="{ active: isDesktopLyricOpen }"
+                    @click="handleDesktopLyricClick"
+                    :class="{
+                        active: isDesktopLyricOpen && desktopLyricButtonState.enabled,
+                        'desktop-lyric-btn--disabled': !desktopLyricButtonState.enabled,
+                    }"
                     class="icon desktop-lyric-btn"
                     viewBox="0 0 1024 1024"
                     xmlns="http://www.w3.org/2000/svg"
@@ -1170,6 +1211,14 @@ const toggleDjSub = async (isSubscribe) => {
 
             path {
                 fill: #000000;
+            }
+        }
+
+        &--disabled {
+            opacity: 0.35;
+
+            path {
+                fill: #c0c0c0;
             }
         }
 
