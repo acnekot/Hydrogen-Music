@@ -75,8 +75,20 @@ export default {
 - `activatePlugin(name)`：手动激活指定插件。
 - `deactivatePlugin(name)`：停用指定插件，并调用其卸载函数。
 - `emitHook(name, payload)`：从应用层触发钩子事件。
+- `enablePlugin(name)` / `disablePlugin(name)`：更新插件启用状态，并自动触发激活/卸载流程，同时持久化到插件设置存储中。
+- `removePlugin(name, options?)`：移除可删除的插件。默认仅在设置中标记为已删除，传入 `{ forgetState: true }` 将彻底清除相关记录。
+- `restorePlugin(name)`：在插件被标记删除后重新恢复，便于调试临时停用的插件。
+- `exportSettings()` / `importSettings(payload, options?)`：导出或导入插件启用/删除等状态。`importSettings` 默认会同步激活状态，可通过 `options.syncActivation = false` 延迟处理。
 
 在 Vue 组件中可以通过 `this.$plugins` 访问这些能力。
+
+### 插件设置存储
+
+插件管理器会通过 `PluginSettingsStore` 自动记住插件的启用、禁用和删除状态，默认使用浏览器的 `localStorage`（Electron 版本也适用）。
+
+- 自定义存储：可以在创建插件管理器时通过 `createPluginManager(app, { storage, settingsKey })` 传入实现了 `getItem` / `setItem` 的存储适配器或自定义 key。
+- 导入/导出：借助上文的 `exportSettings` 与 `importSettings`，可以轻松备份或迁移插件设置。
+- 删除策略：`removePlugin(name)` 会停止插件并在设置中打上删除标记；若想彻底移除并遗忘该插件，传入 `{ forgetState: true }`。
 
 ## 示例插件
 

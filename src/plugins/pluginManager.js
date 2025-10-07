@@ -1,4 +1,92 @@
 const DEFAULT_SCOPE = 'global'
+const DEFAULT_STORAGE_KEY = 'hydrogen.plugins.settings'
+
+export class PluginSettingsStore {
+  constructor(options = {}) {
+    const { storageKey = DEFAULT_STORAGE_KEY, storage = null } = options
+    this.storageKey = storageKey
+    this.storage = storage ?? (typeof window !== 'undefined' ? window.localStorage : null)
+    this.state = { plugins: {} }
+    this._load()
+  }
+
+  _load() {
+    if (!this.storage) return
+    try {
+      const raw = this.storage.getItem(this.storageKey)
+      if (!raw) return
+      const parsed = JSON.parse(raw)
+      if (parsed && typeof parsed === 'object') {
+        const plugins = parsed.plugins
+        if (plugins && typeof plugins === 'object') {
+          this.state.plugins = { ...plugins }
+        }
+      }
+    } catch (error) {
+      console.warn('[PluginManager] Failed to parse stored plugin settings.', error)
+    }
+  }
+
+  _persist() {
+    if (!this.storage) return
+    try {
+      this.storage.setItem(this.storageKey, JSON.stringify(this.state))
+    } catch (error) {
+      console.warn('[PluginManager] Failed to persist plugin settings.', error)
+    }
+  }
+
+  getState(name) {
+    return this.state.plugins?.[name] ?? null
+  }
+
+  setState(name, patch) {
+    if (!name) return null
+    const next = {
+      ...(this.state.plugins?.[name] ?? {}),
+      ...(patch ?? {})
+    }
+    if (next.removed) {
+      next.enabled = false
+    }
+    if (!this.state.plugins || typeof this.state.plugins !== 'object') {
+      this.state.plugins = {}
+    }
+    this.state.plugins[name] = next
+    this._persist()
+    return next
+  }
+
+  deleteState(name) {
+    if (!name || !this.state.plugins) return
+    if (this.state.plugins[name]) {
+      delete this.state.plugins[name]
+      this._persist()
+    }
+  }
+
+  list() {
+    return { ...(this.state.plugins ?? {}) }
+  }
+
+  export() {
+    return JSON.parse(JSON.stringify(this.state))
+  }
+
+  import(payload, { merge = true } = {}) {
+    if (!payload || typeof payload !== 'object') return
+    const incoming = payload.plugins
+    if (!incoming || typeof incoming !== 'object') return
+    if (!merge) {
+      this.state.plugins = {}
+    }
+    this.state.plugins = {
+      ...(this.state.plugins ?? {}),
+      ...incoming
+    }
+    this._persist()
+  }
+}
 
 class HookRegistry {
   constructor() {
@@ -50,6 +138,11 @@ export class PluginManager {
     this.scope = options.scope ?? DEFAULT_SCOPE
     this.plugins = new Map()
     this.hooks = new HookRegistry()
+    this.settingsStore = options.settingsStore ?? new PluginSettingsStore({
+      storageKey: options.settingsKey,
+      storage: options.storage
+    })
+    this.moduleSources = new Map()
   }
 
   loadFromModules(modules) {
@@ -77,14 +170,27 @@ export class PluginManager {
       console.warn(`[PluginManager] Plugin "${name}" is already registered.`)
       return
     }
+    const storedState = this.settingsStore?.getState(name)
+    this.moduleSources.set(name, { plugin, source })
+    if (storedState?.removed) {
+      return
+    }
+    const enabled = storedState?.enabled ?? (plugin.enabled !== false)
     this.plugins.set(name, {
       ...plugin,
       name,
-      enabled: plugin.enabled !== false,
+      enabled,
       source,
       isActive: false,
-      teardown: null
+      teardown: null,
+      removable: plugin.removable === true || source === 'inline'
     })
+    if (this.settingsStore) {
+      this.settingsStore.setState(name, {
+        enabled,
+        removed: false
+      })
+    }
   }
 
   getPlugin(name) {
@@ -156,6 +262,86 @@ export class PluginManager {
       if (plugin.enabled === false) continue
       await this.activatePlugin(plugin.name)
     }
+  }
+
+  async enablePlugin(name) {
+    const plugin = this.plugins.get(name)
+    if (plugin) {
+      plugin.enabled = true
+      this.settingsStore?.setState(name, { enabled: true, removed: false })
+      await this.activatePlugin(name)
+      return
+    }
+    this.settingsStore?.setState(name, { enabled: true, removed: false })
+  }
+
+  async disablePlugin(name) {
+    const plugin = this.plugins.get(name)
+    if (plugin) {
+      plugin.enabled = false
+      this.settingsStore?.setState(name, { enabled: false, removed: false })
+      await this.deactivatePlugin(name)
+      return
+    }
+    this.settingsStore?.setState(name, { enabled: false, removed: false })
+  }
+
+  async removePlugin(name, { forgetState = false } = {}) {
+    const plugin = this.plugins.get(name)
+    if (plugin) {
+      if (plugin.removable === false) {
+        console.warn(`[PluginManager] Plugin "${name}" is not removable.`)
+        return
+      }
+      await this.deactivatePlugin(name)
+      this.plugins.delete(name)
+    }
+    if (this.settingsStore) {
+      if (forgetState) {
+        this.settingsStore.deleteState(name)
+        this.moduleSources.delete(name)
+      } else {
+        this.settingsStore.setState(name, { removed: true, enabled: false })
+      }
+    }
+  }
+
+  restorePlugin(name) {
+    const stored = this.settingsStore?.getState(name)
+    if (stored?.removed) {
+      this.settingsStore.setState(name, { removed: false })
+    }
+    if (this.plugins.has(name)) return this.plugins.get(name)
+    const definition = this.moduleSources.get(name)
+    if (definition) {
+      this.registerPlugin(definition.plugin, definition.source)
+      return this.plugins.get(name) ?? null
+    }
+    return null
+  }
+
+  exportSettings() {
+    return this.settingsStore?.export() ?? { plugins: {} }
+  }
+
+  async importSettings(payload, options = {}) {
+    const { merge = true, syncActivation = true } = options
+    this.settingsStore?.import(payload, { merge })
+    if (!syncActivation) return
+    const state = this.settingsStore?.list() ?? {}
+    await Promise.all(
+      Object.entries(state).map(async ([name, meta]) => {
+        if (meta.removed) {
+          await this.removePlugin(name)
+          return
+        }
+        if (meta.enabled) {
+          await this.enablePlugin(name)
+        } else {
+          await this.disablePlugin(name)
+        }
+      })
+    )
   }
 }
 
