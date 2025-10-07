@@ -1,0 +1,220 @@
+.plugin-settings-root {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.plugin-section {
+    display: flex;
+    flex-direction: column;
+}
+
+.plugin-section + .plugin-section {
+    margin-top: 24px;
+}
+
+.plugin-section-title {
+    font-family: SourceHanSansCN-Bold;
+    font-size: 18px;
+    color: black;
+    margin: 0 0 12px;
+}
+
+.plugin-section-description {
+    margin: 0 0 16px;
+    font: 13px SourceHanSansCN-Bold;
+    color: rgba(0, 0, 0, 0.65);
+}
+
+.plugin-option {
+    margin-bottom: 24px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.plugin-option:last-child {
+    margin-bottom: 0;
+}
+
+.plugin-option-name {
+    font-family: SourceHanSansCN-Bold;
+    font-size: 16px;
+    color: black;
+    text-align: left;
+}
+
+.plugin-option-operation {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.plugin-option-operation--column {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.plugin-option-helper {
+    font: 12px SourceHanSansCN-Bold;
+    color: rgba(0, 0, 0, 0.6);
+}
+
+.plugin-toggle {
+    width: 200px;
+    height: 34px;
+    position: relative;
+    overflow: hidden;
+    background-color: transparent;
+    cursor: pointer;
+}
+
+.plugin-toggle-inner,
+.plugin-toggle-label {
+    padding: 5px 10px;
+    width: 100%;
+    height: 100%;
+    font: 13px SourceHanSansCN-Bold;
+    line-height: 24px;
+    transition: 0.2s;
+    box-sizing: border-box;
+}
+
+.plugin-toggle-label {
+    background-color: rgba(255, 255, 255, 0.35);
+    color: black;
+}
+
+.plugin-toggle-inner {
+    background-color: black;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: -1;
+}
+
+.plugin-toggle-label.plugin-toggle-label--active {
+    color: white;
+    background-color: transparent;
+}
+
+.plugin-toggle--small {
+    width: 160px;
+}
+
+.plugin-button {
+    padding: 5px 12px;
+    background-color: rgba(255, 255, 255, 0.35);
+    font: 13px SourceHanSansCN-Bold;
+    color: black;
+    transition: 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 34px;
+    cursor: pointer;
+    border: none;
+    outline: none;
+}
+
+.plugin-button:hover {
+    opacity: 0.8;
+    box-shadow: 0 0 0 1px black;
+}
+
+.plugin-button--danger {
+    color: white;
+    background-color: rgba(220, 53, 69, 0.8);
+}
+
+.plugin-button--danger:hover {
+    box-shadow: 0 0 0 1px white;
+}
+
+.plugin-info-text {
+    min-width: 200px;
+    min-height: 34px;
+    padding: 5px 10px;
+    font: 13px SourceHanSansCN-Bold;
+    color: black;
+    background-color: rgba(255, 255, 255, 0.35);
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+}
+
+.plugin-info-text--block {
+    width: 100%;
+    min-width: 0;
+}
+
+.plugin-option-operation .plugin-selector,
+.plugin-selector {
+    width: 200px;
+    height: 34px;
+    padding: 5px 10px;
+    font: 13px SourceHanSansCN-Bold;
+    color: black;
+    background-color: rgba(255, 255, 255, 0.35);
+    border: none;
+    outline: none;
+    text-align: center;
+    transition: 0.2s;
+    box-sizing: border-box;
+}
+
+.plugin-option-operation .plugin-selector:hover,
+.plugin-selector:hover {
+    opacity: 0.8;
+}
+
+.plugin-option-operation .plugin-selector:focus,
+.plugin-selector:focus {
+    box-shadow: 0 0 0 1px black;
+}
+
+.plugin-info-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.plugin-info-list-item {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+}
+
+.plugin-info-list-label {
+    font: 13px SourceHanSansCN-Bold;
+    color: black;
+}
+
+.plugin-info-list-value {
+    flex: 1;
+    min-width: 0;
+    background-color: rgba(255, 255, 255, 0.35);
+    padding: 5px 10px;
+    font: 13px SourceHanSansCN-Bold;
+    color: black;
+    min-height: 34px;
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+}
+
+.plugin-divider {
+    width: 100%;
+    height: 0.5px;
+    background-color: rgba(0, 0, 0, 0.2);
+}
+
+.plugin-note {
+    font: 12px SourceHanSansCN-Bold;
+    color: rgba(0, 0, 0, 0.6);
+}

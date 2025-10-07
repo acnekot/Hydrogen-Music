@@ -1,0 +1,9 @@
+{
+  "id": "theme-showcase",
+  "name": "主题美化插件",
+  "version": "1.0.0",
+  "description": "自定义强调色与动态背景，打造个性化主题。",
+  "author": "Hydrogen Music",
+  "categories": ["theme"],
+  "entry": "index.js"
+}
