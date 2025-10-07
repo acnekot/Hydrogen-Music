@@ -1,4 +1,8 @@
 import request from "../utils/request";
+import pinia from '../store/pinia'
+import { useServiceProviderStore } from '../store/serviceProviderStore'
+
+const serviceProviderStore = useServiceProviderStore(pinia)
 
 /**
  * 调用此接口可生成一个 key
@@ -114,11 +118,14 @@ export function loginByCookie(cookie) {
  * @returns 
  */
 export function logout() {
+    if (serviceProviderStore.current === 'kugou') {
+        return Promise.resolve({ code: 200 })
+    }
     return request({
         url: '/logout',
         method: 'post',
         params: {
-        
+
         },
     });
 }

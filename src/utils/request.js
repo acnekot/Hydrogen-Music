@@ -1,10 +1,12 @@
 import axios from "axios";
-import { getCookie, isLogin, clearLoginCookies } from '../utils/authority'
+import { getCookie, isLogin, clearLoginCookies, getKugouCookieString } from '../utils/authority'
 import pinia from "../store/pinia";
 import { useLibraryStore } from '../store/libraryStore'
 import { useUserStore } from '../store/userStore'
+import { useServiceProviderStore } from '../store/serviceProviderStore'
 
 const libraryStore = useLibraryStore(pinia)
+const serviceProviderStore = useServiceProviderStore(pinia)
 
 import { noticeOpen } from "./dialog";
 
@@ -55,17 +57,32 @@ request.interceptors.request.use(function (config) {
   if (enhancedApi && config.useEnhancedApi) {
     return config;
   }
-  
-  if(config.url != '/login/qr/check' && isLogin())
-    config.params.cookie = `MUSIC_U=${getCookie('MUSIC_U')};`;
-  if(libraryStore.needTimestamp.indexOf(config.url) != -1) {
-    config.params.timestamp = new Date().getTime()
+
+  const providerConfig = serviceProviderStore.currentConfig || {}
+  if (providerConfig.apiBase) {
+    config.baseURL = providerConfig.apiBase
   }
-  
-  // 添加国内IP伪装来解决524环境异常错误
-  config.headers['X-Real-IP'] = '211.161.244.70'; // 国内IP地址
-  config.headers['X-Forwarded-For'] = '211.161.244.70';
-  
+
+  config.params = config.params || {}
+  config.headers = config.headers || {}
+
+  if (serviceProviderStore.current === 'kugou') {
+    const kugouCookie = getKugouCookieString()
+    if (kugouCookie) {
+      config.headers['Cookie'] = kugouCookie
+    }
+  } else {
+    if(config.url != '/login/qr/check' && isLogin()) {
+      config.params.cookie = `MUSIC_U=${getCookie('MUSIC_U')};`;
+    }
+    if(libraryStore.needTimestamp.indexOf(config.url) != -1) {
+      config.params.timestamp = new Date().getTime()
+    }
+
+    config.headers['X-Real-IP'] = '211.161.244.70';
+    config.headers['X-Forwarded-For'] = '211.161.244.70';
+  }
+
   // 在发送请求之前做些什么
   return config;
 }, function (error) {

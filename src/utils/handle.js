@@ -13,5 +13,7 @@ export function loginHandle(data, type) {
     getUserProfile().then(result => {
         updateUser(result.profile)
         getUserLikelist()
+    }).catch(error => {
+        console.error('获取用户信息失败:', error)
     })
 }

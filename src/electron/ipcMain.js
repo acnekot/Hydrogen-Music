@@ -183,7 +183,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                 ],
                 other: {
                     globalShortcuts: true,
-                    quitApp: 'minimize'
+                    quitApp: 'minimize',
+                    cloudProvider: 'netease'
                 }
             }
             settingsStore.set('settings', initSettings)
@@ -673,6 +674,118 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                 }
             })
         })
+    })
+
+    ipcMain.handle('open-kugou-login', async () => {
+        return new Promise((resolve) => {
+            const loginSession = session.fromPartition('kugou-login-' + Date.now(), {
+                cache: false
+            })
+
+            const loginWindow = new BrowserWindow({
+                width: 900,
+                height: 700,
+                title: '酷狗音乐登录',
+                autoHideMenuBar: true,
+                webPreferences: {
+                    nodeIntegration: false,
+                    contextIsolation: true,
+                    webSecurity: true,
+                    session: loginSession
+                }
+            })
+
+            const cleanup = () => {
+                try { loginSession.cookies.removeListener('changed', handleCookieChanged) } catch (_) {}
+                if (!loginWindow.isDestroyed()) {
+                    loginWindow.close()
+                }
+            }
+
+            const finalize = (payload) => {
+                cleanup()
+                resolve(payload)
+            }
+
+            const checkLoginStatus = async () => {
+                try {
+                    const domains = ['.kugou.com', '.kgimg.com', '.kugou.com.cn']
+                    let cookies = []
+                    for (const domain of domains) {
+                        const domainCookies = await loginSession.cookies.get({ domain })
+                        cookies = cookies.concat(domainCookies)
+                    }
+
+                    const hasAuthCookie = cookies.some(cookie => {
+                        const name = (cookie.name || '').toLowerCase()
+                        return name.includes('kg_mid') || name.includes('kugou') || name.includes('userid')
+                    })
+
+                    if (hasAuthCookie) {
+                        const cookieString = cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ')
+                        finalize({
+                            success: true,
+                            cookies: cookieString,
+                            message: '登录成功'
+                        })
+                        return true
+                    }
+                } catch (error) {
+                    console.error('检查酷狗登录状态失败:', error)
+                }
+                return false
+            }
+
+            const handleCookieChanged = async () => {
+                const loggedIn = await checkLoginStatus()
+                if (loggedIn) {
+                    try { loginSession.cookies.removeListener('changed', handleCookieChanged) } catch (_) {}
+                }
+            }
+
+            loginSession.cookies.on('changed', handleCookieChanged)
+
+            loginWindow.on('closed', () => {
+                finalize({ success: false, message: '用户取消登录' })
+            })
+
+            loginWindow.loadURL('https://passport.kugou.com/login')
+
+            loginWindow.webContents.on('did-finish-load', () => {
+                checkLoginStatus()
+            })
+        })
+    })
+
+    ipcMain.handle('clear-kugou-session', async () => {
+        try {
+            await session.defaultSession.clearStorageData({
+                storages: ['cookies', 'localstorage', 'sessionstorage'],
+                quotas: ['temporary', 'persistent', 'syncable'],
+                origin: 'https://www.kugou.com'
+            })
+
+            const cookies = await session.defaultSession.cookies.get({
+                domain: '.kugou.com'
+            })
+
+            for (const cookie of cookies) {
+                const protocol = cookie.secure ? 'https://' : 'http://'
+                try {
+                    await session.defaultSession.cookies.remove(
+                        `${protocol}${cookie.domain}${cookie.path}`,
+                        cookie.name
+                    )
+                } catch (error) {
+                    console.warn('移除酷狗Cookie失败:', cookie.name, error)
+                }
+            }
+
+            return { success: true, message: '酷狗登录session已清理' }
+        } catch (error) {
+            console.error('清理酷狗session失败:', error)
+            return { success: false, message: '清理失败' }
+        }
     })
 
     // 清理登录session的辅助方法

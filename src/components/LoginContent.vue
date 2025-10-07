@@ -1,13 +1,19 @@
 <script setup>
-  import { onActivated, ref } from 'vue'
+  import { computed, onActivated, ref } from 'vue'
   import { useRoute, useRouter } from 'vue-router'
   import LoginByQRCode from './LoginByQRCode.vue';
   import LoginByAccount from './LoginByAccount.vue';
   import LoginByCookie from './LoginByCookie.vue';
   import LoginByEmbedded from './LoginByEmbedded.vue';
+  import LoginByKugouEmbedded from './LoginByKugouEmbedded.vue';
+  import { useServiceProviderStore, resolveProviderConfig } from '../store/serviceProviderStore';
 
   const route = useRoute()
   const router = useRouter()
+  const serviceProviderStore = useServiceProviderStore()
+  const activeProvider = computed(() => route.query.provider || serviceProviderStore.current)
+  const isNetease = computed(() => activeProvider.value === 'netease')
+  const providerConfig = computed(() => resolveProviderConfig(activeProvider.value))
   //通过网易云还是本地
   const accountMode = ref(route.query.mode)
 
@@ -24,8 +30,12 @@
   const jumpPage = ref(false)
 
   onActivated(() => {
+    if (!isNetease.value) {
+      return
+    }
+
     accountMode.value = parseInt(route.query.mode) || 0
-    
+
     // 如果是一键登录模式(mode=4)，设置相应的状态
     if(parseInt(route.query.mode) == 4) {
       currentMode.value = 4
@@ -34,7 +44,7 @@
       currentMode.value = 0
       loginMode.value = parseInt(route.query.mode) || 0
     }
-    
+
     if(accountMode.value == 0) {
         loginByQR.value.checkQR()
     }
@@ -53,7 +63,9 @@
   }
 
   // 初始化
-  initializeMode()
+  if (isNetease.value) {
+    initializeMode()
+  }
 
   const changeMode =(mode) => {
     if(mode != 2) {
@@ -93,14 +105,14 @@
 
 <template>
   <div class="login-content" :class="{'jumpPage': jumpPage}">
-    <div class="login-container">
+    <div class="login-container" v-if="isNetease">
         <div class="login-header">
             <div class="login-icon">
                 <img src="../assets/img/netease-music.png" alt="">
             </div>
             <span class="login-title">登录网易云账号</span>
         </div>
-        
+
         <LoginByQRCode class="qrcode-container" ref="loginByQR" @jumpTo="jumpTo" :firstLoadMode="loginMode" v-show="loginMode == 0 && accountMode == 0"></LoginByQRCode>
         <LoginByAccount class="account-container" ref="loginByAC" @jumpTo="jumpTo" :currentMode="currentMode"  v-show="loginMode == 1 && (currentMode == 0 || currentMode == 1)"></LoginByAccount>
         <LoginByCookie class="cookie-container" ref="loginByCK" @jumpTo="jumpTo" v-show="loginMode == 1 && currentMode == 3"></LoginByCookie>
@@ -143,6 +155,18 @@
             </div>
         </div>
     </div>
+    <div class="login-container kugou" v-else>
+        <div class="login-header">
+            <div class="login-icon kugou">
+                <img :src="providerConfig.icon" :alt="providerConfig.label">
+            </div>
+            <span class="login-title">{{ providerConfig.loginTitle }}</span>
+        </div>
+        <LoginByKugouEmbedded class="embedded-container" @jumpTo="jumpTo" />
+        <div class="login-other kugou">
+            <span class="qrcode-tip">点击下方按钮，在弹出的窗口中完成{{ providerConfig.label }}登录</span>
+        </div>
+    </div>
   </div>
 </template>
 
@@ -154,6 +178,29 @@
         flex-direction: column;
         justify-content: center;
         height: calc(100% - 120px);
+        &.kugou {
+            .login-header {
+                .login-icon {
+                    background-color: rgba(0, 122, 255, 0.15);
+                    border-radius: 18%;
+                    &.kugou img {
+                        border-radius: 18%;
+                    }
+                }
+                .login-title {
+                    color: black;
+                }
+            }
+            .embedded-container {
+                margin-top: 4vh;
+            }
+            .login-other.kugou {
+                margin-top: 5vh;
+                .qrcode-tip {
+                    color: #007aff;
+                }
+            }
+        }
         .login-header{
             display: flex;
             flex-direction: column;

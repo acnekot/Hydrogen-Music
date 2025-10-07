@@ -7,6 +7,7 @@ import { getUserProfile, getLikelist, getUserPlaylist } from '../api/user'
 import { useUserStore } from '../store/userStore'
 import { usePlayerStore } from '../store/playerStore'
 import { useLocalStore } from '../store/localStore'
+import { useServiceProviderStore } from '../store/serviceProviderStore'
 import { storeToRefs } from 'pinia'
 
 const userStore = useUserStore(pinia)
@@ -14,6 +15,7 @@ const playerStore = usePlayerStore()
 const { quality, lyricSize, tlyricSize, rlyricSize, lyricInterludeTime } = storeToRefs(playerStore)
 const localStore = useLocalStore()
 const { updateUser } = userStore
+const serviceProviderStore = useServiceProviderStore(pinia)
 
 export const initSettings = () => {
     windowApi.getSettings().then(settings => {
@@ -25,6 +27,7 @@ export const initSettings = () => {
         localStore.downloadedFolderSettings = settings.local.downloadFolder
         localStore.localFolderSettings = settings.local.localFolder
         localStore.quitApp = settings.other.quitApp
+        serviceProviderStore.setProvider(settings.other?.cloudProvider || serviceProviderStore.current)
         if(localStore.downloadedFolderSettings && !localStore.downloadedMusicFolder) {
             scanMusic({type:'downloaded',refresh:false})
         }

@@ -11,10 +11,12 @@ import { usePlayerStore } from '../store/playerStore';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
 import { setTheme, getSavedTheme } from '../utils/theme';
+import { useServiceProviderStore } from '../store/serviceProviderStore';
 
 const router = useRouter();
 const userStore = useUserStore();
 const playerStore = usePlayerStore();
+const serviceProviderStore = useServiceProviderStore();
 
 const vipInfo = ref(null);
 const musicLevel = ref('standard');
@@ -69,6 +71,8 @@ const shortcutsList = ref(null);
 const selectedShortcut = ref(null);
 const newShortcut = ref([]);
 const shortcutCharacter = ['=', '-', '~', '@', '#', '$', '[', ']', ';', "'", ',', '.', '/', '!'];
+const cloudProvider = ref(serviceProviderStore.current);
+const cloudProviderOptions = computed(() => serviceProviderStore.providerOptions);
 
 // 更新相关状态
 const showUpdateDialog = ref(false);
@@ -93,6 +97,7 @@ onActivated(() => {
         shortcutsList.value = settings.shortcuts;
         globalShortcuts.value = settings.other.globalShortcuts;
         quitApp.value = settings.other.quitApp;
+        cloudProvider.value = settings.other.cloudProvider || serviceProviderStore.current;
     });
 
     // Initialize theme selection
@@ -133,6 +138,7 @@ const setAppSettings = () => {
         other: {
             globalShortcuts: globalShortcuts.value,
             quitApp: quitApp.value,
+            cloudProvider: cloudProvider.value,
         },
     };
     windowApi.setSettings(JSON.stringify(settings));
@@ -917,6 +923,10 @@ const lyricVisualizerColorOptions = [
 
 // apply theme immediately when user changes
 watch(theme, (val) => setTheme(val));
+
+watch(cloudProvider, (val) => {
+    serviceProviderStore.setProvider(val);
+});
 
 onBeforeRouteLeave((to, from, next) => {
     setAppSettings();
@@ -1718,6 +1728,12 @@ const clearFmRecent = () => {
                     <h2 class="item-title">其他</h2>
                     <div class="line"></div>
                     <div class="item-options">
+                        <div class="option">
+                            <div class="option-name">云服务提供商</div>
+                            <div class="option-operation">
+                                <Selector v-model="cloudProvider" :options="cloudProviderOptions"></Selector>
+                            </div>
+                        </div>
                         <div class="option">
                             <div class="option-name">主题</div>
                             <div class="option-operation">

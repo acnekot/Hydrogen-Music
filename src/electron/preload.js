@@ -157,6 +157,12 @@ function openNeteaseLogin() {
 function clearLoginSession() {
     return ipcRenderer.invoke('clear-login-session')
 }
+function openKugouLogin() {
+    return ipcRenderer.invoke('open-kugou-login')
+}
+function clearKugouSession() {
+    return ipcRenderer.invoke('clear-kugou-session')
+}
 contextBridge.exposeInMainWorld('windowApi', {
     windowMin,
     windowMax,
@@ -223,6 +229,9 @@ contextBridge.exposeInMainWorld('windowApi', {
 contextBridge.exposeInMainWorld('electronAPI', {
     openNeteaseLogin,
     clearLoginSession,
+    clearNeteaseSession: clearLoginSession,
+    openKugouLogin,
+    clearKugouSession,
     // 桌面歌词相关API
     createLyricWindow: () => ipcRenderer.invoke('create-lyric-window'),
     closeLyricWindow: () => ipcRenderer.invoke('close-lyric-window'),

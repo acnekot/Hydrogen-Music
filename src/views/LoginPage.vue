@@ -1,15 +1,18 @@
 <script setup>
+  import { computed } from 'vue'
   import { useRouter } from 'vue-router'
+  import { useServiceProviderStore } from '../store/serviceProviderStore'
 
   const router = useRouter()
+  const serviceProviderStore = useServiceProviderStore()
+  const providerConfig = computed(() => serviceProviderStore.currentConfig)
+  const isNetease = computed(() => serviceProviderStore.current === 'netease')
 
-  //0为以网易云账号登录，1为以本地账户
-  const modeSelect = (mode) => {
-    if(mode === 0) {
-      // 跳转到一键登录页面
-      router.push({path:'/login/account', query: {mode: 4}})
+  const handleLoginClick = () => {
+    if(isNetease.value) {
+      router.push({path:'/login/account', query: {mode: 4, provider: 'netease'}})
     } else {
-      router.push({path:'/login/account', query: {mode: mode}})
+      router.push({path:'/login/account', query: {provider: serviceProviderStore.current}})
     }
   }
 </script>
@@ -17,13 +20,13 @@
 <template>
   <div class="login-page">
     <div class="login-mode">
-      <div class="mode-type mode-netease" @click="modeSelect(0)">
+      <div class="mode-type" :style="{ '--provider-accent': providerConfig.accentColor }" @click="handleLoginClick">
         <div class="type-img">
-          <img src="../assets/img/netease-music.png" alt="">
+          <img :src="providerConfig.icon" :alt="providerConfig.label">
         </div>
         <div class="type-info">
-          <span class="type-title">云音乐</span>
-          <span class="type-subtitle">以云账号登录</span>
+          <span class="type-title">{{ providerConfig.shortLabel }}</span>
+          <span class="type-subtitle">以{{ providerConfig.label }}账号登录</span>
         </div>
       </div>
 
@@ -107,7 +110,7 @@
           margin-right: 15px;
           width: 50px;
           height: 50px;
-          background-color: rgba(226, 0, 0, 1);
+          background-color: var(--provider-accent, rgba(226, 0, 0, 1));
           img{
             width: 100%;
             height: 100%;

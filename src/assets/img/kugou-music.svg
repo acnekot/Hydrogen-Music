@@ -1,0 +1,14 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title">
+  <title>KuGou Music Icon</title>
+  <defs>
+    <linearGradient id="kugouGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4aa6ff" />
+      <stop offset="100%" stop-color="#0060ff" />
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="224" height="224" rx="48" fill="url(#kugouGradient)" />
+  <g fill="#ffffff">
+    <path d="M128 64c35.346 0 64 28.654 64 64s-28.654 64-64 64-64-28.654-64-64 28.654-64 64-64zm0 24c-22.091 0-40 17.909-40 40s17.909 40 40 40 40-17.909 40-40-17.909-40-40-40z" opacity="0.9" />
+    <path d="M110 88h24c18.778 0 34 15.222 34 34 0 13.607-8.036 25.358-19.567 30.855l17.157 26.238a8 8 0 01-13.286 8.954l-20.38-31.172H118v28a8 8 0 11-16 0V96a8 8 0 018-8zm32 48c7.732 0 14-6.268 14-14s-6.268-14-14-14h-16v28z" />
+  </g>
+</svg>
