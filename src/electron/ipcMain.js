@@ -1,6 +1,7 @@
 const { ipcMain, shell, dialog, globalShortcut, Menu, clipboard, BrowserWindow, session } = require('electron')
 const axios = require('axios')
 const fs = require('fs')
+const fse = require('fs-extra')
 const path = require('path')
 const { parseFile } = require('music-metadata')
 // const jsmediatags = require("jsmediatags");
@@ -16,6 +17,59 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
 
     // 全局存储桌面歌词窗口引用
     let globalLyricWindow = null;
+
+    const pluginsRoot = path.join(app.getPath('userData'), 'plugins', 'installed')
+
+    const ensurePluginsRoot = async () => {
+        await fse.ensureDir(pluginsRoot)
+        return pluginsRoot
+    }
+
+    const sanitizePackageRelativePath = relPath => {
+        if (!relPath) throw new Error('文件路径不能为空')
+        const normalized = relPath.replace(/\\+/g, '/').replace(/^\//, '')
+        if (!normalized || normalized.includes('..')) {
+            throw new Error('非法的文件路径')
+        }
+        return normalized
+    }
+
+    const ensureDirectoryInRoot = directory => {
+        const normalizedDirectory = path.resolve(directory)
+        const normalizedRoot = path.resolve(pluginsRoot)
+        if (!normalizedDirectory.startsWith(normalizedRoot)) {
+            throw new Error('非法的插件目录')
+        }
+        return normalizedDirectory
+    }
+
+    const resolvePackagePath = (directory, relPath) => {
+        const normalizedDirectory = ensureDirectoryInRoot(directory)
+        const normalized = sanitizePackageRelativePath(relPath)
+        const target = path.resolve(normalizedDirectory, normalized)
+        if (!target.startsWith(normalizedDirectory)) {
+            throw new Error('插件文件访问越界')
+        }
+        return target
+    }
+
+    const generatePluginDirectory = async (name = 'plugin') => {
+        await ensurePluginsRoot()
+        const safeName = String(name || 'plugin')
+            .replace(/[^a-zA-Z0-9-_]/g, '_')
+            .replace(/_+/g, '_')
+            .replace(/^_+|_+$/g, '')
+            .toLowerCase() || 'plugin'
+        const uniqueSeed = Date.now().toString(36)
+        for (let attempt = 0; ; attempt++) {
+            const suffix = attempt === 0 ? '' : `-${attempt}`
+            const candidate = path.join(pluginsRoot, `${safeName}-${uniqueSeed}${suffix}`)
+            const exists = await fse.pathExists(candidate)
+            if (!exists) {
+                return candidate
+            }
+        }
+    }
     // win.on('restore', () => {
     // win.webContents.send('lyric-control')
     // })
@@ -198,6 +252,86 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         } else {
             return filePaths[0]
         }
+    })
+
+    ipcMain.handle('plugins:install-package', async (_event, payload = {}) => {
+        const files = Array.isArray(payload.files) ? payload.files : []
+        if (!files.length) {
+            throw new Error('插件包缺少文件')
+        }
+        const directory = await generatePluginDirectory(payload.name)
+        await fse.ensureDir(directory)
+        try {
+            for (const file of files) {
+                if (!file || !file.path) {
+                    throw new Error('插件包文件缺少路径')
+                }
+                const relPath = sanitizePackageRelativePath(file.path)
+                const targetPath = resolvePackagePath(directory, relPath)
+                await fse.ensureDir(path.dirname(targetPath))
+                const buffer = typeof file?.data === 'string' ? Buffer.from(file.data, 'base64') : Buffer.alloc(0)
+                await fse.writeFile(targetPath, buffer)
+            }
+            return { directory }
+        } catch (error) {
+            await fse.remove(directory).catch(() => {})
+            throw error
+        }
+    })
+
+    ipcMain.handle('plugins:remove-package', async (_event, payload = {}) => {
+        const directory = payload?.directory
+        if (!directory) return false
+        const normalized = ensureDirectoryInRoot(directory)
+        const exists = await fse.pathExists(normalized)
+        if (!exists) {
+            return false
+        }
+        await fse.remove(normalized)
+        return true
+    })
+
+    ipcMain.handle('plugins:read-file', async (_event, payload = {}) => {
+        const directory = payload?.directory
+        const relPath = payload?.path
+        const encoding = payload?.encoding || 'base64'
+        if (!directory || !relPath) {
+            throw new Error('插件文件参数不完整')
+        }
+        const targetPath = resolvePackagePath(directory, relPath)
+        const exists = await fse.pathExists(targetPath)
+        if (!exists) {
+            throw new Error('插件文件不存在')
+        }
+        const data = await fse.readFile(targetPath)
+        if (encoding === 'text') {
+            return data.toString('utf-8')
+        }
+        return data.toString('base64')
+    })
+
+    ipcMain.handle('plugins:list-files', async (_event, payload = {}) => {
+        const directory = payload?.directory
+        if (!directory) return []
+        const normalized = ensureDirectoryInRoot(directory)
+        const exists = await fse.pathExists(normalized)
+        if (!exists) return []
+        const result = []
+        const walk = async (current, prefix = '') => {
+            const entries = await fse.readdir(current, { withFileTypes: true })
+            for (const entry of entries) {
+                const entryName = entry.name
+                const absolute = path.join(current, entryName)
+                const relative = prefix ? `${prefix}/${entryName}` : entryName
+                if (entry.isDirectory()) {
+                    await walk(absolute, relative)
+                } else if (entry.isFile()) {
+                    result.push(relative.replace(/\\+/g, '/'))
+                }
+            }
+        }
+        await walk(normalized)
+        return result
     })
     ipcMain.handle('dialog:openImageFile', async () => {
         const { canceled, filePaths } = await dialog.showOpenDialog({
