@@ -83,8 +83,121 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         })
     }
 
-    // 全局存储桌面歌词窗口引用
-    let globalLyricWindow = null;
+    // 桌面歌词窗口管理
+    let globalLyricWindow = null
+
+    const getLyricWindowInstance = () => {
+        if (globalLyricWindow && !globalLyricWindow.isDestroyed()) {
+            return globalLyricWindow
+        }
+        globalLyricWindow = null
+        return null
+    }
+
+    const normalizeWindowNumber = (value, fallback) => {
+        if (typeof value !== 'number') return typeof fallback === 'number' ? Math.round(fallback) : undefined
+        if (!Number.isFinite(value)) return typeof fallback === 'number' ? Math.round(fallback) : undefined
+        return Math.round(value)
+    }
+
+    const createLyricWindowInstance = (rawOptions = {}) => {
+        const existing = getLyricWindowInstance()
+        if (existing) {
+            if (rawOptions && rawOptions.bounds) {
+                const nextBounds = rawOptions.bounds
+                const next = {
+                    x: normalizeWindowNumber(nextBounds.x, undefined),
+                    y: normalizeWindowNumber(nextBounds.y, undefined),
+                    width: normalizeWindowNumber(nextBounds.width, existing.getBounds().width),
+                    height: normalizeWindowNumber(nextBounds.height, existing.getBounds().height),
+                }
+                existing.setBounds({
+                    x: typeof next.x === 'number' ? next.x : existing.getBounds().x,
+                    y: typeof next.y === 'number' ? next.y : existing.getBounds().y,
+                    width: Math.max(260, next.width || existing.getBounds().width),
+                    height: Math.max(140, next.height || existing.getBounds().height),
+                })
+            }
+            if (rawOptions && rawOptions.focus !== false) {
+                existing.focus()
+            }
+            return existing
+        }
+
+        const htmlPath = rawOptions && rawOptions.htmlPath ? path.resolve(rawOptions.htmlPath) : null
+        if (!htmlPath || !fs.existsSync(htmlPath)) {
+            throw new Error('桌面歌词窗口资源不存在')
+        }
+
+        const requestedBounds = rawOptions.bounds || {}
+        const width = Math.max(260, normalizeWindowNumber(rawOptions.width, requestedBounds.width ?? 520))
+        const height = Math.max(140, normalizeWindowNumber(rawOptions.height, requestedBounds.height ?? 180))
+        const minWidth = Math.max(260, normalizeWindowNumber(rawOptions.minWidth, rawOptions.minWidth ?? 320))
+        const minHeight = Math.max(140, normalizeWindowNumber(rawOptions.minHeight, rawOptions.minHeight ?? 160))
+        const positionX = normalizeWindowNumber(rawOptions.x, requestedBounds.x)
+        const positionY = normalizeWindowNumber(rawOptions.y, requestedBounds.y)
+        const alwaysOnTop = rawOptions.alwaysOnTop !== false
+        const resizable = rawOptions.resizable !== false
+        const backgroundColor = typeof rawOptions.backgroundColor === 'string' ? rawOptions.backgroundColor : '#11131a'
+        const transparent = rawOptions.transparent === true
+
+        const browserOptions = {
+            width,
+            height,
+            minWidth,
+            minHeight,
+            frame: false,
+            resizable,
+            movable: true,
+            alwaysOnTop,
+            skipTaskbar: rawOptions.skipTaskbar !== false,
+            transparent,
+            backgroundColor,
+            hasShadow: true,
+            show: false,
+            titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
+            webPreferences: {
+                preload: path.resolve(__dirname, './preload.js'),
+                contextIsolation: true,
+                nodeIntegration: false,
+            },
+        }
+
+        const lyricWindow = new BrowserWindow(browserOptions)
+        lyricWindow.setMenuBarVisibility(false)
+        lyricWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+        if (alwaysOnTop) {
+            lyricWindow.setAlwaysOnTop(true, 'screen-saver')
+        }
+        if (typeof rawOptions.opacity === 'number' && rawOptions.opacity > 0 && rawOptions.opacity <= 1) {
+            lyricWindow.setOpacity(rawOptions.opacity)
+        }
+        lyricWindow.loadFile(htmlPath)
+        lyricWindow.once('ready-to-show', () => {
+            if (typeof positionX === 'number' && typeof positionY === 'number') {
+                lyricWindow.setPosition(positionX, positionY)
+            }
+            lyricWindow.showInactive()
+        })
+        lyricWindow.on('closed', () => {
+            globalLyricWindow = null
+            try {
+                win.webContents.send('desktop-lyric-closed')
+            } catch (_) {
+                // ignore if main window is not available
+            }
+        })
+
+        globalLyricWindow = lyricWindow
+        return lyricWindow
+    }
+
+    const closeLyricWindowInstance = () => {
+        const instance = getLyricWindowInstance()
+        if (instance) {
+            instance.close()
+        }
+    }
     // win.on('restore', () => {
     // win.webContents.send('lyric-control')
     // })
@@ -913,70 +1026,54 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     })
 
     // 桌面歌词相关 IPC 处理
-    const { createLyricWindow, closeLyricWindow, setLyricWindowMovable, getLyricWindow } = lyricFunctions
-
-    ipcMain.handle('create-lyric-window', async () => {
+    ipcMain.handle('create-lyric-window', async (_event, options = {}) => {
         try {
-            if (createLyricWindow) {
-                const lyricWin = createLyricWindow()
-                if (lyricWin) {
-                    globalLyricWindow = lyricWin
-
-                    // 监听窗口关闭事件
-                    lyricWin.on('closed', () => {
-                        globalLyricWindow = null
-                    })
-
-
-                    return { success: true, message: '桌面歌词窗口已创建' }
-                } else {
-                    return { success: false, message: '创建窗口失败' }
-                }
+            const lyricWin = createLyricWindowInstance(options)
+            if (lyricWin) {
+                return { success: true, message: '桌面歌词窗口已创建' }
             }
-            return { success: false, message: '桌面歌词功能不可用' }
+            return { success: false, message: '创建窗口失败' }
         } catch (error) {
-
-            return { success: false, message: '创建失败' }
+            return { success: false, message: error?.message || '创建失败' }
         }
     })
 
     ipcMain.handle('close-lyric-window', async () => {
         try {
-            if (closeLyricWindow) {
-                closeLyricWindow()
-                return { success: true, message: '桌面歌词窗口已关闭' }
-            }
-            return { success: false, message: '桌面歌词功能不可用' }
+            closeLyricWindowInstance()
+            return { success: true, message: '桌面歌词窗口已关闭' }
         } catch (error) {
-
-            return { success: false, message: '关闭失败' }
+            return { success: false, message: error?.message || '关闭失败' }
         }
     })
 
-    ipcMain.handle('set-lyric-window-movable', async (event, movable) => {
+    ipcMain.handle('set-lyric-window-movable', async (_event, movable) => {
         try {
-            if (setLyricWindowMovable) {
-                setLyricWindowMovable(movable)
+            const lyricWindow = getLyricWindowInstance()
+            if (lyricWindow) {
+                lyricWindow.setMovable(!!movable)
+                if (process.platform === 'win32') {
+                    lyricWindow.setIgnoreMouseEvents(false)
+                }
                 return { success: true, message: '窗口移动状态已更新' }
             }
-            return { success: false, message: '桌面歌词功能不可用' }
+            return { success: false, message: '桌面歌词窗口不存在' }
         } catch (error) {
-
-            return { success: false, message: '设置失败' }
+            return { success: false, message: error?.message || '设置失败' }
         }
     })
 
     ipcMain.on('lyric-window-ready', () => {
-
+        try {
+            win.webContents.send('desktop-lyric-ready')
+        } catch (_) {
+            // ignore if主窗口不可用
+        }
     })
 
-    ipcMain.on('update-lyric-data', (event, data) => {
-        let lyricWindow = globalLyricWindow
-        if (!lyricWindow && getLyricWindow) {
-            lyricWindow = getLyricWindow()
-        }
-
-        if (lyricWindow && !lyricWindow.isDestroyed()) {
+    ipcMain.on('update-lyric-data', (_event, data) => {
+        const lyricWindow = getLyricWindowInstance()
+        if (lyricWindow) {
             lyricWindow.webContents.send('lyric-update', data)
         }
     })
@@ -985,37 +1082,34 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         win.webContents.send('get-current-lyric-data')
     })
 
-    ipcMain.on('current-lyric-data', (event, data) => {
-        const lyricWindow = getLyricWindow && getLyricWindow()
-        if (lyricWindow && !lyricWindow.isDestroyed()) {
+    ipcMain.on('current-lyric-data', (_event, data) => {
+        const lyricWindow = getLyricWindowInstance()
+        if (lyricWindow) {
             lyricWindow.webContents.send('lyric-update', data)
         }
     })
 
     ipcMain.handle('is-lyric-window-visible', () => {
-        const lyricWindow = getLyricWindow && getLyricWindow();
-        return lyricWindow && !lyricWindow.isDestroyed() && lyricWindow.isVisible();
+        const lyricWindow = getLyricWindowInstance()
+        return !!(lyricWindow && lyricWindow.isVisible())
     });
 
     // 调整桌面歌词窗口大小
-    ipcMain.handle('resize-lyric-window', (event, { width, height }) => {
-        const lyricWindow = getLyricWindow && getLyricWindow();
-        if (lyricWindow && !lyricWindow.isDestroyed()) {
-            try {
-                lyricWindow.setSize(width, height);
-                return { success: true };
-            } catch (error) {
-
-                return { success: false, error: error.message };
-            }
+    ipcMain.handle('resize-lyric-window', (_event, { width, height }) => {
+        const lyricWindow = getLyricWindowInstance();
+        if (!lyricWindow) return { success: false, error: '窗口不存在' };
+        try {
+            lyricWindow.setSize(width, height);
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
         }
-        return { success: false, error: '窗口不存在' };
     });
 
     // 获取桌面歌词窗口位置与尺寸
     ipcMain.handle('get-lyric-window-bounds', () => {
-        const lyricWindow = getLyricWindow && getLyricWindow();
-        if (lyricWindow && !lyricWindow.isDestroyed()) {
+        const lyricWindow = getLyricWindowInstance();
+        if (lyricWindow) {
             try {
                 return lyricWindow.getBounds();
             } catch (error) {
@@ -1027,8 +1121,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
 
     // 移动桌面歌词窗口到指定坐标（基于屏幕坐标）
     ipcMain.on('move-lyric-window', (event, { x, y }) => {
-        const lyricWindow = getLyricWindow && getLyricWindow();
-        if (lyricWindow && !lyricWindow.isDestroyed() && typeof x === 'number' && typeof y === 'number') {
+        const lyricWindow = getLyricWindowInstance();
+        if (lyricWindow && typeof x === 'number' && typeof y === 'number') {
             try {
                 lyricWindow.setPosition(Math.round(x), Math.round(y));
             } catch (error) {
@@ -1040,8 +1134,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     // 按增量移动桌面歌词窗口（无需预先获取窗口位置）
     ipcMain.on('move-lyric-window-by', (event, { dx, dy }) => {
         if (process.platform === 'darwin') return; // macOS 保持原生
-        const lyricWindow = getLyricWindow && getLyricWindow();
-        if (lyricWindow && !lyricWindow.isDestroyed() && typeof dx === 'number' && typeof dy === 'number') {
+        const lyricWindow = getLyricWindowInstance();
+        if (lyricWindow && typeof dx === 'number' && typeof dy === 'number') {
             try {
                 const { x, y } = lyricWindow.getBounds();
                 lyricWindow.setPosition(Math.round(x + dx), Math.round(y + dy));
@@ -1054,10 +1148,9 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     // 将窗口移动到指定位置，并强制保持给定宽高
     ipcMain.on('move-lyric-window-to', (event, { x, y, width, height }) => {
         if (process.platform === 'darwin') return; // macOS 保持原生
-        const lyricWindow = getLyricWindow && getLyricWindow();
+        const lyricWindow = getLyricWindowInstance();
         if (
             lyricWindow &&
-            !lyricWindow.isDestroyed() &&
             typeof x === 'number' && typeof y === 'number' &&
             typeof width === 'number' && typeof height === 'number'
         ) {
@@ -1072,8 +1165,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     // 读取窗口最小/最大尺寸（Windows专用）
     ipcMain.handle('get-lyric-window-min-max', () => {
         if (process.platform === 'darwin') return null;
-        const lyricWindow = getLyricWindow && getLyricWindow();
-        if (lyricWindow && !lyricWindow.isDestroyed()) {
+        const lyricWindow = getLyricWindowInstance();
+        if (lyricWindow) {
             try {
                 const [minWidth, minHeight] = lyricWindow.getMinimumSize();
                 const [maxWidth, maxHeight] = lyricWindow.getMaximumSize();
@@ -1088,8 +1181,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     // 设置窗口最小/最大尺寸（Windows专用）
     ipcMain.on('set-lyric-window-min-max', (event, { minWidth, minHeight, maxWidth, maxHeight }) => {
         if (process.platform === 'darwin') return;
-        const lyricWindow = getLyricWindow && getLyricWindow();
-        if (lyricWindow && !lyricWindow.isDestroyed()) {
+        const lyricWindow = getLyricWindowInstance();
+        if (lyricWindow) {
             try {
                 if (typeof minWidth === 'number' && typeof minHeight === 'number') {
                     lyricWindow.setMinimumSize(Math.max(0, Math.round(minWidth)), Math.max(0, Math.round(minHeight)));
@@ -1106,8 +1199,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     // 设置窗口宽高比（Windows专用）
     ipcMain.on('set-lyric-window-aspect-ratio', (event, { aspectRatio }) => {
         if (process.platform === 'darwin') return;
-        const lyricWindow = getLyricWindow && getLyricWindow();
-        if (lyricWindow && !lyricWindow.isDestroyed()) {
+        const lyricWindow = getLyricWindowInstance();
+        if (lyricWindow) {
             try {
                 const ratio = typeof aspectRatio === 'number' ? aspectRatio : 0;
                 lyricWindow.setAspectRatio(ratio > 0 ? ratio : 0);
@@ -1120,8 +1213,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     // 读取内容区域的bounds（Windows专用）
     ipcMain.handle('get-lyric-window-content-bounds', () => {
         if (process.platform === 'darwin') return null;
-        const lyricWindow = getLyricWindow && getLyricWindow();
-        if (lyricWindow && !lyricWindow.isDestroyed()) {
+        const lyricWindow = getLyricWindowInstance();
+        if (lyricWindow) {
             try {
                 return lyricWindow.getContentBounds();
             } catch (error) {
@@ -1134,10 +1227,9 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     // 设置内容区域的bounds（Windows专用）
     ipcMain.on('move-lyric-window-content-to', (event, { x, y, width, height }) => {
         if (process.platform === 'darwin') return;
-        const lyricWindow = getLyricWindow && getLyricWindow();
+        const lyricWindow = getLyricWindowInstance();
         if (
             lyricWindow &&
-            !lyricWindow.isDestroyed() &&
             typeof x === 'number' && typeof y === 'number' &&
             typeof width === 'number' && typeof height === 'number'
         ) {
@@ -1152,8 +1244,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     // 设置桌面歌词窗口的可调整大小状态（用于拖拽期间临时禁用）
     ipcMain.on('set-lyric-window-resizable', (event, { resizable }) => {
         if (process.platform !== 'win32') return; // 仅Windows需要
-        const lyricWindow = getLyricWindow && getLyricWindow();
-        if (lyricWindow && !lyricWindow.isDestroyed()) {
+        const lyricWindow = getLyricWindowInstance();
+        if (lyricWindow) {
             try {
                 lyricWindow.setResizable(!!resizable);
             } catch (error) {
@@ -1167,6 +1259,24 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         // 通知主窗口桌面歌词已关闭
         win.webContents.send('desktop-lyric-closed');
     });
+
+    ipcMain.on('desktop-lyric-command', (event, payload) => {
+        const lyricWindow = getLyricWindowInstance()
+        const isFromMainWindow = win && !win.isDestroyed() && event.sender === win.webContents
+        if (isFromMainWindow) {
+            if (lyricWindow) {
+                lyricWindow.webContents.send('desktop-lyric-command', payload)
+            }
+            return
+        }
+        try {
+            if (win && !win.isDestroyed()) {
+                win.webContents.send('desktop-lyric-command', payload)
+            }
+        } catch (_) {
+            // ignore forward errors
+        }
+    })
 
     // 处理应用更新相关的 IPC 事件
     ipcMain.on('check-for-update', async () => {
