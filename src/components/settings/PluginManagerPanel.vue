@@ -134,53 +134,58 @@ onMounted(async () => {
                     <div class="option-add" @click="reloadPlayer">重载播放器</div>
                 </div>
             </div>
-            <div class="plugin-list" :class="{ 'plugin-list--disabled': !enabled }">
-                <div class="plugin-list-header">
-                    <div class="plugin-cell plugin-title">标题</div>
-                    <div class="plugin-cell plugin-settings">插件设置</div>
-                    <div class="plugin-cell plugin-toggle">启用/关闭</div>
-                    <div class="plugin-cell plugin-delete">删除</div>
-                </div>
-                <div v-if="plugins.length === 0" class="plugin-empty">没有安装插件</div>
-                <div v-else class="plugin-rows">
-                    <div class="plugin-row" v-for="plugin in plugins" :key="plugin.id">
-                        <div class="plugin-cell plugin-title">
-                            <div class="plugin-name">{{ plugin.name }}</div>
-                            <div class="plugin-meta">
-                                <span class="plugin-version">v{{ plugin.version }}</span>
-                                <span v-if="plugin.author" class="plugin-author">{{ plugin.author }}</span>
-                            </div>
+            <div class="option option--list">
+                <div class="option-name">插件列表</div>
+                <div class="option-operation option-operation--block">
+                    <div class="plugin-list" :class="{ 'plugin-list--disabled': !enabled }">
+                        <div class="plugin-list-header">
+                            <div class="plugin-cell plugin-title">标题</div>
+                            <div class="plugin-cell plugin-settings">插件设置</div>
+                            <div class="plugin-cell plugin-toggle">启用/关闭</div>
+                            <div class="plugin-cell plugin-delete">删除</div>
                         </div>
-                        <div class="plugin-cell plugin-settings">
-                            <div
-                                class="option-add option-add--ghost"
-                                :class="{ 'option-add--disabled': !enabled || !plugin.enabled }"
-                                @click="openSettings(plugin)"
-                            >
-                                插件设置
-                            </div>
-                        </div>
-                        <div class="plugin-cell plugin-toggle">
-                            <div
-                                class="toggle toggle--compact"
-                                :class="{ 'toggle--disabled': !enabled }"
-                                @click="togglePlugin(plugin)"
-                            >
-                                <div class="toggle-off" :class="{ 'toggle-on-in': plugin.enabled }">
-                                    {{ plugin.enabled ? '已开启' : '已关闭' }}
+                        <div v-if="plugins.length === 0" class="plugin-empty">没有安装插件</div>
+                        <div v-else class="plugin-rows">
+                            <div class="plugin-row" v-for="plugin in plugins" :key="plugin.id">
+                                <div class="plugin-cell plugin-title">
+                                    <div class="plugin-name">{{ plugin.name }}</div>
+                                    <div class="plugin-meta">
+                                        <span class="plugin-version">v{{ plugin.version }}</span>
+                                        <span v-if="plugin.author" class="plugin-author">{{ plugin.author }}</span>
+                                    </div>
                                 </div>
-                                <Transition name="toggle">
-                                    <div class="toggle-on" v-show="plugin.enabled"></div>
-                                </Transition>
-                            </div>
-                        </div>
-                        <div class="plugin-cell plugin-delete">
-                            <div
-                                class="option-add option-add--danger"
-                                :class="{ 'option-add--disabled': !enabled }"
-                                @click="deletePlugin(plugin)"
-                            >
-                                删除
+                                <div class="plugin-cell plugin-settings">
+                                    <div
+                                        class="option-add option-add--ghost option-add--wide"
+                                        :class="{ 'option-add--disabled': !enabled || !plugin.enabled }"
+                                        @click="openSettings(plugin)"
+                                    >
+                                        插件设置
+                                    </div>
+                                </div>
+                                <div class="plugin-cell plugin-toggle">
+                                    <div
+                                        class="toggle toggle--inline"
+                                        :class="{ 'toggle--disabled': !enabled }"
+                                        @click="togglePlugin(plugin)"
+                                    >
+                                        <div class="toggle-off" :class="{ 'toggle-on-in': plugin.enabled }">
+                                            {{ plugin.enabled ? '已开启' : '已关闭' }}
+                                        </div>
+                                        <Transition name="toggle">
+                                            <div class="toggle-on" v-show="plugin.enabled"></div>
+                                        </Transition>
+                                    </div>
+                                </div>
+                                <div class="plugin-cell plugin-delete">
+                                    <div
+                                        class="option-add option-add--danger option-add--wide"
+                                        :class="{ 'option-add--disabled': !enabled }"
+                                        @click="deletePlugin(plugin)"
+                                    >
+                                        删除
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -223,40 +228,60 @@ onMounted(async () => {
 .plugin-manager {
     position: relative;
     overflow: hidden;
+    .option {
+        &.option--list {
+            align-items: flex-start;
+            .option-name {
+                padding-top: 14px;
+            }
+        }
+    }
     .option-operation--actions {
         display: flex;
         flex-direction: row;
         gap: 10px;
     }
+    .option-operation--block {
+        flex: 1;
+        width: auto;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+    }
     .plugin-list {
-        margin-top: 25px;
-        border: 1px solid rgba(0, 0, 0, 0.1);
-        background: rgba(255, 255, 255, 0.2);
-        padding: 10px 0;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.35);
+        overflow: hidden;
         transition: 0.2s;
     }
     .plugin-list--disabled {
-        opacity: 0.6;
+        opacity: 0.55;
+    }
+    .plugin-list-header,
+    .plugin-row {
+        display: grid;
+        grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.1fr) minmax(0, 1.1fr) minmax(0, 0.9fr);
+        padding: 14px 24px;
+        column-gap: 16px;
+        align-items: center;
+        color: black;
     }
     .plugin-list-header {
-        display: grid;
-        grid-template-columns: 2fr 1fr 1fr 1fr;
-        padding: 0 24px 12px;
         font: 13px SourceHanSansCN-Bold;
-        color: black;
+        background: rgba(0, 0, 0, 0.06);
     }
     .plugin-rows {
         display: flex;
         flex-direction: column;
-        gap: 8px;
     }
     .plugin-row {
-        display: grid;
-        grid-template-columns: 2fr 1fr 1fr 1fr;
-        align-items: center;
-        padding: 10px 24px;
-        background: rgba(255, 255, 255, 0.35);
-        color: black;
+        font: 13px SourceHanSansCN-Bold;
+        background: transparent;
+    }
+    .plugin-row + .plugin-row {
+        border-top: 1px solid rgba(0, 0, 0, 0.08);
     }
     .plugin-cell {
         display: flex;
@@ -266,14 +291,15 @@ onMounted(async () => {
     .plugin-title {
         flex-direction: column;
         align-items: flex-start;
+        row-gap: 4px;
         .plugin-name {
             font: 15px SourceHanSansCN-Bold;
-            margin-bottom: 4px;
         }
         .plugin-meta {
             display: flex;
             gap: 12px;
             font: 12px SourceHanSansCN-Regular;
+            color: rgba(0, 0, 0, 0.65);
         }
     }
     .plugin-settings,
@@ -282,28 +308,35 @@ onMounted(async () => {
         justify-content: center;
     }
     .plugin-empty {
-        padding: 36px 0;
+        padding: 40px 0;
         text-align: center;
         font: 14px SourceHanSansCN-Regular;
         color: rgba(0, 0, 0, 0.6);
     }
     .option-add--ghost {
-        background: rgba(255, 255, 255, 0.35);
+        background: rgba(255, 255, 255, 0.5);
     }
     .option-add--danger {
-        background: rgba(208, 72, 72, 0.75);
+        background: rgba(208, 72, 72, 0.85);
         color: white;
     }
+    .option-add--wide {
+        min-width: 140px;
+        justify-content: center;
+    }
     .option-add--disabled {
-        opacity: 0.5;
+        opacity: 0.45;
         pointer-events: none;
+    }
+    .toggle {
+        &.toggle--inline {
+            width: 140px;
+            height: 34px;
+        }
     }
     .toggle--disabled {
         pointer-events: none;
         opacity: 0.6;
-    }
-    .toggle--compact {
-        transform: scale(0.9);
     }
     .plugin-settings-panel {
         position: absolute;
