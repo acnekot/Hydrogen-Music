@@ -124,11 +124,11 @@ context.provideService({
 
 ## 8. 示例插件
 
-仓库提供 `plugins/sample-plugin`，展示：
+仓库提供以下内置插件示例：
 
-- 如何注册服务与清理资源。
-- 如何提供简单的设置界面。
-- 如何在 `plugin.json` 中声明基础信息。
+- `plugins/sample-plugin`：展示如何注册服务、提供简单设置界面以及在 `plugin.json` 中声明基础信息。
+- `plugins/desktop-lyric`：将桌面歌词窗口迁移为插件，可参考其运行时与设置面板的实现方式。
+- `plugins/lyric-visualizer`：演示如何将歌词可视化功能拆分为插件并在设置面板中提供参数调节。
 
 ## 9. 注意事项
 

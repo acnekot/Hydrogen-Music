@@ -1,0 +1,10 @@
+{
+    "id": "lyric-visualizer",
+    "name": "歌词可视化",
+    "version": "1.0.0",
+    "description": "在歌词区域渲染实时频谱或环形音频可视化效果。",
+    "author": "Hydrogen Team",
+    "main": "index.js",
+    "settings": "settings.js",
+    "enabledByDefault": true
+}

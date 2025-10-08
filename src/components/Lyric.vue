@@ -4,6 +4,7 @@ import { changeProgress, musicVideoCheck, songTime } from '../utils/player';
 import { usePlayerStore } from '../store/playerStore';
 import { getLyricVisualizerAudioEnv } from '../utils/lyricVisualizerAudio';
 import { computeCustomBackgroundStyle } from '../utils/customBackground';
+import { usePluginService } from '../plugins/serviceRegistry';
 import { storeToRefs } from 'pinia';
 
 const playerStore = usePlayerStore();
@@ -79,6 +80,17 @@ const syncingLayout = ref(false);
 
 const lyricVisualizerCanvas = ref(null);
 const visualizerContainerSize = reactive({ width: 0, height: 0 });
+const lyricVisualizerPluginService = usePluginService('lyric-visualizer');
+const lyricVisualizerFeatureActive = computed(() => {
+    const service = lyricVisualizerPluginService.value;
+    if (!service) return false;
+    try {
+        return typeof service.isActive === 'function' ? service.isActive() !== false : true;
+    } catch (error) {
+        console.warn('[LyricVisualizer] 检查插件状态失败:', error);
+        return true;
+    }
+});
 
 const clampNumber = (value, min, max, fallback = min) => {
     const numeric = Number(value);
@@ -296,8 +308,12 @@ const visualizerCanvasStyle = computed(() => {
     };
 });
 
-const shouldShowVisualizerInLyrics = computed(() => lyricVisualizer.value && lyricAreaVisible.value);
-const shouldShowVisualizerInPlaceholder = computed(() => lyricVisualizer.value && !lyricAreaVisible.value);
+const shouldShowVisualizerInLyrics = computed(
+    () => lyricVisualizer.value && lyricVisualizerFeatureActive.value && lyricAreaVisible.value
+);
+const shouldShowVisualizerInPlaceholder = computed(
+    () => lyricVisualizer.value && lyricVisualizerFeatureActive.value && !lyricAreaVisible.value
+);
 const shouldShowVisualizer = computed(
     () => shouldShowVisualizerInLyrics.value || shouldShowVisualizerInPlaceholder.value
 );

@@ -1,0 +1,10 @@
+{
+    "id": "desktop-lyric",
+    "name": "桌面歌词",
+    "version": "1.0.0",
+    "description": "在桌面浮窗中展示当前播放的歌词，支持实时同步和拖拽调整。",
+    "author": "Hydrogen Team",
+    "main": "index.js",
+    "settings": "settings.js",
+    "enabledByDefault": true
+}

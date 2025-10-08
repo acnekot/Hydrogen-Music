@@ -11,7 +11,7 @@ import { usePlayerStore } from '../store/playerStore';
 import { useLocalStore } from '../store/localStore';
 import { useOtherStore } from '../store/otherStore';
 import { storeToRefs } from 'pinia';
-import { toggleDesktopLyric } from '../utils/desktopLyric';
+import { usePluginService } from '../plugins/serviceRegistry';
 
 // 定义 props 和 emit
 const props = defineProps({
@@ -33,6 +33,7 @@ const userStore = useUserStore();
 const localStore = useLocalStore();
 const playerStore = usePlayerStore();
 const otherStore = useOtherStore();
+const desktopLyricService = usePluginService('desktop-lyric');
 const {
     playing,
     progress,
@@ -79,6 +80,29 @@ const loadDjSubStatus = async () => {
         djSubed.value = !!detail.subed;
     } catch (_) {
         djSubed.value = false;
+    }
+};
+
+const desktopLyricAvailable = computed(() => {
+    const service = desktopLyricService.value;
+    if (!service) return false;
+    try {
+        return typeof service.isAvailable === 'function' ? service.isAvailable() !== false : true;
+    } catch (error) {
+        console.warn('[DesktopLyric] 检查可用性失败:', error);
+        return true;
+    }
+});
+
+const handleDesktopLyricToggle = () => {
+    const service = desktopLyricService.value;
+    if (!service) return;
+    try {
+        if (typeof service.toggle === 'function') {
+            service.toggle();
+        }
+    } catch (error) {
+        console.error('[DesktopLyric] 切换失败:', error);
     }
 };
 
@@ -697,7 +721,8 @@ const toggleDjSub = async (isSubscribe) => {
                 </svg>
                 <!-- 桌面歌词控制按钮 -->
                 <svg
-                    @click="toggleDesktopLyric"
+                    v-if="desktopLyricAvailable"
+                    @click="handleDesktopLyricToggle"
                     :class="{ active: isDesktopLyricOpen }"
                     class="icon desktop-lyric-btn"
                     viewBox="0 0 1024 1024"

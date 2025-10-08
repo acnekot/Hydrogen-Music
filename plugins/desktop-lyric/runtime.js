@@ -1,5 +1,5 @@
 import { watch } from 'vue';
-import { usePlayerStore } from '../store/playerStore';
+import { usePlayerStore } from '../../src/store/playerStore.js';
 import { storeToRefs } from 'pinia';
 
 let lyricProgressInterval = null;
@@ -293,33 +293,50 @@ const sendLyricProgress = () => {
     }
 };
 
-// 切换桌面歌词（带动画效果）
-export const toggleDesktopLyric = async () => {
-    if (!window.electronAPI) {
-        return;
-    }
+const hasDesktopLyricApi = () => typeof window !== 'undefined' && !!window.electronAPI;
 
+export const isDesktopLyricAvailable = () => hasDesktopLyricApi();
+
+export const getDesktopLyricState = () => !!isDesktopLyricOpen.value;
+
+export const openDesktopLyric = async () => {
+    if (!hasDesktopLyricApi()) return false;
     try {
-        if (isDesktopLyricOpen.value) {
-            // 关闭动画：先触发退出动画，再实际关闭窗口
-            const result = await window.electronAPI.closeLyricWindow();
-            if (result && result.success) {
-                playerStore.isDesktopLyricOpen = false;
-            }
-        } else {
-            // 开启动画：先创建窗口，然后触发进入动画
-            const result = await window.electronAPI.createLyricWindow();
-            if (result && result.success) {
-                playerStore.isDesktopLyricOpen = true;
-                // 给窗口一些时间加载，然后发送数据触发进入动画
-                setTimeout(() => {
-                    sendCurrentLyricData();
-                }, 200);
-            }
+        if (isDesktopLyricOpen.value) return true;
+        const result = await window.electronAPI.createLyricWindow();
+        if (result && result.success) {
+            playerStore.isDesktopLyricOpen = true;
+            setTimeout(() => {
+                sendCurrentLyricData();
+            }, 200);
+            return true;
         }
     } catch (error) {
         // 静默处理错误
     }
+    return false;
+};
+
+export const closeDesktopLyric = async () => {
+    if (!hasDesktopLyricApi()) return false;
+    try {
+        if (!isDesktopLyricOpen.value) return true;
+        const result = await window.electronAPI.closeLyricWindow();
+        if (result && result.success) {
+            playerStore.isDesktopLyricOpen = false;
+            return true;
+        }
+    } catch (error) {
+        // 静默处理错误
+    }
+    return false;
+};
+
+// 切换桌面歌词（带动画效果）
+export const toggleDesktopLyric = async () => {
+    if (!hasDesktopLyricApi()) return;
+    if (isDesktopLyricOpen.value) await closeDesktopLyric();
+    else await openDesktopLyric();
 };
 
 // 停止桌面歌词通信
@@ -464,7 +481,7 @@ export const initDesktopLyric = () => {
 };
 
 // 销毁服务
-export const destroyDesktopLyric = () => {
+export const destroyDesktopLyric = async () => {
     stopLyricIndexCalculation();
     stopDesktopLyricSync();
     if (unwatchPlaying) unwatchPlaying();
@@ -474,4 +491,6 @@ export const destroyDesktopLyric = () => {
     if (unwatchCurrentLyricIndex) unwatchCurrentLyricIndex();
     if (unwatchProgress) unwatchProgress();
     if (unwatchLyric) unwatchLyric();
+    await closeDesktopLyric();
+    playerStore.isDesktopLyricOpen = false;
 };
