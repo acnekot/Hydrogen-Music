@@ -13,7 +13,6 @@ import LocalMusicDetail from '../components/LocalMusicDetail.vue'
 import SearchResult from '../views/SearchResult.vue'
 import Settings from '../views/Settings.vue'
 import RadioDetail from '../components/RadioDetail.vue'
-
 import { useUserStore } from '../store/userStore'
 import { useLibraryStore } from '../store/libraryStore'
 import { useLocalStore } from '../store/localStore'

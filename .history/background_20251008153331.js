@@ -1,17 +1,6 @@
-if (process.stdout && process.stdout.write) {
-  try {
-    require('iconv-lite').encodingExists('utf8')
-    const log = console.log
-    console.log = (...args) => {
-      try {
-        const text = args.map(a => (typeof a === 'string' ? a : JSON.stringify(a, null, 2))).join(' ')
-        process.stdout.write(text + '\n')
-      } catch {
-        log(...args)
-      }
-    }
-  } catch (_) {}
-}
+process.stdout.setEncoding('utf8')
+process.stderr.setEncoding('utf8')
+
 const startNeteaseMusicApi = require('./src/electron/services');
 const IpcMainEvent = require('./src/electron/ipcMain');
 const MusicDownload = require('./src/electron/download');

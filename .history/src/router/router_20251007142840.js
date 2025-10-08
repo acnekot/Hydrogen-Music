@@ -6,6 +6,7 @@ import CloudDisk from '../views/CloudDisk.vue'
 import PersonalFMPage from '../views/PersonalFMPage.vue'
 import LoginPage from '../views/LoginPage.vue'
 import LoginContent from '../components/LoginContent.vue'
+import LoginKuGou from '../views/LoginKuGou.vue'
 import MyMusic from '../views/MyMusic.vue'
 import LibraryDetail from '../components/LibraryDetail.vue'
 import RecommendSongs from '../components/RecommendSongs.vue'
@@ -50,6 +51,11 @@ const routes = [
         path: '/login',
         name: 'login',
         component: LoginPage
+    },
+    {
+        path: '/login/kugou',
+        name: 'login-kugou',
+        component: LoginKuGou,
     },
     {
         path: '/mymusic',
