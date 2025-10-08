@@ -16,16 +16,55 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     const lastPlaylistStore = new Store({ name: 'lastPlaylist' })
     const musicVideoStore = new Store({ name: 'musicVideo' })
     const pluginStateStore = new Store({ name: 'plugins' })
+    const pluginSettingsStore = new Store({ name: 'pluginSettings' })
 
-    const pluginDirectory = path.join(app.getPath('userData'), 'plugins')
-
-    const ensurePluginDirectory = () => {
+    const defaultPluginDirectory = (() => {
         try {
-            fs.mkdirSync(pluginDirectory, { recursive: true })
-        } catch (_) {}
+            if (app.isPackaged) {
+                const executableDir = path.dirname(app.getPath('exe'))
+                return path.join(executableDir, 'plugins')
+            }
+        } catch (_) {
+            // ignore
+        }
+        return path.join(app.getAppPath(), 'plugins')
+    })()
+
+    const resolveDirectoryPath = (input) => {
+        if (!input || typeof input !== 'string') return null
+        const trimmed = input.trim()
+        if (!trimmed) return null
+        try {
+            return path.resolve(trimmed)
+        } catch (_) {
+            return null
+        }
     }
 
-    ensurePluginDirectory()
+    let pluginDirectory = (() => {
+        const stored = resolveDirectoryPath(pluginSettingsStore.get('directory'))
+        return stored || defaultPluginDirectory
+    })()
+
+    const ensurePluginDirectory = (targetPath = pluginDirectory) => {
+        if (!targetPath) return null
+        fs.mkdirSync(targetPath, { recursive: true })
+        return targetPath
+    }
+
+    const setPluginDirectory = (nextPath) => {
+        const resolved = resolveDirectoryPath(nextPath) || defaultPluginDirectory
+        ensurePluginDirectory(resolved)
+        pluginDirectory = resolved
+        pluginSettingsStore.set('directory', resolved)
+        return pluginDirectory
+    }
+
+    try {
+        ensurePluginDirectory()
+    } catch (error) {
+        console.error('[Plugin] 无法创建插件目录', error)
+    }
 
     const readPluginManifest = (directory) => {
         const manifestPath = path.join(directory, 'plugin.json')
@@ -397,6 +436,53 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         return filePaths[0]
     })
 
+    ipcMain.handle('plugins:get-directory', async () => {
+        try {
+            const directory = ensurePluginDirectory()
+            return {
+                directory,
+                defaultDirectory,
+            }
+        } catch (error) {
+            console.error('[Plugin] 获取插件目录失败', error)
+            throw error
+        }
+    })
+
+    ipcMain.handle('plugins:set-directory', async (_event, nextPath) => {
+        try {
+            const directory = setPluginDirectory(nextPath)
+            return {
+                directory,
+                defaultDirectory,
+            }
+        } catch (error) {
+            console.error('[Plugin] 设置插件目录失败', error)
+            throw error
+        }
+    })
+
+    ipcMain.handle('plugins:select-directory', async () => {
+        const { canceled, filePaths } = await dialog.showOpenDialog({
+            title: '选择插件存储目录',
+            properties: ['openDirectory', 'createDirectory'],
+            defaultPath: pluginDirectory,
+        })
+        if (canceled || !filePaths || !filePaths.length) {
+            return null
+        }
+        try {
+            const directory = setPluginDirectory(filePaths[0])
+            return {
+                directory,
+                defaultDirectory,
+            }
+        } catch (error) {
+            console.error('[Plugin] 选择插件目录失败', error)
+            throw error
+        }
+    })
+
     ipcMain.handle('plugins:select-package', async () => {
         ensurePluginDirectory()
         const { canceled, filePaths } = await dialog.showOpenDialog({
@@ -410,7 +496,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     })
 
     ipcMain.handle('plugins:install', async (_event, sourcePath) => {
-        ensurePluginDirectory()
+        const activeDirectory = ensurePluginDirectory()
         if (!sourcePath) {
             throw new Error('未提供插件路径')
         }
@@ -424,7 +510,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         }
 
         const manifest = readPluginManifest(resolvedSource)
-        const targetDirectory = path.join(pluginDirectory, manifest.id)
+        const targetDirectory = path.join(activeDirectory, manifest.id)
         const resolvedTarget = path.resolve(targetDirectory)
 
         if (resolvedSource !== resolvedTarget) {
@@ -441,19 +527,19 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     })
 
     ipcMain.handle('plugins:list', async () => {
-        ensurePluginDirectory()
+        const activeDirectory = ensurePluginDirectory()
         const state = getPluginStateMap()
         const result = []
         let entries = []
         try {
-            entries = fs.readdirSync(pluginDirectory, { withFileTypes: true })
+            entries = fs.readdirSync(activeDirectory, { withFileTypes: true })
         } catch (error) {
             return result
         }
 
         for (const entry of entries) {
             if (!entry.isDirectory()) continue
-            const pluginPath = path.join(pluginDirectory, entry.name)
+            const pluginPath = path.join(activeDirectory, entry.name)
             try {
                 const manifest = readPluginManifest(pluginPath)
                 const entryPath = resolvePluginEntryPath(pluginPath, manifest)
@@ -484,17 +570,18 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     })
 
     const resolvePluginDirectoryById = (pluginId) => {
-        const direct = path.join(pluginDirectory, pluginId)
+        const activeDirectory = ensurePluginDirectory()
+        const direct = path.join(activeDirectory, pluginId)
         if (fs.existsSync(direct)) return direct
         let entries = []
         try {
-            entries = fs.readdirSync(pluginDirectory, { withFileTypes: true })
+            entries = fs.readdirSync(activeDirectory, { withFileTypes: true })
         } catch (_) {
             return direct
         }
         for (const entry of entries) {
             if (!entry.isDirectory()) continue
-            const candidate = path.join(pluginDirectory, entry.name)
+            const candidate = path.join(activeDirectory, entry.name)
             try {
                 const manifest = readPluginManifest(candidate)
                 if (manifest.id === pluginId) {

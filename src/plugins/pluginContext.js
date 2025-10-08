@@ -1,4 +1,6 @@
 import mitt from 'mitt'
+import { effectScope, reactive, ref, computed, watch, watchEffect } from 'vue'
+import { storeToRefs } from 'pinia'
 import router from '../router/router'
 import { usePlayerStore } from '../store/playerStore'
 import { useOtherStore } from '../store/otherStore'
@@ -20,6 +22,19 @@ export const createPluginContext = (meta) => {
     const userStore = useUserStore()
     const confirm = createConfirm()
 
+    const vueRuntime = {
+        effectScope,
+        reactive,
+        ref,
+        computed,
+        watch,
+        watchEffect,
+    }
+
+    const piniaRuntime = {
+        storeToRefs,
+    }
+
     return {
         meta,
         router,
@@ -27,6 +42,12 @@ export const createPluginContext = (meta) => {
             player: playerStore,
             other: otherStore,
             user: userStore,
+        },
+        vue: vueRuntime,
+        pinia: piniaRuntime,
+        framework: {
+            vue: vueRuntime,
+            pinia: piniaRuntime,
         },
         events: {
             on: eventBus.on.bind(eventBus),

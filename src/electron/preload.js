@@ -230,6 +230,9 @@ contextBridge.exposeInMainWorld('windowApi', {
         uninstall: (pluginId) => ipcRenderer.invoke('plugins:remove', pluginId),
         setEnabled: (pluginId, enabled) => ipcRenderer.invoke('plugins:set-enabled', pluginId, enabled),
         getEntry: (pluginId) => ipcRenderer.invoke('plugins:get-entry', pluginId),
+        getDirectory: () => ipcRenderer.invoke('plugins:get-directory'),
+        setDirectory: (directoryPath) => ipcRenderer.invoke('plugins:set-directory', directoryPath),
+        selectDirectory: () => ipcRenderer.invoke('plugins:select-directory'),
     },
 })
 

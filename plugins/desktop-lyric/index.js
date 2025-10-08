@@ -1,6 +1,3 @@
-import { effectScope, reactive, watch } from 'vue'
-import { storeToRefs } from 'pinia'
-
 const SOURCE_OPTIONS = ['auto', 'original', 'translation', 'romaji', 'bilingual']
 const DEFAULT_FONT_SIZE = 28
 const MIN_FONT_SIZE = 16
@@ -124,6 +121,17 @@ export default {
             context.ui?.notice?.('桌面歌词插件需要在桌面客户端运行', 3)
             return () => {}
         }
+
+        const vueRuntime = context?.vue || context?.framework?.vue
+        const piniaRuntime = context?.pinia || context?.framework?.pinia
+        if (!vueRuntime || !piniaRuntime) {
+            console.warn('[DesktopLyricPlugin] 插件运行时缺少 Vue/Pinia 支持')
+            context.ui?.notice?.('桌面歌词插件运行环境不完整', 3)
+            return () => {}
+        }
+
+        const { effectScope, reactive, watch } = vueRuntime
+        const { storeToRefs } = piniaRuntime
 
         const htmlUrl = new URL('./window.html', import.meta.url)
         const htmlPath = toFileSystemPath(htmlUrl)

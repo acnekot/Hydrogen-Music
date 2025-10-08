@@ -9,6 +9,10 @@ const installing = ref(false)
 const plugins = computed(() => pluginStore.plugins)
 const loading = computed(() => pluginStore.loading && !pluginStore.plugins.length)
 const busy = computed(() => pluginStore.loading || installing.value)
+const directory = computed(() => pluginStore.directory)
+const defaultDirectory = computed(() => pluginStore.defaultDirectory)
+const directoryBusy = ref(false)
+const directoryActionsDisabled = computed(() => busy.value || directoryBusy.value)
 
 const handleInstall = async () => {
     const api = window?.windowApi?.plugins
@@ -25,6 +29,26 @@ const handleInstall = async () => {
 
 const handleRefresh = async () => {
     await pluginStore.refresh()
+}
+
+const handleChooseDirectory = async () => {
+    if (directoryBusy.value) return
+    directoryBusy.value = true
+    try {
+        await pluginStore.chooseDirectory()
+    } finally {
+        directoryBusy.value = false
+    }
+}
+
+const handleResetDirectory = async () => {
+    if (directoryBusy.value || directory.value === defaultDirectory.value) return
+    directoryBusy.value = true
+    try {
+        await pluginStore.useDefaultDirectory()
+    } finally {
+        directoryBusy.value = false
+    }
 }
 
 const handleToggle = async (plugin) => {
@@ -67,6 +91,36 @@ onMounted(() => {
             <div class="plugin-manager__actions">
                 <button class="pm-btn pm-btn--ghost" :disabled="busy" @click="handleRefresh">刷新列表</button>
                 <button class="pm-btn" :disabled="busy" @click="handleInstall">{{ installing ? '正在导入…' : '安装插件' }}</button>
+            </div>
+        </div>
+        <div class="plugin-manager__directory">
+            <div class="plugin-manager__directory-info">
+                <span class="plugin-manager__directory-label">插件目录</span>
+                <code class="plugin-manager__directory-path" :title="directory || defaultDirectory">
+                    {{ directory || defaultDirectory || '未设置' }}
+                </code>
+                <span
+                    v-if="defaultDirectory && defaultDirectory !== (directory || '')"
+                    class="plugin-manager__directory-default"
+                >
+                    默认：<code>{{ defaultDirectory }}</code>
+                </span>
+            </div>
+            <div class="plugin-manager__directory-actions">
+                <button
+                    class="pm-btn pm-btn--ghost"
+                    :disabled="directoryActionsDisabled"
+                    @click="handleChooseDirectory"
+                >
+                    {{ directoryBusy ? '请稍候…' : '更改目录' }}
+                </button>
+                <button
+                    class="pm-btn pm-btn--ghost"
+                    :disabled="directoryActionsDisabled || !defaultDirectory || directory === defaultDirectory"
+                    @click="handleResetDirectory"
+                >
+                    恢复默认
+                </button>
             </div>
         </div>
         <div class="plugin-manager__body" :class="{ 'plugin-manager__body--loading': loading }">
@@ -197,6 +251,62 @@ onMounted(() => {
     display: flex;
     align-items: center;
     gap: 12px;
+}
+
+.plugin-manager__directory {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 16px 20px;
+    border-radius: 16px;
+    background: rgba(17, 19, 26, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.plugin-manager__directory-info {
+    flex: 1;
+    min-width: 220px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.plugin-manager__directory-label {
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.plugin-manager__directory-path {
+    font-family: 'Fira Code', 'JetBrains Mono', Consolas, monospace;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.9);
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 8px;
+    padding: 6px 10px;
+    display: inline-block;
+    word-break: break-all;
+}
+
+.plugin-manager__directory-default {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.plugin-manager__directory-default code {
+    font-family: inherit;
+    background: none;
+    padding: 0;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.plugin-manager__directory-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 .pm-btn {

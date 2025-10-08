@@ -28,6 +28,8 @@ export const usePluginStore = defineStore('pluginStore', {
         plugins: [],
         loading: false,
         initialized: false,
+        directory: '',
+        defaultDirectory: '',
     }),
     actions: {
         async initialize() {
@@ -35,6 +37,7 @@ export const usePluginStore = defineStore('pluginStore', {
             this.initialized = true
             const api = ensurePluginApi()
             if (!api) return
+            await this.loadDirectoryInfo()
             await this.refresh()
             for (const plugin of this.plugins) {
                 if (plugin.enabled && !plugin.broken) {
@@ -74,6 +77,20 @@ export const usePluginStore = defineStore('pluginStore', {
                 noticeOpen(`加载插件失败：${normalizeError(error)}`, 3)
             } finally {
                 this.loading = false
+            }
+        },
+        async loadDirectoryInfo() {
+            const api = ensurePluginApi()
+            if (!api) return
+            try {
+                const info = await api.getDirectory()
+                if (info) {
+                    this.directory = info.directory || ''
+                    this.defaultDirectory = info.defaultDirectory || this.defaultDirectory || ''
+                }
+            } catch (error) {
+                console.error('[PluginStore] 获取插件目录失败', error)
+                noticeOpen(`获取插件目录失败：${normalizeError(error)}`, 3)
             }
         },
         async installPluginFromPath(sourcePath) {
@@ -191,6 +208,61 @@ export const usePluginStore = defineStore('pluginStore', {
             } finally {
                 plugin.isLoading = false
             }
+        },
+        async changeDirectory(requestFn) {
+            const api = ensurePluginApi()
+            if (!api || typeof requestFn !== 'function') return null
+            const previouslyEnabled = this.plugins.filter((item) => item.enabled && item.runtime).map((item) => item.id)
+            for (const pluginId of previouslyEnabled) {
+                await this.disablePlugin(pluginId, { silent: true, persist: false })
+            }
+
+            const reenablePreviouslyEnabled = async () => {
+                for (const pluginId of previouslyEnabled) {
+                    const plugin = this.plugins.find((item) => item.id === pluginId && item.enabled)
+                    if (plugin) {
+                        await this.enablePlugin(pluginId, { silent: true })
+                    }
+                }
+            }
+
+            try {
+                const result = await requestFn(api)
+                if (!result || !result.directory) {
+                    await this.refresh()
+                    await reenablePreviouslyEnabled()
+                    return null
+                }
+                this.directory = result.directory || ''
+                if (result.defaultDirectory) {
+                    this.defaultDirectory = result.defaultDirectory || ''
+                } else if (!this.defaultDirectory) {
+                    await this.loadDirectoryInfo()
+                }
+                await this.refresh()
+                await reenablePreviouslyEnabled()
+                noticeOpen('插件目录已更新', 2)
+                return result.directory
+            } catch (error) {
+                console.error('[PluginStore] 切换插件目录失败', error)
+                noticeOpen(`切换插件目录失败：${normalizeError(error)}`, 3)
+                await this.refresh()
+                await reenablePreviouslyEnabled()
+                return null
+            }
+        },
+        async chooseDirectory() {
+            return this.changeDirectory((api) => api.selectDirectory())
+        },
+        async useDefaultDirectory() {
+            return this.changeDirectory((api) => api.setDirectory(null))
+        },
+        async setDirectoryManually(directoryPath) {
+            const target = typeof directoryPath === 'string' ? directoryPath.trim() : ''
+            if (!target) {
+                return this.useDefaultDirectory()
+            }
+            return this.changeDirectory((api) => api.setDirectory(target))
         },
     },
 })
