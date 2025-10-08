@@ -2,6 +2,7 @@ const { ipcMain, shell, dialog, globalShortcut, Menu, clipboard, BrowserWindow, 
 const axios = require('axios')
 const fs = require('fs')
 const path = require('path')
+const { pathToFileURL } = require('url')
 const { parseFile } = require('music-metadata')
 // const jsmediatags = require("jsmediatags");
 const registerShortcuts = require('./shortcuts')
@@ -13,6 +14,163 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     const settingsStore = new Store({ name: 'settings' })
     const lastPlaylistStore = new Store({ name: 'lastPlaylist' })
     const musicVideoStore = new Store({ name: 'musicVideo' })
+
+    const defaultPluginDirectory = path.join(app.getAppPath(), 'plugins')
+    const pluginStore = new Store({
+        name: 'plugins',
+        defaults: {
+            enabled: false,
+            acknowledged: false,
+            directory: defaultPluginDirectory,
+            pluginStates: {},
+        },
+    })
+
+    const ensureDirectoryExists = (dirPath) => {
+        if (!dirPath) return
+        try {
+            if (!fs.existsSync(dirPath)) {
+                fs.mkdirSync(dirPath, { recursive: true })
+            }
+        } catch (error) {
+            console.error('[Plugin] 创建插件目录失败:', error)
+        }
+    }
+
+    ensureDirectoryExists(pluginStore.get('directory') || defaultPluginDirectory)
+
+    const sanitizePluginId = (value, fallback) => {
+        if (!value || typeof value !== 'string') return fallback
+        return value
+            .trim()
+            .replace(/[^a-zA-Z0-9_-]/g, '-')
+            .slice(0, 120) || fallback
+    }
+
+    const readPluginManifests = (directory) => {
+        if (!directory) return []
+        ensureDirectoryExists(directory)
+        let entries = []
+        try {
+            entries = fs.readdirSync(directory, { withFileTypes: true })
+        } catch (error) {
+            console.error('[Plugin] 读取插件目录失败:', error)
+            return []
+        }
+
+        const manifests = []
+        for (const entry of entries) {
+            if (!entry.isDirectory()) continue
+            const pluginRoot = path.join(directory, entry.name)
+
+            const manifestPaths = [
+                path.join(pluginRoot, 'plugin.json'),
+                path.join(pluginRoot, 'package.json'),
+            ]
+
+            let manifest = null
+            for (const manifestPath of manifestPaths) {
+                if (!fs.existsSync(manifestPath)) continue
+                try {
+                    const content = fs.readFileSync(manifestPath, 'utf-8')
+                    const parsed = JSON.parse(content)
+                    if (manifestPath.endsWith('package.json') && parsed && parsed.hydrogenPlugin) {
+                        manifest = { ...parsed.hydrogenPlugin }
+                        if (!manifest.name && parsed.name) manifest.name = parsed.name
+                        if (!manifest.version && parsed.version) manifest.version = parsed.version
+                        if (!manifest.description && parsed.description) manifest.description = parsed.description
+                        if (!manifest.author && parsed.author) manifest.author = parsed.author
+                    } else {
+                        manifest = parsed
+                    }
+                    break
+                } catch (error) {
+                    console.error(`[Plugin] 解析 ${manifestPath} 失败:`, error)
+                }
+            }
+
+            if (!manifest || typeof manifest !== 'object') continue
+
+            const id = sanitizePluginId(manifest.id, entry.name)
+            const mainField = manifest.main || manifest.entry || 'index.js'
+            const entryPath = path.join(pluginRoot, mainField)
+            if (!fs.existsSync(entryPath)) {
+                console.warn(`[Plugin] 插件 ${id} 缺少入口文件: ${entryPath}`)
+                continue
+            }
+
+            let settingsEntry = null
+            if (manifest.settings) {
+                const settingsPath = path.join(pluginRoot, manifest.settings)
+                if (fs.existsSync(settingsPath)) {
+                    settingsEntry = pathToFileURL(settingsPath).toString()
+                }
+            }
+
+            let iconPath = null
+            if (manifest.icon) {
+                const resolvedIcon = path.join(pluginRoot, manifest.icon)
+                if (fs.existsSync(resolvedIcon)) {
+                    iconPath = pathToFileURL(resolvedIcon).toString()
+                }
+            }
+
+            manifests.push({
+                id,
+                name: manifest.name || id,
+                version: manifest.version || '0.0.0',
+                description: manifest.description || '',
+                author: manifest.author || '',
+                homepage: manifest.homepage || manifest.repository || '',
+                keywords: manifest.keywords || [],
+                entry: pathToFileURL(entryPath).toString(),
+                entryPath,
+                rootPath: pluginRoot,
+                defaultEnabled: manifest.enabledByDefault === true,
+                settingsEntry,
+                icon: iconPath,
+            })
+        }
+
+        return manifests
+    }
+
+    const buildPluginOverview = () => {
+        const enabled = !!pluginStore.get('enabled')
+        const acknowledged = !!pluginStore.get('acknowledged')
+        const directory = pluginStore.get('directory') || defaultPluginDirectory
+        ensureDirectoryExists(directory)
+
+        const storedStates = pluginStore.get('pluginStates') || {}
+        const manifests = readPluginManifests(directory)
+        const validIds = new Set()
+        const pluginStates = { ...storedStates }
+
+        for (const manifest of manifests) {
+            validIds.add(manifest.id)
+            if (typeof pluginStates[manifest.id] === 'undefined') {
+                pluginStates[manifest.id] = !!manifest.defaultEnabled
+            }
+            manifest.enabled = !!pluginStates[manifest.id]
+        }
+
+        for (const id of Object.keys(pluginStates)) {
+            if (!validIds.has(id)) {
+                delete pluginStates[id]
+            }
+        }
+
+        pluginStore.set('pluginStates', pluginStates)
+
+        return {
+            enabled,
+            acknowledged,
+            directory,
+            defaultDirectory,
+            pluginStates,
+            plugins: manifests,
+        }
+    }
 
     // 全局存储桌面歌词窗口引用
     let globalLyricWindow = null;
@@ -198,6 +356,62 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         } else {
             return filePaths[0]
         }
+    })
+
+    ipcMain.handle('plugins:list', async () => buildPluginOverview())
+    ipcMain.handle('plugins:refresh', async () => buildPluginOverview())
+    ipcMain.handle('plugins:set-enabled', async (event, enabled) => {
+        pluginStore.set('enabled', !!enabled)
+        return buildPluginOverview()
+    })
+    ipcMain.handle('plugins:acknowledge', async () => {
+        pluginStore.set('acknowledged', true)
+        return buildPluginOverview()
+    })
+    ipcMain.handle('plugins:set-directory', async (event, newDirectory) => {
+        if (!newDirectory || typeof newDirectory !== 'string') return buildPluginOverview()
+        const normalized = path.normalize(newDirectory)
+        ensureDirectoryExists(normalized)
+        pluginStore.set('directory', normalized)
+        return buildPluginOverview()
+    })
+    ipcMain.handle('plugins:reset-directory', async () => {
+        ensureDirectoryExists(defaultPluginDirectory)
+        pluginStore.set('directory', defaultPluginDirectory)
+        return buildPluginOverview()
+    })
+    ipcMain.handle('plugins:set-plugin-state', async (event, pluginId, enabled) => {
+        if (!pluginId) return buildPluginOverview()
+        const pluginStates = pluginStore.get('pluginStates') || {}
+        pluginStates[pluginId] = !!enabled
+        pluginStore.set('pluginStates', pluginStates)
+        return buildPluginOverview()
+    })
+    ipcMain.handle('plugins:delete', async (event, pluginId) => {
+        if (!pluginId) return buildPluginOverview()
+        const currentOverview = buildPluginOverview()
+        const target = currentOverview.plugins.find(item => item.id === pluginId)
+        if (target && target.rootPath) {
+            try {
+                fs.rmSync(target.rootPath, { recursive: true, force: true })
+            } catch (error) {
+                console.error(`[Plugin] 删除插件 ${pluginId} 失败:`, error)
+            }
+        }
+        const pluginStates = pluginStore.get('pluginStates') || {}
+        if (typeof pluginStates[pluginId] !== 'undefined') {
+            delete pluginStates[pluginId]
+            pluginStore.set('pluginStates', pluginStates)
+        }
+        return buildPluginOverview()
+    })
+    ipcMain.handle('plugins:reload', async () => {
+        try {
+            win.webContents.reloadIgnoringCache()
+        } catch (error) {
+            console.error('[Plugin] 重载窗口失败:', error)
+        }
+        return true
     })
     ipcMain.handle('dialog:openImageFile', async () => {
         const { canceled, filePaths } = await dialog.showOpenDialog({

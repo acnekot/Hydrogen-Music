@@ -223,6 +223,15 @@ contextBridge.exposeInMainWorld('windowApi', {
     setWindowTile,
     updatePlaylistStatus,
     updateDockMenu,
+    getPluginOverview: () => ipcRenderer.invoke('plugins:list'),
+    refreshPlugins: () => ipcRenderer.invoke('plugins:refresh'),
+    setPluginFeatureEnabled: (enabled) => ipcRenderer.invoke('plugins:set-enabled', enabled),
+    acknowledgePluginWarning: () => ipcRenderer.invoke('plugins:acknowledge'),
+    setPluginDirectory: (directory) => ipcRenderer.invoke('plugins:set-directory', directory),
+    resetPluginDirectory: () => ipcRenderer.invoke('plugins:reset-directory'),
+    setPluginState: (pluginId, enabled) => ipcRenderer.invoke('plugins:set-plugin-state', pluginId, enabled),
+    deletePlugin: (pluginId) => ipcRenderer.invoke('plugins:delete', pluginId),
+    reloadApp: () => ipcRenderer.invoke('plugins:reload'),
 })
 
 // 新的API用于处理登录功能和桌面歌词

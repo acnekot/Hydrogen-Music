@@ -1,0 +1,9 @@
+{
+    "id": "sample-plugin",
+    "name": "示例插件",
+    "version": "0.1.0",
+    "description": "演示 Hydrogen Music 插件系统基础能力的示例插件。",
+    "author": "Hydrogen Team",
+    "main": "index.js",
+    "settings": "settings.js"
+}

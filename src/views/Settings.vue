@@ -11,6 +11,7 @@ import { usePlayerStore } from '../store/playerStore';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
 import { setTheme, getSavedTheme } from '../utils/theme';
+import PluginManagerPanel from '../components/settings/PluginManagerPanel.vue';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -1855,6 +1856,7 @@ const clearFmRecent = () => {
                         </div>
                     </div>
                 </div>
+                <PluginManagerPanel />
             </div>
             <div class="app-version">
                 <div class="app-icon">
