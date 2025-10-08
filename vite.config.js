@@ -98,8 +98,6 @@ export default defineConfig({
       'howler'
     ],
     exclude: [
-      // 排除 Electron 相关包避免预构建问题
-      'electron',
       'fs-extra'
     ]
   },

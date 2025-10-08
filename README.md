@@ -60,8 +60,11 @@
 ## 👷‍♂️ 打包客户端
 
 ```shell
-# 打包
-npm run dist
+# 构建前端资源
+npm run web:build
+
+# 构建桌面应用
+npm run build
 ```
 
 ## :computer: 配置开发环境
@@ -72,11 +75,11 @@ npm run dist
 # 安装依赖
 npm install
 
-# 运行Vue服务
-npm run dev
+# 启动前端开发服务器
+npm run web:dev
 
-# 运行Electron客户端
-npm start
+# 启动 Tauri 桌面应用
+npm run dev
 ```
 
 ## 📜 开源许可
@@ -92,25 +95,6 @@ npm start
 基于Hydrogen Music修改而来，感谢[Hydrogen-Music](https://github.com/Kaidesuyo/Hydrogen-Music)。
 
 
-## 🖼️ 截图
+## 🖼️ 界面预览
 
-![home][home-screenshot]
-![lyric][lyric-screenshot]
-![desktop-lyric][desktop-lyric-screenshot]
-![comment][comment-screenshot]
-![privateFM][privateFM-screenshot]
-![music_view][music_view-screenshot]
-![dark_mode][dark_mode-screenshot]
-![music_video][music_video-screenshot]
-
-<!-- MARKDOWN LINKS & IMAGES -->
-<!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
-
-[home-screenshot]: img/home.png
-[lyric-screenshot]: img/lyric.png
-[desktop-lyric-screenshot]: img/desktop-lyric.png
-[comment-screenshot]: img/comment.png
-[privateFM-screenshot]: img/privateFM.png
-[dark_mode-screenshot]: img/dark_mode.png
-[music_video-screenshot]: img/music_video.png
-[music_view-screenshot]: img/music_view.png
+为保持仓库纯文本化，本分支不再附带截图等二进制资源。请通过运行 `npm run dev` 或查看发布版本来体验实际界面效果。

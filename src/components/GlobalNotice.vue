@@ -1,14 +1,16 @@
 <script setup>
-  import { ref } from 'vue'
   import { useOtherStore } from '../store/otherStore';
+  import { HALFTONE_PATTERN } from '../utils/brandAssets'
 
   const otherStore = useOtherStore()
-  
+
+  const halftoneStyle = { '--halftone-overlay': HALFTONE_PATTERN }
+
 </script>
 
 <template>
   <div class="global-notice" v-show="otherStore.noticeShow">
-    <div class="notice-container" :class="{'notice-container-out': otherStore.niticeOutAnimation}">
+    <div class="notice-container" :class="{'notice-container-out': otherStore.niticeOutAnimation}" :style="halftoneStyle">
         <div class="notic-text">{{otherStore.noticeText}}</div>
         <div class="notice-border notice-border1"></div>
         <div class="notice-border notice-border2"></div>
@@ -24,7 +26,7 @@
     .notice-container{
         padding: 3Px 0;
         width: 0;
-        background-image: url('../assets/img/halftone.png');
+        background-image: var(--halftone-overlay);
         background-size: 40%;
         background-repeat: repeat;
         background-color: rgb(23, 23, 23);
