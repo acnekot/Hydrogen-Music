@@ -19,10 +19,11 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     const pluginStore = new Store({
         name: 'plugins',
         defaults: {
-            enabled: false,
+            enabled: true,
             acknowledged: false,
             directory: defaultPluginDirectory,
             pluginStates: {},
+            autoEnabledBuiltIns: false,
         },
     })
 
@@ -136,10 +137,18 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     }
 
     const buildPluginOverview = () => {
-        const enabled = !!pluginStore.get('enabled')
+        let enabled = !!pluginStore.get('enabled')
         const acknowledged = !!pluginStore.get('acknowledged')
         const directory = pluginStore.get('directory') || defaultPluginDirectory
         ensureDirectoryExists(directory)
+
+        if (!pluginStore.get('autoEnabledBuiltIns')) {
+            if (!enabled) {
+                enabled = true
+                pluginStore.set('enabled', true)
+            }
+            pluginStore.set('autoEnabledBuiltIns', true)
+        }
 
         const storedStates = pluginStore.get('pluginStates') || {}
         const manifests = readPluginManifests(directory)
