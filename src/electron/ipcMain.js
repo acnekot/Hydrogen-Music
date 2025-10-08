@@ -1,7 +1,9 @@
 const { ipcMain, shell, dialog, globalShortcut, Menu, clipboard, BrowserWindow, session } = require('electron')
 const axios = require('axios')
 const fs = require('fs')
+const fsExtra = require('fs-extra')
 const path = require('path')
+const { pathToFileURL } = require('url')
 const { parseFile } = require('music-metadata')
 // const jsmediatags = require("jsmediatags");
 const registerShortcuts = require('./shortcuts')
@@ -13,6 +15,73 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     const settingsStore = new Store({ name: 'settings' })
     const lastPlaylistStore = new Store({ name: 'lastPlaylist' })
     const musicVideoStore = new Store({ name: 'musicVideo' })
+    const pluginStateStore = new Store({ name: 'plugins' })
+
+    const pluginDirectory = path.join(app.getPath('userData'), 'plugins')
+
+    const ensurePluginDirectory = () => {
+        try {
+            fs.mkdirSync(pluginDirectory, { recursive: true })
+        } catch (_) {}
+    }
+
+    ensurePluginDirectory()
+
+    const readPluginManifest = (directory) => {
+        const manifestPath = path.join(directory, 'plugin.json')
+        if (!fs.existsSync(manifestPath)) {
+            throw new Error('缺少 plugin.json 文件')
+        }
+        const raw = fs.readFileSync(manifestPath, 'utf-8')
+        const manifest = JSON.parse(raw)
+        if (!manifest.id) {
+            throw new Error('插件 manifest 缺少 id 字段')
+        }
+        if (!manifest.entry) {
+            manifest.entry = 'index.js'
+        }
+        return manifest
+    }
+
+    const resolvePluginEntryPath = (directory, manifest) => {
+        const entryPath = path.join(directory, manifest.entry)
+        if (!fs.existsSync(entryPath)) {
+            throw new Error(`入口文件不存在: ${manifest.entry}`)
+        }
+        return entryPath
+    }
+
+    const getPluginStateMap = () => {
+        const stored = pluginStateStore.get('plugins')
+        if (stored && typeof stored === 'object') return stored
+        return {}
+    }
+
+    const setPluginStateMap = (state) => {
+        pluginStateStore.set('plugins', state)
+    }
+
+    const updatePluginEnabledState = (pluginId, enabled) => {
+        const state = getPluginStateMap()
+        state[pluginId] = { ...(state[pluginId] || {}), enabled: !!enabled }
+        setPluginStateMap(state)
+    }
+
+    const removePluginState = (pluginId) => {
+        const state = getPluginStateMap()
+        if (pluginId in state) {
+            delete state[pluginId]
+            setPluginStateMap(state)
+        }
+    }
+
+    const copyPluginPackage = async (source, destination) => {
+        await fsExtra.copy(source, destination, {
+            overwrite: true,
+            errorOnExist: false,
+            dereference: false,
+        })
+    }
 
     // 全局存储桌面歌词窗口引用
     let globalLyricWindow = null;
@@ -213,6 +282,144 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             return null
         }
         return filePaths[0]
+    })
+
+    ipcMain.handle('plugins:select-package', async () => {
+        ensurePluginDirectory()
+        const { canceled, filePaths } = await dialog.showOpenDialog({
+            title: '选择 Hydrogen Music 插件目录',
+            properties: ['openDirectory'],
+        })
+        if (canceled || !filePaths || !filePaths.length) {
+            return null
+        }
+        return filePaths[0]
+    })
+
+    ipcMain.handle('plugins:install', async (_event, sourcePath) => {
+        ensurePluginDirectory()
+        if (!sourcePath) {
+            throw new Error('未提供插件路径')
+        }
+        const resolvedSource = path.resolve(sourcePath)
+        if (!fs.existsSync(resolvedSource)) {
+            throw new Error('插件目录不存在')
+        }
+        const stat = fs.statSync(resolvedSource)
+        if (!stat.isDirectory()) {
+            throw new Error('请选择包含 plugin.json 的插件文件夹')
+        }
+
+        const manifest = readPluginManifest(resolvedSource)
+        const targetDirectory = path.join(pluginDirectory, manifest.id)
+        const resolvedTarget = path.resolve(targetDirectory)
+
+        if (resolvedSource !== resolvedTarget) {
+            await fsExtra.remove(resolvedTarget)
+            await copyPluginPackage(resolvedSource, resolvedTarget)
+        } else {
+            resolvePluginEntryPath(resolvedTarget, manifest)
+        }
+
+        const state = getPluginStateMap()
+        state[manifest.id] = { ...(state[manifest.id] || {}) }
+        setPluginStateMap(state)
+        return manifest
+    })
+
+    ipcMain.handle('plugins:list', async () => {
+        ensurePluginDirectory()
+        const state = getPluginStateMap()
+        const result = []
+        let entries = []
+        try {
+            entries = fs.readdirSync(pluginDirectory, { withFileTypes: true })
+        } catch (error) {
+            return result
+        }
+
+        for (const entry of entries) {
+            if (!entry.isDirectory()) continue
+            const pluginPath = path.join(pluginDirectory, entry.name)
+            try {
+                const manifest = readPluginManifest(pluginPath)
+                const entryPath = resolvePluginEntryPath(pluginPath, manifest)
+                result.push({
+                    id: manifest.id,
+                    name: manifest.name || manifest.id,
+                    version: manifest.version || '0.0.0',
+                    description: manifest.description || '',
+                    author: manifest.author || '',
+                    entry: manifest.entry,
+                    entryUrl: pathToFileURL(entryPath).href,
+                    path: pluginPath,
+                    enabled: !!(state[manifest.id] && state[manifest.id].enabled),
+                })
+            } catch (error) {
+                result.push({
+                    id: entry.name,
+                    name: entry.name,
+                    version: '0.0.0',
+                    description: '',
+                    author: '',
+                    broken: true,
+                    error: error.message || String(error),
+                })
+            }
+        }
+        return result
+    })
+
+    const resolvePluginDirectoryById = (pluginId) => {
+        const direct = path.join(pluginDirectory, pluginId)
+        if (fs.existsSync(direct)) return direct
+        let entries = []
+        try {
+            entries = fs.readdirSync(pluginDirectory, { withFileTypes: true })
+        } catch (_) {
+            return direct
+        }
+        for (const entry of entries) {
+            if (!entry.isDirectory()) continue
+            const candidate = path.join(pluginDirectory, entry.name)
+            try {
+                const manifest = readPluginManifest(candidate)
+                if (manifest.id === pluginId) {
+                    return candidate
+                }
+            } catch (_) {}
+        }
+        return direct
+    }
+
+    ipcMain.handle('plugins:remove', async (_event, pluginId) => {
+        if (!pluginId) return false
+        const targetDirectory = resolvePluginDirectoryById(pluginId)
+        await fsExtra.remove(targetDirectory)
+        removePluginState(pluginId)
+        return true
+    })
+
+    ipcMain.handle('plugins:set-enabled', async (_event, pluginId, enabled) => {
+        if (!pluginId) return false
+        updatePluginEnabledState(pluginId, !!enabled)
+        return true
+    })
+
+    ipcMain.handle('plugins:get-entry', async (_event, pluginId) => {
+        if (!pluginId) {
+            throw new Error('插件 ID 无效')
+        }
+        const directory = resolvePluginDirectoryById(pluginId)
+        const manifest = readPluginManifest(directory)
+        const entryPath = resolvePluginEntryPath(directory, manifest)
+        return {
+            id: manifest.id,
+            entry: manifest.entry,
+            entryPath,
+            entryUrl: pathToFileURL(entryPath).href,
+            manifest,
+        }
     })
     ipcMain.on('register-shortcuts', () => {
         registerShortcuts(win, app)

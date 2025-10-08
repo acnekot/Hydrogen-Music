@@ -223,6 +223,14 @@ contextBridge.exposeInMainWorld('windowApi', {
     setWindowTile,
     updatePlaylistStatus,
     updateDockMenu,
+    plugins: {
+        list: () => ipcRenderer.invoke('plugins:list'),
+        selectPackage: () => ipcRenderer.invoke('plugins:select-package'),
+        install: (sourcePath) => ipcRenderer.invoke('plugins:install', sourcePath),
+        uninstall: (pluginId) => ipcRenderer.invoke('plugins:remove', pluginId),
+        setEnabled: (pluginId, enabled) => ipcRenderer.invoke('plugins:set-enabled', pluginId, enabled),
+        getEntry: (pluginId) => ipcRenderer.invoke('plugins:get-entry', pluginId),
+    },
 })
 
 // 新的API用于处理登录功能和桌面歌词
