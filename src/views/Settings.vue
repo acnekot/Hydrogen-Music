@@ -10,6 +10,7 @@ import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
+import PluginManager from '../components/plugins/PluginManager.vue';
 import { setTheme, getSavedTheme } from '../utils/theme';
 
 const router = useRouter();
@@ -1855,6 +1856,11 @@ const clearFmRecent = () => {
                         </div>
                     </div>
                 </div>
+                <div class="settings-item settings-item--plugins">
+                    <h2 class="item-title">插件</h2>
+                    <div class="line"></div>
+                    <PluginManager class="settings-plugin-panel" />
+                </div>
             </div>
             <div class="app-version">
                 <div class="app-icon">
@@ -1993,16 +1999,24 @@ const clearFmRecent = () => {
                 }
             }
         }
-        .settings {
-            width: 100%;
-            .settings-item {
-                margin-top: 45px;
+            .settings {
                 width: 100%;
-                .item-title {
-                    margin: 0;
-                    font: 24px SourceHanSansCN-Bold;
-                    color: black;
-                    font-family: SourceHanSansCN-Bold;
+                .settings-item {
+                    margin-top: 45px;
+                    width: 100%;
+                    &.settings-item--plugins {
+                        .line {
+                            margin-bottom: 24px;
+                        }
+                        .settings-plugin-panel {
+                            width: 100%;
+                        }
+                    }
+                    .item-title {
+                        margin: 0;
+                        font: 24px SourceHanSansCN-Bold;
+                        color: black;
+                        font-family: SourceHanSansCN-Bold;
                     color: black;
                     text-align: left;
                 }

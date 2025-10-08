@@ -1,0 +1,254 @@
+:root {
+    color-scheme: dark;
+    --panel-bg: linear-gradient(135deg, rgba(24, 28, 36, 0.96), rgba(33, 38, 48, 0.96));
+    --panel-border: rgba(84, 92, 112, 0.45);
+    --accent: #4cc9f0;
+    --text-primary: #f1f3f8;
+    --text-secondary: rgba(208, 213, 226, 0.75);
+    --text-tertiary: rgba(171, 178, 194, 0.48);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: 'Inter', 'Segoe UI', 'PingFang SC', 'Microsoft Yahei', sans-serif;
+    background: transparent;
+    -webkit-user-select: none;
+    color: var(--text-primary);
+}
+
+.desktop-lyric-shell {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
+    padding: 12px 16px;
+    background: transparent;
+    -webkit-app-region: drag;
+}
+
+.desktop-lyric {
+    position: relative;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 28px;
+    padding: 20px 28px;
+    background: var(--panel-bg);
+    border: 1px solid rgba(84, 92, 112, 0.28);
+    border-radius: 16px;
+    box-shadow: 0 18px 42px rgba(10, 12, 16, 0.45);
+    overflow: hidden;
+}
+
+.desktop-lyric *,
+.desktop-lyric *::before,
+.desktop-lyric *::after {
+    -webkit-app-region: no-drag;
+}
+
+.lyric-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+}
+
+.lyric-current {
+    font-size: var(--lyric-font-size, 28px);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    line-height: 1.2;
+    color: var(--text-primary);
+    text-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.lyric-sub {
+    margin-top: 8px;
+    font-size: var(--sub-font-size, 18px);
+    color: var(--text-secondary);
+    line-height: 1.25;
+    min-height: calc(var(--sub-font-size, 18px) * 1.25);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.lyric-sub.is-empty {
+    visibility: hidden;
+}
+
+.lyric-next {
+    margin-top: auto;
+    font-size: calc(var(--sub-font-size, 18px) - 2px);
+    color: var(--text-tertiary);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.lyric-meta {
+    width: 190px;
+    min-width: 170px;
+    padding-left: 24px;
+    border-left: 1px solid rgba(84, 92, 112, 0.28);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    justify-content: center;
+}
+
+.meta-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.meta-label {
+    font-size: 11px;
+    letter-spacing: 0.32em;
+    color: rgba(149, 158, 178, 0.72);
+    text-transform: uppercase;
+}
+
+.meta-value {
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    color: rgba(235, 238, 246, 0.9);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.lock-indicator {
+    position: absolute;
+    top: 14px;
+    right: 18px;
+    width: 22px;
+    height: 22px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: rgba(118, 134, 168, 0.22);
+    border: 1px solid rgba(118, 134, 168, 0.38);
+}
+
+.lock-indicator::before,
+.lock-indicator::after {
+    content: '';
+    display: block;
+    position: absolute;
+    border-radius: 2px;
+    border: 2px solid rgba(235, 238, 246, 0.86);
+}
+
+.lock-indicator::before {
+    width: 9px;
+    height: 8px;
+    bottom: 5px;
+    background: rgba(235, 238, 246, 0.1);
+}
+
+.lock-indicator::after {
+    width: 9px;
+    height: 6px;
+    top: 4px;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    background: transparent;
+}
+
+body.is-locked .lock-indicator {
+    display: flex;
+}
+
+.context-menu {
+    position: absolute;
+    min-width: 160px;
+    max-width: 220px;
+    background: rgba(24, 29, 38, 0.96);
+    border: 1px solid rgba(78, 86, 106, 0.55);
+    border-radius: 12px;
+    box-shadow: 0 18px 32px rgba(10, 12, 16, 0.55);
+    padding: 8px;
+    backdrop-filter: blur(12px);
+    z-index: 20;
+}
+
+.menu-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.menu-item {
+    width: 100%;
+    padding: 6px 10px;
+    background: transparent;
+    color: rgba(230, 233, 242, 0.88);
+    font-size: 13px;
+    letter-spacing: 0.05em;
+    border: none;
+    border-radius: 8px;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+    background: rgba(76, 201, 240, 0.16);
+    color: #ffffff;
+}
+
+.menu-item.is-active {
+    background: rgba(76, 201, 240, 0.28);
+    color: #ffffff;
+}
+
+.menu-item.is-disabled {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+.menu-divider {
+    margin: 10px 0;
+    border: none;
+    border-top: 1px solid rgba(78, 86, 106, 0.45);
+}
+
+@media (max-width: 640px) {
+    .desktop-lyric {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+    }
+
+    .lyric-meta {
+        width: 100%;
+        padding-left: 0;
+        border-left: none;
+        border-top: 1px solid rgba(84, 92, 112, 0.28);
+        padding-top: 16px;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 12px 18px;
+    }
+
+    .meta-group {
+        min-width: 120px;
+    }
+}

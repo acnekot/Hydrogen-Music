@@ -507,15 +507,6 @@ body {
   stroke: var(--text) !important;
 }
 
-.dark .player .song-control .desktop-lyric-btn:not(.active) {
-  opacity: 0.5 !important;
-}
-
-.dark .player .song-control .desktop-lyric-btn:not(.active) path {
-  fill: rgba(255, 255, 255, 0.45) !important;
-  stroke: rgba(255, 255, 255, 0.45) !important;
-}
-
 /* Main Player page (layout wrapper) */
 .dark .music-player {
   /* Match main window background to keep consistency with other pages */
@@ -763,16 +754,6 @@ body {
 }
 
 .dark .player-container .comment-icon-active path {
-  fill: var(--text) !important;
-}
-
-.dark .player-container .desktop-lyric-btn:not(.active) { opacity: 0.5 !important; }
-.dark .player-container .desktop-lyric-btn:not(.active) path {
-  fill: rgba(255, 255, 255, 0.45) !important;
-  stroke: rgba(255, 255, 255, 0.45) !important;
-}
-
-.dark .player-container .desktop-lyric-btn.active path {
   fill: var(--text) !important;
 }
 
@@ -1254,12 +1235,6 @@ body {
 
 .dark .vue-slider-process {
   background-color: var(--text) !important;
-}
-
-/* Desktop lyric: make scan-inside black text plain in dark mode */
-.dark .arknights-desktop-lyric .main-lyric-section .current-lyric::before {
-  font-weight: 400 !important;
-  text-shadow: none !important;
 }
 
 /* SVG icons that use hardcoded black fills/strokes */

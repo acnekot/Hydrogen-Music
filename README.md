@@ -96,7 +96,6 @@ npm start
 
 ![home][home-screenshot]
 ![lyric][lyric-screenshot]
-![desktop-lyric][desktop-lyric-screenshot]
 ![comment][comment-screenshot]
 ![privateFM][privateFM-screenshot]
 ![music_view][music_view-screenshot]
@@ -108,7 +107,6 @@ npm start
 
 [home-screenshot]: img/home.png
 [lyric-screenshot]: img/lyric.png
-[desktop-lyric-screenshot]: img/desktop-lyric.png
 [comment-screenshot]: img/comment.png
 [privateFM-screenshot]: img/privateFM.png
 [dark_mode-screenshot]: img/dark_mode.png

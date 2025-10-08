@@ -1,7 +1,9 @@
 const { ipcMain, shell, dialog, globalShortcut, Menu, clipboard, BrowserWindow, session } = require('electron')
 const axios = require('axios')
 const fs = require('fs')
+const fsExtra = require('fs-extra')
 const path = require('path')
+const { pathToFileURL } = require('url')
 const { parseFile } = require('music-metadata')
 // const jsmediatags = require("jsmediatags");
 const registerShortcuts = require('./shortcuts')
@@ -13,9 +15,228 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     const settingsStore = new Store({ name: 'settings' })
     const lastPlaylistStore = new Store({ name: 'lastPlaylist' })
     const musicVideoStore = new Store({ name: 'musicVideo' })
+    const pluginStateStore = new Store({ name: 'plugins' })
+    const pluginSettingsStore = new Store({ name: 'pluginSettings' })
 
-    // 全局存储桌面歌词窗口引用
-    let globalLyricWindow = null;
+    const defaultPluginDirectory = (() => {
+        try {
+            if (app.isPackaged) {
+                const executableDir = path.dirname(app.getPath('exe'))
+                return path.join(executableDir, 'plugins')
+            }
+        } catch (_) {
+            // ignore
+        }
+        return path.join(app.getAppPath(), 'plugins')
+    })()
+
+    const resolveDirectoryPath = (input) => {
+        if (!input || typeof input !== 'string') return null
+        const trimmed = input.trim()
+        if (!trimmed) return null
+        try {
+            return path.resolve(trimmed)
+        } catch (_) {
+            return null
+        }
+    }
+
+    let pluginDirectory = (() => {
+        const stored = resolveDirectoryPath(pluginSettingsStore.get('directory'))
+        return stored || defaultPluginDirectory
+    })()
+
+    const ensurePluginDirectory = (targetPath = pluginDirectory) => {
+        if (!targetPath) return null
+        fs.mkdirSync(targetPath, { recursive: true })
+        return targetPath
+    }
+
+    const setPluginDirectory = (nextPath) => {
+        const resolved = resolveDirectoryPath(nextPath) || defaultPluginDirectory
+        ensurePluginDirectory(resolved)
+        pluginDirectory = resolved
+        pluginSettingsStore.set('directory', resolved)
+        return pluginDirectory
+    }
+
+    try {
+        ensurePluginDirectory()
+    } catch (error) {
+        console.error('[Plugin] 无法创建插件目录', error)
+    }
+
+    const readPluginManifest = (directory) => {
+        const manifestPath = path.join(directory, 'plugin.json')
+        if (!fs.existsSync(manifestPath)) {
+            throw new Error('缺少 plugin.json 文件')
+        }
+        const raw = fs.readFileSync(manifestPath, 'utf-8')
+        const manifest = JSON.parse(raw)
+        if (!manifest.id) {
+            throw new Error('插件 manifest 缺少 id 字段')
+        }
+        if (!manifest.entry) {
+            manifest.entry = 'index.js'
+        }
+        return manifest
+    }
+
+    const resolvePluginEntryPath = (directory, manifest) => {
+        const entryPath = path.join(directory, manifest.entry)
+        if (!fs.existsSync(entryPath)) {
+            throw new Error(`入口文件不存在: ${manifest.entry}`)
+        }
+        return entryPath
+    }
+
+    const getPluginStateMap = () => {
+        const stored = pluginStateStore.get('plugins')
+        if (stored && typeof stored === 'object') return stored
+        return {}
+    }
+
+    const setPluginStateMap = (state) => {
+        pluginStateStore.set('plugins', state)
+    }
+
+    const updatePluginEnabledState = (pluginId, enabled) => {
+        const state = getPluginStateMap()
+        state[pluginId] = { ...(state[pluginId] || {}), enabled: !!enabled }
+        setPluginStateMap(state)
+    }
+
+    const removePluginState = (pluginId) => {
+        const state = getPluginStateMap()
+        if (pluginId in state) {
+            delete state[pluginId]
+            setPluginStateMap(state)
+        }
+    }
+
+    const copyPluginPackage = async (source, destination) => {
+        await fsExtra.copy(source, destination, {
+            overwrite: true,
+            errorOnExist: false,
+            dereference: false,
+        })
+    }
+
+    // 桌面歌词窗口管理
+    let globalLyricWindow = null
+
+    const getLyricWindowInstance = () => {
+        if (globalLyricWindow && !globalLyricWindow.isDestroyed()) {
+            return globalLyricWindow
+        }
+        globalLyricWindow = null
+        return null
+    }
+
+    const normalizeWindowNumber = (value, fallback) => {
+        if (typeof value !== 'number') return typeof fallback === 'number' ? Math.round(fallback) : undefined
+        if (!Number.isFinite(value)) return typeof fallback === 'number' ? Math.round(fallback) : undefined
+        return Math.round(value)
+    }
+
+    const createLyricWindowInstance = (rawOptions = {}) => {
+        const existing = getLyricWindowInstance()
+        if (existing) {
+            if (rawOptions && rawOptions.bounds) {
+                const nextBounds = rawOptions.bounds
+                const next = {
+                    x: normalizeWindowNumber(nextBounds.x, undefined),
+                    y: normalizeWindowNumber(nextBounds.y, undefined),
+                    width: normalizeWindowNumber(nextBounds.width, existing.getBounds().width),
+                    height: normalizeWindowNumber(nextBounds.height, existing.getBounds().height),
+                }
+                existing.setBounds({
+                    x: typeof next.x === 'number' ? next.x : existing.getBounds().x,
+                    y: typeof next.y === 'number' ? next.y : existing.getBounds().y,
+                    width: Math.max(260, next.width || existing.getBounds().width),
+                    height: Math.max(140, next.height || existing.getBounds().height),
+                })
+            }
+            if (rawOptions && rawOptions.focus !== false) {
+                existing.focus()
+            }
+            return existing
+        }
+
+        const htmlPath = rawOptions && rawOptions.htmlPath ? path.resolve(rawOptions.htmlPath) : null
+        if (!htmlPath || !fs.existsSync(htmlPath)) {
+            throw new Error('桌面歌词窗口资源不存在')
+        }
+
+        const requestedBounds = rawOptions.bounds || {}
+        const width = Math.max(260, normalizeWindowNumber(rawOptions.width, requestedBounds.width ?? 520))
+        const height = Math.max(140, normalizeWindowNumber(rawOptions.height, requestedBounds.height ?? 180))
+        const minWidth = Math.max(260, normalizeWindowNumber(rawOptions.minWidth, rawOptions.minWidth ?? 320))
+        const minHeight = Math.max(140, normalizeWindowNumber(rawOptions.minHeight, rawOptions.minHeight ?? 160))
+        const positionX = normalizeWindowNumber(rawOptions.x, requestedBounds.x)
+        const positionY = normalizeWindowNumber(rawOptions.y, requestedBounds.y)
+        const alwaysOnTop = rawOptions.alwaysOnTop !== false
+        const resizable = rawOptions.resizable !== false
+        const backgroundColor = typeof rawOptions.backgroundColor === 'string' ? rawOptions.backgroundColor : '#11131a'
+        const transparent = rawOptions.transparent === true
+
+        const browserOptions = {
+            width,
+            height,
+            minWidth,
+            minHeight,
+            frame: false,
+            resizable,
+            movable: true,
+            alwaysOnTop,
+            skipTaskbar: rawOptions.skipTaskbar !== false,
+            transparent,
+            backgroundColor,
+            hasShadow: true,
+            show: false,
+            titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
+            webPreferences: {
+                preload: path.resolve(__dirname, './preload.js'),
+                contextIsolation: true,
+                nodeIntegration: false,
+            },
+        }
+
+        const lyricWindow = new BrowserWindow(browserOptions)
+        lyricWindow.setMenuBarVisibility(false)
+        lyricWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+        if (alwaysOnTop) {
+            lyricWindow.setAlwaysOnTop(true, 'screen-saver')
+        }
+        if (typeof rawOptions.opacity === 'number' && rawOptions.opacity > 0 && rawOptions.opacity <= 1) {
+            lyricWindow.setOpacity(rawOptions.opacity)
+        }
+        lyricWindow.loadFile(htmlPath)
+        lyricWindow.once('ready-to-show', () => {
+            if (typeof positionX === 'number' && typeof positionY === 'number') {
+                lyricWindow.setPosition(positionX, positionY)
+            }
+            lyricWindow.showInactive()
+        })
+        lyricWindow.on('closed', () => {
+            globalLyricWindow = null
+            try {
+                win.webContents.send('desktop-lyric-closed')
+            } catch (_) {
+                // ignore if main window is not available
+            }
+        })
+
+        globalLyricWindow = lyricWindow
+        return lyricWindow
+    }
+
+    const closeLyricWindowInstance = () => {
+        const instance = getLyricWindowInstance()
+        if (instance) {
+            instance.close()
+        }
+    }
     // win.on('restore', () => {
     // win.webContents.send('lyric-control')
     // })
@@ -213,6 +434,192 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             return null
         }
         return filePaths[0]
+    })
+
+    ipcMain.handle('plugins:get-directory', async () => {
+        try {
+            const directory = ensurePluginDirectory()
+            return {
+                directory,
+                defaultDirectory,
+            }
+        } catch (error) {
+            console.error('[Plugin] 获取插件目录失败', error)
+            throw error
+        }
+    })
+
+    ipcMain.handle('plugins:set-directory', async (_event, nextPath) => {
+        try {
+            const directory = setPluginDirectory(nextPath)
+            return {
+                directory,
+                defaultDirectory,
+            }
+        } catch (error) {
+            console.error('[Plugin] 设置插件目录失败', error)
+            throw error
+        }
+    })
+
+    ipcMain.handle('plugins:select-directory', async () => {
+        const { canceled, filePaths } = await dialog.showOpenDialog({
+            title: '选择插件存储目录',
+            properties: ['openDirectory', 'createDirectory'],
+            defaultPath: pluginDirectory,
+        })
+        if (canceled || !filePaths || !filePaths.length) {
+            return null
+        }
+        try {
+            const directory = setPluginDirectory(filePaths[0])
+            return {
+                directory,
+                defaultDirectory,
+            }
+        } catch (error) {
+            console.error('[Plugin] 选择插件目录失败', error)
+            throw error
+        }
+    })
+
+    ipcMain.handle('plugins:select-package', async () => {
+        ensurePluginDirectory()
+        const { canceled, filePaths } = await dialog.showOpenDialog({
+            title: '选择 Hydrogen Music 插件目录',
+            properties: ['openDirectory'],
+        })
+        if (canceled || !filePaths || !filePaths.length) {
+            return null
+        }
+        return filePaths[0]
+    })
+
+    ipcMain.handle('plugins:install', async (_event, sourcePath) => {
+        const activeDirectory = ensurePluginDirectory()
+        if (!sourcePath) {
+            throw new Error('未提供插件路径')
+        }
+        const resolvedSource = path.resolve(sourcePath)
+        if (!fs.existsSync(resolvedSource)) {
+            throw new Error('插件目录不存在')
+        }
+        const stat = fs.statSync(resolvedSource)
+        if (!stat.isDirectory()) {
+            throw new Error('请选择包含 plugin.json 的插件文件夹')
+        }
+
+        const manifest = readPluginManifest(resolvedSource)
+        const targetDirectory = path.join(activeDirectory, manifest.id)
+        const resolvedTarget = path.resolve(targetDirectory)
+
+        if (resolvedSource !== resolvedTarget) {
+            await fsExtra.remove(resolvedTarget)
+            await copyPluginPackage(resolvedSource, resolvedTarget)
+        } else {
+            resolvePluginEntryPath(resolvedTarget, manifest)
+        }
+
+        const state = getPluginStateMap()
+        state[manifest.id] = { ...(state[manifest.id] || {}) }
+        setPluginStateMap(state)
+        return manifest
+    })
+
+    ipcMain.handle('plugins:list', async () => {
+        const activeDirectory = ensurePluginDirectory()
+        const state = getPluginStateMap()
+        const result = []
+        let entries = []
+        try {
+            entries = fs.readdirSync(activeDirectory, { withFileTypes: true })
+        } catch (error) {
+            return result
+        }
+
+        for (const entry of entries) {
+            if (!entry.isDirectory()) continue
+            const pluginPath = path.join(activeDirectory, entry.name)
+            try {
+                const manifest = readPluginManifest(pluginPath)
+                const entryPath = resolvePluginEntryPath(pluginPath, manifest)
+                result.push({
+                    id: manifest.id,
+                    name: manifest.name || manifest.id,
+                    version: manifest.version || '0.0.0',
+                    description: manifest.description || '',
+                    author: manifest.author || '',
+                    entry: manifest.entry,
+                    entryUrl: pathToFileURL(entryPath).href,
+                    path: pluginPath,
+                    enabled: !!(state[manifest.id] && state[manifest.id].enabled),
+                })
+            } catch (error) {
+                result.push({
+                    id: entry.name,
+                    name: entry.name,
+                    version: '0.0.0',
+                    description: '',
+                    author: '',
+                    broken: true,
+                    error: error.message || String(error),
+                })
+            }
+        }
+        return result
+    })
+
+    const resolvePluginDirectoryById = (pluginId) => {
+        const activeDirectory = ensurePluginDirectory()
+        const direct = path.join(activeDirectory, pluginId)
+        if (fs.existsSync(direct)) return direct
+        let entries = []
+        try {
+            entries = fs.readdirSync(activeDirectory, { withFileTypes: true })
+        } catch (_) {
+            return direct
+        }
+        for (const entry of entries) {
+            if (!entry.isDirectory()) continue
+            const candidate = path.join(activeDirectory, entry.name)
+            try {
+                const manifest = readPluginManifest(candidate)
+                if (manifest.id === pluginId) {
+                    return candidate
+                }
+            } catch (_) {}
+        }
+        return direct
+    }
+
+    ipcMain.handle('plugins:remove', async (_event, pluginId) => {
+        if (!pluginId) return false
+        const targetDirectory = resolvePluginDirectoryById(pluginId)
+        await fsExtra.remove(targetDirectory)
+        removePluginState(pluginId)
+        return true
+    })
+
+    ipcMain.handle('plugins:set-enabled', async (_event, pluginId, enabled) => {
+        if (!pluginId) return false
+        updatePluginEnabledState(pluginId, !!enabled)
+        return true
+    })
+
+    ipcMain.handle('plugins:get-entry', async (_event, pluginId) => {
+        if (!pluginId) {
+            throw new Error('插件 ID 无效')
+        }
+        const directory = resolvePluginDirectoryById(pluginId)
+        const manifest = readPluginManifest(directory)
+        const entryPath = resolvePluginEntryPath(directory, manifest)
+        return {
+            id: manifest.id,
+            entry: manifest.entry,
+            entryPath,
+            entryUrl: pathToFileURL(entryPath).href,
+            manifest,
+        }
     })
     ipcMain.on('register-shortcuts', () => {
         registerShortcuts(win, app)
@@ -706,70 +1113,54 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     })
 
     // 桌面歌词相关 IPC 处理
-    const { createLyricWindow, closeLyricWindow, setLyricWindowMovable, getLyricWindow } = lyricFunctions
-
-    ipcMain.handle('create-lyric-window', async () => {
+    ipcMain.handle('create-lyric-window', async (_event, options = {}) => {
         try {
-            if (createLyricWindow) {
-                const lyricWin = createLyricWindow()
-                if (lyricWin) {
-                    globalLyricWindow = lyricWin
-
-                    // 监听窗口关闭事件
-                    lyricWin.on('closed', () => {
-                        globalLyricWindow = null
-                    })
-
-
-                    return { success: true, message: '桌面歌词窗口已创建' }
-                } else {
-                    return { success: false, message: '创建窗口失败' }
-                }
+            const lyricWin = createLyricWindowInstance(options)
+            if (lyricWin) {
+                return { success: true, message: '桌面歌词窗口已创建' }
             }
-            return { success: false, message: '桌面歌词功能不可用' }
+            return { success: false, message: '创建窗口失败' }
         } catch (error) {
-
-            return { success: false, message: '创建失败' }
+            return { success: false, message: error?.message || '创建失败' }
         }
     })
 
     ipcMain.handle('close-lyric-window', async () => {
         try {
-            if (closeLyricWindow) {
-                closeLyricWindow()
-                return { success: true, message: '桌面歌词窗口已关闭' }
-            }
-            return { success: false, message: '桌面歌词功能不可用' }
+            closeLyricWindowInstance()
+            return { success: true, message: '桌面歌词窗口已关闭' }
         } catch (error) {
-
-            return { success: false, message: '关闭失败' }
+            return { success: false, message: error?.message || '关闭失败' }
         }
     })
 
-    ipcMain.handle('set-lyric-window-movable', async (event, movable) => {
+    ipcMain.handle('set-lyric-window-movable', async (_event, movable) => {
         try {
-            if (setLyricWindowMovable) {
-                setLyricWindowMovable(movable)
+            const lyricWindow = getLyricWindowInstance()
+            if (lyricWindow) {
+                lyricWindow.setMovable(!!movable)
+                if (process.platform === 'win32') {
+                    lyricWindow.setIgnoreMouseEvents(false)
+                }
                 return { success: true, message: '窗口移动状态已更新' }
             }
-            return { success: false, message: '桌面歌词功能不可用' }
+            return { success: false, message: '桌面歌词窗口不存在' }
         } catch (error) {
-
-            return { success: false, message: '设置失败' }
+            return { success: false, message: error?.message || '设置失败' }
         }
     })
 
     ipcMain.on('lyric-window-ready', () => {
-
+        try {
+            win.webContents.send('desktop-lyric-ready')
+        } catch (_) {
+            // ignore if主窗口不可用
+        }
     })
 
-    ipcMain.on('update-lyric-data', (event, data) => {
-        let lyricWindow = globalLyricWindow
-        if (!lyricWindow && getLyricWindow) {
-            lyricWindow = getLyricWindow()
-        }
-
-        if (lyricWindow && !lyricWindow.isDestroyed()) {
+    ipcMain.on('update-lyric-data', (_event, data) => {
+        const lyricWindow = getLyricWindowInstance()
+        if (lyricWindow) {
             lyricWindow.webContents.send('lyric-update', data)
         }
     })
@@ -778,37 +1169,34 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         win.webContents.send('get-current-lyric-data')
     })
 
-    ipcMain.on('current-lyric-data', (event, data) => {
-        const lyricWindow = getLyricWindow && getLyricWindow()
-        if (lyricWindow && !lyricWindow.isDestroyed()) {
+    ipcMain.on('current-lyric-data', (_event, data) => {
+        const lyricWindow = getLyricWindowInstance()
+        if (lyricWindow) {
             lyricWindow.webContents.send('lyric-update', data)
         }
     })
 
     ipcMain.handle('is-lyric-window-visible', () => {
-        const lyricWindow = getLyricWindow && getLyricWindow();
-        return lyricWindow && !lyricWindow.isDestroyed() && lyricWindow.isVisible();
+        const lyricWindow = getLyricWindowInstance()
+        return !!(lyricWindow && lyricWindow.isVisible())
     });
 
     // 调整桌面歌词窗口大小
-    ipcMain.handle('resize-lyric-window', (event, { width, height }) => {
-        const lyricWindow = getLyricWindow && getLyricWindow();
-        if (lyricWindow && !lyricWindow.isDestroyed()) {
-            try {
-                lyricWindow.setSize(width, height);
-                return { success: true };
-            } catch (error) {
-
-                return { success: false, error: error.message };
-            }
+    ipcMain.handle('resize-lyric-window', (_event, { width, height }) => {
+        const lyricWindow = getLyricWindowInstance();
+        if (!lyricWindow) return { success: false, error: '窗口不存在' };
+        try {
+            lyricWindow.setSize(width, height);
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error.message };
         }
-        return { success: false, error: '窗口不存在' };
     });
 
     // 获取桌面歌词窗口位置与尺寸
     ipcMain.handle('get-lyric-window-bounds', () => {
-        const lyricWindow = getLyricWindow && getLyricWindow();
-        if (lyricWindow && !lyricWindow.isDestroyed()) {
+        const lyricWindow = getLyricWindowInstance();
+        if (lyricWindow) {
             try {
                 return lyricWindow.getBounds();
             } catch (error) {
@@ -820,8 +1208,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
 
     // 移动桌面歌词窗口到指定坐标（基于屏幕坐标）
     ipcMain.on('move-lyric-window', (event, { x, y }) => {
-        const lyricWindow = getLyricWindow && getLyricWindow();
-        if (lyricWindow && !lyricWindow.isDestroyed() && typeof x === 'number' && typeof y === 'number') {
+        const lyricWindow = getLyricWindowInstance();
+        if (lyricWindow && typeof x === 'number' && typeof y === 'number') {
             try {
                 lyricWindow.setPosition(Math.round(x), Math.round(y));
             } catch (error) {
@@ -833,8 +1221,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     // 按增量移动桌面歌词窗口（无需预先获取窗口位置）
     ipcMain.on('move-lyric-window-by', (event, { dx, dy }) => {
         if (process.platform === 'darwin') return; // macOS 保持原生
-        const lyricWindow = getLyricWindow && getLyricWindow();
-        if (lyricWindow && !lyricWindow.isDestroyed() && typeof dx === 'number' && typeof dy === 'number') {
+        const lyricWindow = getLyricWindowInstance();
+        if (lyricWindow && typeof dx === 'number' && typeof dy === 'number') {
             try {
                 const { x, y } = lyricWindow.getBounds();
                 lyricWindow.setPosition(Math.round(x + dx), Math.round(y + dy));
@@ -847,10 +1235,9 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     // 将窗口移动到指定位置，并强制保持给定宽高
     ipcMain.on('move-lyric-window-to', (event, { x, y, width, height }) => {
         if (process.platform === 'darwin') return; // macOS 保持原生
-        const lyricWindow = getLyricWindow && getLyricWindow();
+        const lyricWindow = getLyricWindowInstance();
         if (
             lyricWindow &&
-            !lyricWindow.isDestroyed() &&
             typeof x === 'number' && typeof y === 'number' &&
             typeof width === 'number' && typeof height === 'number'
         ) {
@@ -865,8 +1252,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     // 读取窗口最小/最大尺寸（Windows专用）
     ipcMain.handle('get-lyric-window-min-max', () => {
         if (process.platform === 'darwin') return null;
-        const lyricWindow = getLyricWindow && getLyricWindow();
-        if (lyricWindow && !lyricWindow.isDestroyed()) {
+        const lyricWindow = getLyricWindowInstance();
+        if (lyricWindow) {
             try {
                 const [minWidth, minHeight] = lyricWindow.getMinimumSize();
                 const [maxWidth, maxHeight] = lyricWindow.getMaximumSize();
@@ -881,8 +1268,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     // 设置窗口最小/最大尺寸（Windows专用）
     ipcMain.on('set-lyric-window-min-max', (event, { minWidth, minHeight, maxWidth, maxHeight }) => {
         if (process.platform === 'darwin') return;
-        const lyricWindow = getLyricWindow && getLyricWindow();
-        if (lyricWindow && !lyricWindow.isDestroyed()) {
+        const lyricWindow = getLyricWindowInstance();
+        if (lyricWindow) {
             try {
                 if (typeof minWidth === 'number' && typeof minHeight === 'number') {
                     lyricWindow.setMinimumSize(Math.max(0, Math.round(minWidth)), Math.max(0, Math.round(minHeight)));
@@ -899,8 +1286,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     // 设置窗口宽高比（Windows专用）
     ipcMain.on('set-lyric-window-aspect-ratio', (event, { aspectRatio }) => {
         if (process.platform === 'darwin') return;
-        const lyricWindow = getLyricWindow && getLyricWindow();
-        if (lyricWindow && !lyricWindow.isDestroyed()) {
+        const lyricWindow = getLyricWindowInstance();
+        if (lyricWindow) {
             try {
                 const ratio = typeof aspectRatio === 'number' ? aspectRatio : 0;
                 lyricWindow.setAspectRatio(ratio > 0 ? ratio : 0);
@@ -913,8 +1300,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     // 读取内容区域的bounds（Windows专用）
     ipcMain.handle('get-lyric-window-content-bounds', () => {
         if (process.platform === 'darwin') return null;
-        const lyricWindow = getLyricWindow && getLyricWindow();
-        if (lyricWindow && !lyricWindow.isDestroyed()) {
+        const lyricWindow = getLyricWindowInstance();
+        if (lyricWindow) {
             try {
                 return lyricWindow.getContentBounds();
             } catch (error) {
@@ -927,10 +1314,9 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     // 设置内容区域的bounds（Windows专用）
     ipcMain.on('move-lyric-window-content-to', (event, { x, y, width, height }) => {
         if (process.platform === 'darwin') return;
-        const lyricWindow = getLyricWindow && getLyricWindow();
+        const lyricWindow = getLyricWindowInstance();
         if (
             lyricWindow &&
-            !lyricWindow.isDestroyed() &&
             typeof x === 'number' && typeof y === 'number' &&
             typeof width === 'number' && typeof height === 'number'
         ) {
@@ -945,8 +1331,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     // 设置桌面歌词窗口的可调整大小状态（用于拖拽期间临时禁用）
     ipcMain.on('set-lyric-window-resizable', (event, { resizable }) => {
         if (process.platform !== 'win32') return; // 仅Windows需要
-        const lyricWindow = getLyricWindow && getLyricWindow();
-        if (lyricWindow && !lyricWindow.isDestroyed()) {
+        const lyricWindow = getLyricWindowInstance();
+        if (lyricWindow) {
             try {
                 lyricWindow.setResizable(!!resizable);
             } catch (error) {
@@ -960,6 +1346,24 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         // 通知主窗口桌面歌词已关闭
         win.webContents.send('desktop-lyric-closed');
     });
+
+    ipcMain.on('desktop-lyric-command', (event, payload) => {
+        const lyricWindow = getLyricWindowInstance()
+        const isFromMainWindow = win && !win.isDestroyed() && event.sender === win.webContents
+        if (isFromMainWindow) {
+            if (lyricWindow) {
+                lyricWindow.webContents.send('desktop-lyric-command', payload)
+            }
+            return
+        }
+        try {
+            if (win && !win.isDestroyed()) {
+                win.webContents.send('desktop-lyric-command', payload)
+            }
+        } catch (_) {
+            // ignore forward errors
+        }
+    })
 
     // 处理应用更新相关的 IPC 事件
     ipcMain.on('check-for-update', async () => {

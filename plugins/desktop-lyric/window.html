@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <title>Hydrogen Desktop Lyric</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+    <link rel="stylesheet" href="./window.css" />
+</head>
+<body>
+    <div id="root" class="desktop-lyric-shell">
+        <div class="desktop-lyric">
+            <div class="lyric-main">
+                <div class="lyric-current" id="lyric-text">♪♪♪</div>
+                <div class="lyric-sub" id="lyric-sub"></div>
+                <div class="lyric-next" id="lyric-next"></div>
+            </div>
+            <aside class="lyric-meta">
+                <div class="meta-group">
+                    <span class="meta-label">TRACK</span>
+                    <span class="meta-value" id="meta-track"></span>
+                </div>
+                <div class="meta-group">
+                    <span class="meta-label">ARTIST</span>
+                    <span class="meta-value" id="meta-artist"></span>
+                </div>
+                <div class="meta-group" id="album-group">
+                    <span class="meta-label">ALBUM</span>
+                    <span class="meta-value" id="meta-album"></span>
+                </div>
+            </aside>
+            <div class="lock-indicator" id="lock-indicator" title="窗口已锁定"></div>
+        </div>
+        <div class="context-menu" id="context-menu" hidden>
+            <div class="menu-group" data-menu-group="source">
+                <button type="button" class="menu-item" data-command="source:auto">自动</button>
+                <button type="button" class="menu-item" data-command="source:original">原文</button>
+                <button type="button" class="menu-item" data-command="source:translation">翻译</button>
+                <button type="button" class="menu-item" data-command="source:romaji">罗马音</button>
+                <button type="button" class="menu-item" data-command="source:bilingual">双语</button>
+            </div>
+            <hr class="menu-divider" />
+            <div class="menu-group">
+                <button type="button" class="menu-item" data-command="toggle-lock">锁定位置</button>
+            </div>
+            <hr class="menu-divider" />
+            <div class="menu-group">
+                <button type="button" class="menu-item" data-command="font:+2">字体增大</button>
+                <button type="button" class="menu-item" data-command="font:-2">字体减小</button>
+                <button type="button" class="menu-item" data-command="subfont:+2">副字体增大</button>
+                <button type="button" class="menu-item" data-command="subfont:-2">副字体减小</button>
+            </div>
+            <hr class="menu-divider" />
+            <div class="menu-group">
+                <button type="button" class="menu-item" data-command="refresh">刷新歌词</button>
+                <button type="button" class="menu-item" data-command="close">关闭窗口</button>
+            </div>
+        </div>
+    </div>
+    <script type="module" src="./window.js"></script>
+</body>
+</html>

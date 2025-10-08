@@ -223,6 +223,17 @@ contextBridge.exposeInMainWorld('windowApi', {
     setWindowTile,
     updatePlaylistStatus,
     updateDockMenu,
+    plugins: {
+        list: () => ipcRenderer.invoke('plugins:list'),
+        selectPackage: () => ipcRenderer.invoke('plugins:select-package'),
+        install: (sourcePath) => ipcRenderer.invoke('plugins:install', sourcePath),
+        uninstall: (pluginId) => ipcRenderer.invoke('plugins:remove', pluginId),
+        setEnabled: (pluginId, enabled) => ipcRenderer.invoke('plugins:set-enabled', pluginId, enabled),
+        getEntry: (pluginId) => ipcRenderer.invoke('plugins:get-entry', pluginId),
+        getDirectory: () => ipcRenderer.invoke('plugins:get-directory'),
+        setDirectory: (directoryPath) => ipcRenderer.invoke('plugins:set-directory', directoryPath),
+        selectDirectory: () => ipcRenderer.invoke('plugins:select-directory'),
+    },
 })
 
 // 新的API用于处理登录功能和桌面歌词
@@ -233,19 +244,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openNeteaseLogin,
     clearLoginSession,
     // 桌面歌词相关API
-    createLyricWindow: () => ipcRenderer.invoke('create-lyric-window'),
+    createLyricWindow: (options) => ipcRenderer.invoke('create-lyric-window', options),
     closeLyricWindow: () => ipcRenderer.invoke('close-lyric-window'),
     setLyricWindowMovable: (movable) => ipcRenderer.invoke('set-lyric-window-movable', movable),
     lyricWindowReady: () => ipcRenderer.send('lyric-window-ready'),
-    onLyricUpdate: (callback) => ipcRenderer.on('lyric-update', callback),
+    onLyricUpdate: (callback) => {
+        const handler = (_event, payload) => callback?.(payload)
+        ipcRenderer.on('lyric-update', handler)
+        return () => ipcRenderer.removeListener('lyric-update', handler)
+    },
     requestLyricData: () => ipcRenderer.send('request-lyric-data'),
     updateLyricData: (data) => ipcRenderer.send('update-lyric-data', data),
-    getCurrentLyricData: (callback) => ipcRenderer.on('get-current-lyric-data', callback),
+    getCurrentLyricData: (callback) => {
+        const handler = (event, payload) => callback?.(event, payload)
+        ipcRenderer.on('get-current-lyric-data', handler)
+        return () => ipcRenderer.removeListener('get-current-lyric-data', handler)
+    },
     sendCurrentLyricData: (data) => ipcRenderer.send('current-lyric-data', data),
     isLyricWindowVisible: () => ipcRenderer.invoke('is-lyric-window-visible'),
     resizeWindow: (width, height) => ipcRenderer.invoke('resize-lyric-window', { width, height }),
     notifyLyricWindowClosed: () => ipcRenderer.send('lyric-window-closed'),
-    onDesktopLyricClosed: (callback) => ipcRenderer.on('desktop-lyric-closed', callback),
+    onDesktopLyricClosed: (callback) => {
+        const handler = () => callback?.()
+        ipcRenderer.on('desktop-lyric-closed', handler)
+        return () => ipcRenderer.removeListener('desktop-lyric-closed', handler)
+    },
     // 拖拽相关：获取与移动桌面歌词窗口
     getLyricWindowBounds: () => ipcRenderer.invoke('get-lyric-window-bounds'),
     moveLyricWindow: (x, y) => ipcRenderer.send('move-lyric-window', { x, y }),
@@ -257,4 +280,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setLyricWindowAspectRatio: (aspectRatio) => ipcRenderer.send('set-lyric-window-aspect-ratio', { aspectRatio }),
     getLyricWindowContentBounds: () => ipcRenderer.invoke('get-lyric-window-content-bounds'),
     moveLyricWindowContentTo: (x, y, width, height) => ipcRenderer.send('move-lyric-window-content-to', { x, y, width, height }),
+    onDesktopLyricReady: (callback) => {
+        const handler = () => callback?.()
+        ipcRenderer.on('desktop-lyric-ready', handler)
+        return () => ipcRenderer.removeListener('desktop-lyric-ready', handler)
+    },
+    onDesktopLyricCommand: (callback) => {
+        const handler = (_event, payload) => callback?.(payload)
+        ipcRenderer.on('desktop-lyric-command', handler)
+        return () => ipcRenderer.removeListener('desktop-lyric-command', handler)
+    },
+    emitDesktopLyricCommand: (payload) => ipcRenderer.send('desktop-lyric-command', payload),
 })
