@@ -7,6 +7,7 @@ import { getUserProfile, getLikelist, getUserPlaylist } from '../api/user'
 import { useUserStore } from '../store/userStore'
 import { usePlayerStore } from '../store/playerStore'
 import { useLocalStore } from '../store/localStore'
+import { usePluginStore } from '../store/pluginStore'
 import { storeToRefs } from 'pinia'
 
 const userStore = useUserStore(pinia)
@@ -102,6 +103,12 @@ export const initFavoritePlaylist = async () => {
 export const init = () => {
     initSettings()
     initDownloadManager()  // 初始化下载管理器
+    try {
+        const pluginStore = usePluginStore()
+        pluginStore.initialize()
+    } catch (error) {
+        console.error('插件系统初始化失败:', error)
+    }
     
     // 重置FM模式状态 - 应用启动时不应保持FM模式
     if(playerStore.listInfo && playerStore.listInfo.type === 'personalfm') {

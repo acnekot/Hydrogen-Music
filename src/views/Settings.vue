@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, onActivated, watch } from 'vue';
-import { onBeforeRouteLeave, useRouter } from 'vue-router';
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
 import { logout } from '../api/user';
 import { noticeOpen, dialogOpen } from '../utils/dialog';
 import { initSettings } from '../utils/initApp';
@@ -10,9 +10,12 @@ import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
+import PluginManager from '../components/plugins/PluginManager.vue';
 import { setTheme, getSavedTheme } from '../utils/theme';
 
 const router = useRouter();
+const route = useRoute();
+const isPluginManagerRoute = computed(() => route.name === 'settings-plugins');
 const userStore = useUserStore();
 const playerStore = usePlayerStore();
 
@@ -976,7 +979,17 @@ onBeforeRouteLeave((to, from, next) => {
 });
 
 const routerChange = () => {
+    if (isPluginManagerRoute.value) {
+        router.push({ name: 'settings' });
+        return;
+    }
     router.back();
+};
+
+const openPluginManager = () => {
+    if (!isPluginManagerRoute.value) {
+        router.push({ name: 'settings-plugins' });
+    }
 };
 
 const selectFolder = type => {
@@ -1223,13 +1236,14 @@ const clearFmRecent = () => {
             <svg t="1669039513804" @click="routerChange()" class="router-last" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1053" width="200" height="200">
                 <path d="M716.608 1010.112L218.88 512.384 717.376 13.888l45.248 45.248-453.248 453.248 452.48 452.48z" p-id="1054"></path>
             </svg>
-            <span class="setting-title">
+            <span v-if="!isPluginManagerRoute" class="setting-title">
                 设置(离开页面以保存设置或
                 <span class="save" @click="save()">点击</span>
                 保存)
             </span>
+            <span v-else class="setting-title setting-title--plugin">插件管理</span>
         </div>
-        <div class="settings-container">
+        <div v-if="!isPluginManagerRoute" class="settings-container">
             <h1 class="settings-title">设置</h1>
             <div class="settings-user-info" v-if="isLogin()">
                 <div class="user">
@@ -1855,6 +1869,21 @@ const clearFmRecent = () => {
                         </div>
                     </div>
                 </div>
+                <div class="settings-item settings-item--plugins">
+                    <h2 class="item-title">插件</h2>
+                    <div class="line"></div>
+                    <div class="item-options">
+                        <div class="option option--plugin-entry">
+                            <div class="option-name">插件管理</div>
+                            <div class="option-operation option-operation--plugin-entry">
+                                <div class="option-description">
+                                    管理第三方插件的安装、启用状态以及插件目录位置。
+                                </div>
+                                <div class="option-add option-add--primary" @click="openPluginManager">打开管理页</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div class="app-version">
                 <div class="app-icon">
@@ -1868,9 +1897,14 @@ const clearFmRecent = () => {
                 <div class="app-author" @click="toGithub()">Fix by ldx123000 | Modified from Hydrogen Music</div>          
             </div>
         </div>
-        
+        <div v-else class="settings-plugin-view">
+            <div class="settings-plugin-container">
+                <PluginManager class="settings-plugin-manager" />
+            </div>
+        </div>
+
         <!-- 更新对话框 -->
-        <UpdateDialog 
+        <UpdateDialog
             :visible="showUpdateDialog"
             :new-version="newVersion"
             @close="closeUpdateDialog"
@@ -1925,6 +1959,9 @@ const clearFmRecent = () => {
                 &:active {
                     opacity: 0.5;
                 }
+            }
+            &.setting-title--plugin {
+                font-size: 20px;
             }
         }
     }
@@ -1993,16 +2030,35 @@ const clearFmRecent = () => {
                 }
             }
         }
-        .settings {
-            width: 100%;
-            .settings-item {
-                margin-top: 45px;
+            .settings {
                 width: 100%;
-                .item-title {
-                    margin: 0;
-                    font: 24px SourceHanSansCN-Bold;
-                    color: black;
-                    font-family: SourceHanSansCN-Bold;
+                .settings-item {
+                    margin-top: 45px;
+                    width: 100%;
+                    &.settings-item--plugins {
+                        .line {
+                            margin-bottom: 24px;
+                        }
+                        .option--plugin-entry {
+                            align-items: flex-start;
+                            .option-name {
+                                margin-top: 6px;
+                            }
+                        }
+                        .option-operation--plugin-entry {
+                            flex-direction: column;
+                            align-items: flex-start;
+                            gap: 16px;
+                            .option-description {
+                                max-width: 520px;
+                            }
+                        }
+                    }
+                    .item-title {
+                        margin: 0;
+                        font: 24px SourceHanSansCN-Bold;
+                        color: black;
+                        font-family: SourceHanSansCN-Bold;
                     color: black;
                     text-align: left;
                 }
@@ -2026,6 +2082,11 @@ const clearFmRecent = () => {
                             font-size: 16px;
                             color: black;
                             text-align: left;
+                        }
+                        .option-description {
+                            font: 13px SourceHanSansCN-Regular;
+                            color: rgba(0, 0, 0, 0.65);
+                            line-height: 1.6;
                         }
                         input,
                         .selector {
@@ -2208,6 +2269,13 @@ const clearFmRecent = () => {
                         .option-add--remove {
                             color: white;
                             background-color: rgba(220, 53, 69, 0.8);
+                        }
+                        .option-add--primary {
+                            color: white;
+                            background-color: black;
+                        }
+                        .option-add--primary:hover {
+                            box-shadow: 0 0 0 1px white;
                         }
                         .option-add--remove:hover {
                             box-shadow: 0 0 0 1px white;
@@ -2420,6 +2488,26 @@ const clearFmRecent = () => {
                 }
             }
         }
+    }
+    .settings-plugin-view {
+        width: 100%;
+        height: calc(100% - 47px);
+        display: flex;
+        flex-direction: column;
+    }
+    .settings-plugin-container {
+        margin: 0 auto;
+        width: 80%;
+        height: 100%;
+        padding-bottom: 140px;
+        overflow: auto;
+        &::-webkit-scrollbar {
+            display: none;
+        }
+    }
+    .settings-plugin-manager {
+        width: 100%;
+        margin-top: 24px;
     }
 }
 .toggle-enter-active,

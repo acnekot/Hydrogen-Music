@@ -11,8 +11,7 @@ export default defineConfig({
     target: 'es2018', // 更新到ES2018以支持async generator functions
     rollupOptions: {
       input: {
-        main: resolve(__dirname, 'index.html'),
-        'desktop-lyric': resolve(__dirname, 'desktop-lyric.html')
+        main: resolve(__dirname, 'index.html')
       },
       output: {
         // 手动代码分割，优化加载性能
@@ -85,7 +84,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': resolve(__dirname, './src')
+      '@': resolve(__dirname, './src'),
+      '@tauri-apps/api': resolve(__dirname, './src/tauri-api')
     }
   },
   optimizeDeps: {
@@ -100,7 +100,8 @@ export default defineConfig({
     exclude: [
       // 排除 Electron 相关包避免预构建问题
       'electron',
-      'fs-extra'
+      'fs-extra',
+      '@tauri-apps/api'
     ]
   },
   // CSS 优化

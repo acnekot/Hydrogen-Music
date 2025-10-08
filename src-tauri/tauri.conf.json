@@ -1,0 +1,57 @@
+{
+  "$schema": "https://tauri.app/schemas/tauri.schema.json",
+  "package": {
+    "productName": "Hydrogen Music",
+    "version": "0.5.6"
+  },
+  "build": {
+    "beforeDevCommand": "npm run web:dev",
+    "beforeBuildCommand": "vite build",
+    "devPath": "http://localhost:5173",
+    "distDir": "../dist"
+  },
+  "tauri": {
+    "bundle": {
+      "active": true,
+      "identifier": "com.hydrogenmusic.app",
+      "icon": [
+        "../src/assets/icon/icon.ico",
+        "../src/assets/icon/icon.icns",
+        "../src/assets/icon/icon.png"
+      ]
+    },
+    "windows": [
+      {
+        "title": "Hydrogen Music",
+        "width": 1280,
+        "height": 800,
+        "resizable": true,
+        "fullscreen": false,
+        "transparent": false,
+        "decorations": false,
+        "visible": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*; media-src 'self' blob: data: https://*; connect-src 'self' https://* http://*;"
+    },
+    "allowlist": {
+      "all": false,
+      "dialog": {
+        "all": true
+      },
+      "shell": {
+        "all": true
+      },
+      "window": {
+        "all": true
+      },
+      "fs": {
+        "all": true
+      },
+      "path": {
+        "all": true
+      }
+    }
+  }
+}
