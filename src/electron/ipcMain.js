@@ -1498,11 +1498,16 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             const sanitizedId = sanitizePluginId(pluginId)
             if (!sanitizedId) throw new Error('无效的插件 ID')
             const plugins = getStoredPlugins()
-            const target = plugins.find((item) => item.id === sanitizedId)
-            if (!target) throw new Error('插件不存在')
-            target.enabled = Boolean(enabled)
-            saveStoredPlugins(plugins)
-            return { success: true, plugin: target }
+            let updated = null
+            const nextPlugins = plugins.map((item) => {
+                if (item.id !== sanitizedId) return item
+                updated = { ...item, enabled: Boolean(enabled) }
+                return updated
+            })
+            if (!updated) throw new Error('插件不存在')
+            saveStoredPlugins(nextPlugins)
+            await syncPluginsFromDisk()
+            return { success: true, plugin: updated }
         } catch (error) {
             console.error('更新插件启用状态失败:', error)
             return { success: false, message: error.message || '更新插件状态失败' }
@@ -1514,13 +1519,14 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             const sanitizedId = sanitizePluginId(pluginId)
             if (!sanitizedId) throw new Error('无效的插件 ID')
             const plugins = getStoredPlugins()
-            const target = plugins.find((item) => item.id === sanitizedId)
-            if (!target) throw new Error('插件不存在')
+            const nextPlugins = plugins.filter((item) => item.id !== sanitizedId)
+            if (nextPlugins.length === plugins.length) throw new Error('插件不存在')
             const pluginDir = resolvePluginDir(sanitizedId)
             if (pluginDir && fs.existsSync(pluginDir)) {
                 await fsExtra.remove(pluginDir)
             }
-            saveStoredPlugins(plugins.filter((item) => item.id !== sanitizedId))
+            saveStoredPlugins(nextPlugins)
+            await syncPluginsFromDisk()
             return { success: true }
         } catch (error) {
             console.error('删除插件失败:', error)

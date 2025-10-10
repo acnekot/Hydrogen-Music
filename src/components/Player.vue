@@ -71,7 +71,7 @@ const isInFMMode = computed(() => {
 const isDjMode = computed(() => listInfo.value && listInfo.value.type === 'dj');
 
 const lyricVisualizerActive = computed(() => lyricVisualizer.value && lyricVisualizerPluginActive.value);
-const lyricVisualizerToggleLabel = computed(() => (lyricVisualizerActive.value ? '可视化开' : '可视化关'));
+const lyricVisualizerToggleTitle = computed(() => (lyricVisualizerActive.value ? '关闭歌词可视化' : '开启歌词可视化'));
 
 const toggleLyricVisualizer = () => {
     if (!lyricVisualizerPluginActive.value) {
@@ -693,29 +693,39 @@ const toggleDjSub = async (isSubscribe) => {
                     ></path>
                 </svg>
 
-                <div
-                    class="visualizer-toggle"
-                    :class="{ active: lyricVisualizerActive, disabled: !lyricVisualizerPluginActive }"
-                    @click="toggleLyricVisualizer"
-                >
-                    <span>{{ lyricVisualizerToggleLabel }}</span>
+                <div class="comment-toggle-group">
+                    <button
+                        class="visualizer-toggle-button"
+                        type="button"
+                        :title="lyricVisualizerToggleTitle"
+                        :class="{ active: lyricVisualizerActive, disabled: !lyricVisualizerPluginActive }"
+                        :disabled="!lyricVisualizerPluginActive"
+                        @click="toggleLyricVisualizer"
+                    >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <rect x="3" y="7" width="3" height="10" rx="1" fill="currentColor" />
+                            <rect x="9" y="4" width="3" height="16" rx="1" fill="currentColor" />
+                            <rect x="15" y="9" width="3" height="11" rx="1" fill="currentColor" />
+                            <rect x="21" y="6" width="3" height="14" rx="1" fill="currentColor" />
+                        </svg>
+                    </button>
+                    <!-- 歌词/评论切换按钮 -->
+                    <svg
+                        t="1673520001"
+                        @click="switchRightPanel(props.rightPanelMode === 0 ? 1 : 0)"
+                        :class="{ 'comment-icon-active': props.rightPanelMode === 1, 'comment-icon-inactive': props.rightPanelMode === 0 }"
+                        class="icon comment-icon"
+                        viewBox="0 0 1024 1024"
+                        version="1.1"
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="32"
+                        height="32"
+                    >
+                        <path
+                            d="M853.333333 85.333333a85.333333 85.333333 0 0 1 85.333334 85.333334v469.333333a85.333333 85.333333 0 0 1-85.333334 85.333333H298.666667L128 896V170.666667a85.333333 85.333333 0 0 1 85.333333-85.333334h640z m0 85.333334H213.333333v530.773333L285.44 640H853.333333V170.666667z m-512 128v85.333333H256v-85.333333h85.333333z m341.333334 0v85.333333H384v-85.333333h298.666667z m-341.333334 170.666666v85.333334H256v-85.333334h85.333333z m256 0v85.333334H384v-85.333334h213.333333z"
+                        ></path>
+                    </svg>
                 </div>
-                <!-- 歌词/评论切换按钮 -->
-                <svg
-                    t="1673520001"
-                    @click="switchRightPanel(props.rightPanelMode === 0 ? 1 : 0)"
-                    :class="{ 'comment-icon-active': props.rightPanelMode === 1, 'comment-icon-inactive': props.rightPanelMode === 0 }"
-                    class="icon comment-icon"
-                    viewBox="0 0 1024 1024"
-                    version="1.1"
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="32"
-                    height="32"
-                >
-                    <path
-                        d="M853.333333 85.333333a85.333333 85.333333 0 0 1 85.333334 85.333334v469.333333a85.333333 85.333333 0 0 1-85.333334 85.333333H298.666667L128 896V170.666667a85.333333 85.333333 0 0 1 85.333333-85.333334h640z m0 85.333334H213.333333v530.773333L285.44 640H853.333333V170.666667z m-512 128v85.333333H256v-85.333333h85.333333z m341.333334 0v85.333333H384v-85.333333h298.666667z m-341.333334 170.666666v85.333334H256v-85.333334h85.333333z m256 0v85.333334H384v-85.333334h213.333333z"
-                    ></path>
-                </svg>
                 <!-- 桌面歌词控制按钮 -->
                 <svg
                     @click="toggleDesktopLyric"
@@ -1053,32 +1063,48 @@ const toggleDjSub = async (isSubscribe) => {
                 flex-direction: row;
                 justify-content: space-evenly;
                 align-items: center;
-                .visualizer-toggle {
+                .comment-toggle-group {
                     display: flex;
+                    flex-direction: column;
                     align-items: center;
-                    justify-content: center;
-                    margin-bottom: 6px;
-                    padding: 0.9vh 1.6vh;
-                    border: 1px solid rgba(96, 128, 186, 0.45);
-                    border-radius: 0;
-                    background: rgba(244, 248, 255, 0.9);
-                    color: rgba(12, 22, 38, 0.72);
-                    font: 1.2vh SourceHanSansCN-Bold;
-                    letter-spacing: 0.08em;
-                    cursor: pointer;
-                    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
-                    span {
-                        pointer-events: none;
-                    }
-                    &.active {
-                        background: rgba(70, 108, 196, 0.9);
-                        border-color: rgba(70, 108, 196, 0.95);
-                        color: #ffffff;
-                        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
-                    }
-                    &.disabled {
-                        cursor: not-allowed;
-                        opacity: 0.65;
+                    gap: 8px;
+
+                    .visualizer-toggle-button {
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        width: 38px;
+                        height: 38px;
+                        padding: 0;
+                        border: 1px solid rgba(96, 128, 186, 0.45);
+                        border-radius: 0;
+                        background: rgba(244, 248, 255, 0.9);
+                        color: rgba(12, 22, 38, 0.72);
+                        cursor: pointer;
+                        transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
+                        outline: none;
+
+                        svg {
+                            width: 18px;
+                            height: 18px;
+                        }
+
+                        &:hover:not(:disabled) {
+                            transform: translateY(-1px);
+                        }
+
+                        &.active {
+                            background: rgba(70, 108, 196, 0.9);
+                            border-color: rgba(70, 108, 196, 0.95);
+                            color: #ffffff;
+                            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+                        }
+
+                        &.disabled,
+                        &:disabled {
+                            cursor: not-allowed;
+                            opacity: 0.4;
+                        }
                     }
                 }
                 svg {
