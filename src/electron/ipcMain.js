@@ -188,6 +188,30 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         }
     }
 
+    const readDirectoryNames = async (targetDir) => {
+        try {
+            const entries = await fs.promises.readdir(targetDir, { withFileTypes: true })
+            return entries.filter(entry => entry.isDirectory()).map(entry => entry.name)
+        } catch (error) {
+            const fallbackError = error?.message?.includes('withFileTypes') || error?.code === 'ERR_INVALID_ARG_TYPE'
+            if (!fallbackError) throw error
+
+            const names = await fs.promises.readdir(targetDir)
+            const directories = []
+            for (const name of names) {
+                try {
+                    const stats = await fs.promises.stat(path.join(targetDir, name))
+                    if (stats.isDirectory()) {
+                        directories.push(name)
+                    }
+                } catch (_) {
+                    // ignore files that disappear or cannot be read
+                }
+            }
+            return directories
+        }
+    }
+
     const syncBuiltinPlugins = async () => {
         builtinPluginIds.clear()
 
@@ -198,9 +222,9 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         const builtinRoot = resolvePathSafe(path.join(appPath, 'plugins'))
         if (!builtinRoot || !fs.existsSync(builtinRoot)) return
 
-        let entries
+        let directories
         try {
-            entries = await fs.promises.readdir(builtinRoot, { withFileTypes: true })
+            directories = await readDirectoryNames(builtinRoot)
         } catch (error) {
             if (error?.code !== 'ENOENT') {
                 console.warn('读取内置插件目录失败:', error)
@@ -208,9 +232,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             return
         }
 
-        for (const entry of entries) {
-            if (!entry.isDirectory()) continue
-            const sourceDir = path.join(builtinRoot, entry.name)
+        for (const name of directories) {
+            const sourceDir = path.join(builtinRoot, name)
             let manifest
             try {
                 manifest = await readPluginManifestFromDir(sourceDir)
@@ -267,18 +290,17 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     const syncPluginsFromDisk = async () => {
         const pluginRoot = ensurePluginDirectory()
         await syncBuiltinPlugins()
-        let entries
+        let directories
         try {
-            entries = await fs.promises.readdir(pluginRoot, { withFileTypes: true })
+            directories = await readDirectoryNames(pluginRoot)
         } catch (error) {
             console.error('读取插件目录失败:', error)
             return
         }
 
         const diskPlugins = new Map()
-        for (const entry of entries) {
-            if (!entry.isDirectory()) continue
-            const pluginDir = path.join(pluginRoot, entry.name)
+        for (const name of directories) {
+            const pluginDir = path.join(pluginRoot, name)
             let manifest
             try {
                 manifest = await readPluginManifestFromDir(pluginDir)
