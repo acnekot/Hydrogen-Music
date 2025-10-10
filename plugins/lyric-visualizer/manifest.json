@@ -1,10 +1,9 @@
 {
   "id": "core.lyric-visualizer",
   "name": "歌词音频可视化",
-  "version": "1.0.0",
-  "description": "在歌词区域渲染音频可视化并提供配置面板。",
+  "version": "1.1.0",
+  "description": "在歌词区域渲染音频可视化并提供可配置的参数面板。",
   "author": "Hydrogen Project",
-  "builtin": true,
   "enabledByDefault": true,
   "main": "main.js"
 }

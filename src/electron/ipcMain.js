@@ -294,21 +294,29 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             }
             if (!manifest) continue
 
-            builtinPluginIds.add(manifest.id)
+            const isBuiltinManifest = manifest.builtin === true
+            if (isBuiltinManifest) {
+                builtinPluginIds.add(manifest.id)
+            }
 
             const targetDir = path.join(pluginRoot, manifest.id)
             if (isSamePath(sourceDir, targetDir)) continue
 
+            const targetExists = fs.existsSync(targetDir)
             let shouldCopy = false
-            if (!fs.existsSync(targetDir)) {
-                shouldCopy = true
-            } else {
-                let existingManifest = null
+            let existingManifest = null
+
+            if (targetExists) {
                 try {
                     existingManifest = await readPluginManifestFromDir(targetDir)
                 } catch (error) {
                     existingManifest = null
                 }
+            }
+
+            if (!targetExists) {
+                shouldCopy = true
+            } else if (isBuiltinManifest) {
                 if (!existingManifest) {
                     shouldCopy = true
                 } else if (
@@ -321,6 +329,13 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                     if (!fs.existsSync(entryPath)) {
                         shouldCopy = true
                     }
+                }
+            } else if (existingManifest && existingManifest.version !== manifest.version) {
+                shouldCopy = true
+            } else if (existingManifest) {
+                const entryPath = path.join(targetDir, manifest.entry)
+                if (!fs.existsSync(entryPath)) {
+                    shouldCopy = true
                 }
             }
 
@@ -380,7 +395,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                 entry: manifest.entry,
                 enabled: existing ? existing.enabled : manifest.enabledByDefault,
                 importTime: existing ? existing.importTime : Date.now(),
-                builtin: existing ? existing.builtin === true || isBuiltin : isBuiltin,
+                builtin: isBuiltin,
             }
             if (!existing) {
                 changed = true

@@ -1,8 +1,10 @@
 const STYLE_ID = 'hm-lyric-visualizer-style'
 const SETTINGS_ROOT_CLASS = 'hm-lyric-visualizer-settings'
 const AUTO_ENABLE_FLAG_KEY = 'lyricVisualizerHasAutoEnabled'
+const RETRY_DELAY_MS = 600
 
 const DEFAULTS = Object.freeze({
+    enabled: true,
     height: 220,
     frequencyMin: 20,
     frequencyMax: 8000,
@@ -10,7 +12,7 @@ const DEFAULTS = Object.freeze({
     barCount: 48,
     barWidth: 55,
     opacity: 100,
-    color: 'black',
+    color: '#101623',
     style: 'bars',
     radialSize: 100,
     radialOffsetX: 0,
@@ -18,7 +20,7 @@ const DEFAULTS = Object.freeze({
     radialCoreSize: 62,
 })
 
-const clamp = (value, min, max, fallback) => {
+const clampNumber = (value, min, max, fallback) => {
     const numeric = Number(value)
     if (!Number.isFinite(numeric)) return fallback
     if (numeric < min) return min
@@ -26,42 +28,36 @@ const clamp = (value, min, max, fallback) => {
     return numeric
 }
 
-const roundClamp = (value, min, max, fallback) => {
-    const numeric = clamp(value, min, max, fallback)
+const clampInteger = (value, min, max, fallback) => {
+    const numeric = clampNumber(value, min, max, fallback)
     return Math.round(numeric)
 }
 
-const sanitizeHeight = (value) => roundClamp(value ?? DEFAULTS.height, 80, 480, DEFAULTS.height)
-const sanitizeBarCount = (value) => roundClamp(value ?? DEFAULTS.barCount, 8, 120, DEFAULTS.barCount)
-const sanitizeBarWidth = (value) => roundClamp(value ?? DEFAULTS.barWidth, 4, 100, DEFAULTS.barWidth)
-const sanitizeOpacity = (value) => roundClamp(value ?? DEFAULTS.opacity, 0, 100, DEFAULTS.opacity)
-const sanitizeTransitionDelay = (value) => {
-    const numeric = Number(value)
-    if (!Number.isFinite(numeric)) return DEFAULTS.transitionDelay
-    const clamped = clamp(numeric, 0, 0.95, DEFAULTS.transitionDelay)
-    return Math.round(clamped * 100) / 100
+const sanitizeColor = (value) => {
+    if (typeof value !== 'string') return DEFAULTS.color
+    const trimmed = value.trim()
+    if (!trimmed) return DEFAULTS.color
+    if (trimmed === 'black' || trimmed === 'white') return trimmed
+    if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed)) {
+        return trimmed.length === 4
+            ? '#' + trimmed.slice(1).split('').map((ch) => ch + ch).join('').toLowerCase()
+            : trimmed.toLowerCase()
+    }
+    if (/^rgba?\([^)]+\)$/i.test(trimmed)) return trimmed
+    return DEFAULTS.color
 }
-const sanitizeVisualizerStyle = (value) => (value === 'radial' ? 'radial' : DEFAULTS.style)
-const sanitizeColor = (value) => (value === 'white' ? 'white' : 'black')
-const sanitizeRadialSize = (value) => roundClamp(value ?? DEFAULTS.radialSize, 20, 400, DEFAULTS.radialSize)
-const sanitizeRadialOffset = (value) => roundClamp(value ?? 0, -100, 100, 0)
-const sanitizeRadialCoreSize = (value) => roundClamp(value ?? DEFAULTS.radialCoreSize, 10, 95, DEFAULTS.radialCoreSize)
+
 const sanitizeFrequencyRange = (minValue, maxValue) => {
-    let min = roundClamp(minValue ?? DEFAULTS.frequencyMin, 20, 20000, DEFAULTS.frequencyMin)
-    let max = roundClamp(maxValue ?? DEFAULTS.frequencyMax, 20, 20000, DEFAULTS.frequencyMax)
+    let min = clampInteger(minValue ?? DEFAULTS.frequencyMin, 20, 19990, DEFAULTS.frequencyMin)
+    let max = clampInteger(maxValue ?? DEFAULTS.frequencyMax, 30, 20000, DEFAULTS.frequencyMax)
     if (min >= max) {
-        if (min >= 19990) {
-            min = 19980
-            max = 20000
-        } else {
-            max = Math.min(20000, min + 10)
-        }
+        max = clampInteger(min + 10, min + 10, 20000, min + 10)
     }
     if (max - min < 10) {
         if (min <= 20) {
-            max = min + 10
+            max = clampInteger(min + 10, min + 10, 20000, min + 10)
         } else {
-            min = max - 10
+            min = clampInteger(max - 10, 20, max - 10, max - 10)
         }
     }
     return { min, max }
@@ -72,22 +68,59 @@ const assignIfChanged = (store, key, value) => {
     if (store[key] !== value) store[key] = value
 }
 
-const applySanitizedState = (store) => {
+const sanitizeVisualizerState = (store) => {
     if (!store) return
-    assignIfChanged(store, 'lyricVisualizerHeight', sanitizeHeight(store.lyricVisualizerHeight))
+    assignIfChanged(store, 'lyricVisualizerHeight', clampInteger(store.lyricVisualizerHeight, 80, 480, DEFAULTS.height))
+    assignIfChanged(store, 'lyricVisualizerTransitionDelay', Math.round(clampNumber(store.lyricVisualizerTransitionDelay, 0, 0.95, DEFAULTS.transitionDelay) * 100) / 100)
+    assignIfChanged(store, 'lyricVisualizerBarCount', clampInteger(store.lyricVisualizerBarCount, 8, 120, DEFAULTS.barCount))
+    assignIfChanged(store, 'lyricVisualizerBarWidth', clampInteger(store.lyricVisualizerBarWidth, 4, 100, DEFAULTS.barWidth))
+    assignIfChanged(store, 'lyricVisualizerOpacity', clampInteger(store.lyricVisualizerOpacity, 0, 100, DEFAULTS.opacity))
+    assignIfChanged(store, 'lyricVisualizerColor', sanitizeColor(store.lyricVisualizerColor))
+    const style = store.lyricVisualizerStyle === 'radial' ? 'radial' : 'bars'
+    assignIfChanged(store, 'lyricVisualizerStyle', style)
+    assignIfChanged(store, 'lyricVisualizerRadialSize', clampInteger(store.lyricVisualizerRadialSize, 20, 400, DEFAULTS.radialSize))
+    assignIfChanged(store, 'lyricVisualizerRadialOffsetX', clampInteger(store.lyricVisualizerRadialOffsetX, -100, 100, DEFAULTS.radialOffsetX))
+    assignIfChanged(store, 'lyricVisualizerRadialOffsetY', clampInteger(store.lyricVisualizerRadialOffsetY, -100, 100, DEFAULTS.radialOffsetY))
+    assignIfChanged(store, 'lyricVisualizerRadialCoreSize', clampInteger(store.lyricVisualizerRadialCoreSize, 10, 95, DEFAULTS.radialCoreSize))
     const range = sanitizeFrequencyRange(store.lyricVisualizerFrequencyMin, store.lyricVisualizerFrequencyMax)
     assignIfChanged(store, 'lyricVisualizerFrequencyMin', range.min)
     assignIfChanged(store, 'lyricVisualizerFrequencyMax', range.max)
-    assignIfChanged(store, 'lyricVisualizerTransitionDelay', sanitizeTransitionDelay(store.lyricVisualizerTransitionDelay))
-    assignIfChanged(store, 'lyricVisualizerBarCount', sanitizeBarCount(store.lyricVisualizerBarCount))
-    assignIfChanged(store, 'lyricVisualizerBarWidth', sanitizeBarWidth(store.lyricVisualizerBarWidth))
-    assignIfChanged(store, 'lyricVisualizerOpacity', sanitizeOpacity(store.lyricVisualizerOpacity))
-    assignIfChanged(store, 'lyricVisualizerColor', sanitizeColor(store.lyricVisualizerColor))
-    assignIfChanged(store, 'lyricVisualizerStyle', sanitizeVisualizerStyle(store.lyricVisualizerStyle))
-    assignIfChanged(store, 'lyricVisualizerRadialSize', sanitizeRadialSize(store.lyricVisualizerRadialSize))
-    assignIfChanged(store, 'lyricVisualizerRadialOffsetX', sanitizeRadialOffset(store.lyricVisualizerRadialOffsetX))
-    assignIfChanged(store, 'lyricVisualizerRadialOffsetY', sanitizeRadialOffset(store.lyricVisualizerRadialOffsetY))
-    assignIfChanged(store, 'lyricVisualizerRadialCoreSize', sanitizeRadialCoreSize(store.lyricVisualizerRadialCoreSize))
+    assignIfChanged(store, 'lyricVisualizer', Boolean(store.lyricVisualizer))
+}
+
+const applyDefaults = (store) => {
+    if (!store) return
+    assignIfChanged(store, 'lyricVisualizerHeight', DEFAULTS.height)
+    assignIfChanged(store, 'lyricVisualizerFrequencyMin', DEFAULTS.frequencyMin)
+    assignIfChanged(store, 'lyricVisualizerFrequencyMax', DEFAULTS.frequencyMax)
+    assignIfChanged(store, 'lyricVisualizerTransitionDelay', DEFAULTS.transitionDelay)
+    assignIfChanged(store, 'lyricVisualizerBarCount', DEFAULTS.barCount)
+    assignIfChanged(store, 'lyricVisualizerBarWidth', DEFAULTS.barWidth)
+    assignIfChanged(store, 'lyricVisualizerOpacity', DEFAULTS.opacity)
+    assignIfChanged(store, 'lyricVisualizerColor', DEFAULTS.color)
+    assignIfChanged(store, 'lyricVisualizerStyle', DEFAULTS.style)
+    assignIfChanged(store, 'lyricVisualizerRadialSize', DEFAULTS.radialSize)
+    assignIfChanged(store, 'lyricVisualizerRadialOffsetX', DEFAULTS.radialOffsetX)
+    assignIfChanged(store, 'lyricVisualizerRadialOffsetY', DEFAULTS.radialOffsetY)
+    assignIfChanged(store, 'lyricVisualizerRadialCoreSize', DEFAULTS.radialCoreSize)
+}
+
+const resolvePlayerStore = (context) => {
+    if (context?.stores?.player) return context.stores.player
+    const pinia = context?.pinia || context?.app?.config?.globalProperties?.$pinia || null
+    if (!pinia) return null
+    const registry = pinia._s
+    if (registry) {
+        if (typeof registry.get === 'function') {
+            const store = registry.get('playerStore')
+            if (store) return store
+        }
+        if (registry instanceof Map && registry.has('playerStore')) {
+            return registry.get('playerStore')
+        }
+        if (registry.playerStore) return registry.playerStore
+    }
+    return null
 }
 
 const ensureStyleSheet = () => {
@@ -102,9 +135,9 @@ const ensureStyleSheet = () => {
     flex-direction: column;
     gap: 24px;
     padding: 32px 36px 48px;
-    background: linear-gradient(180deg, rgba(244, 248, 255, 0.94), rgba(228, 236, 250, 0.96));
-    color: rgba(12, 22, 36, 0.95);
-    font-family: 'Source Han Sans CN', 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    background: linear-gradient(180deg, rgba(243, 248, 255, 0.95), rgba(225, 233, 247, 0.98));
+    color: rgba(20, 28, 40, 0.95);
+    font-family: 'Microsoft YaHei', 'Segoe UI', 'Source Han Sans CN', sans-serif;
 }
 .${SETTINGS_ROOT_CLASS} .lv-card {
     display: flex;
@@ -112,17 +145,15 @@ const ensureStyleSheet = () => {
     gap: 18px;
     padding: 24px 28px;
     background: rgba(255, 255, 255, 0.92);
-    border: 1px solid rgba(82, 118, 176, 0.35);
+    border: 1px solid rgba(92, 128, 186, 0.35);
     border-radius: 0;
-    box-shadow: 0 22px 44px rgba(18, 32, 56, 0.16);
+    box-shadow: 0 24px 48px rgba(16, 32, 56, 0.18);
+    backdrop-filter: blur(6px);
     transition: transform 0.25s ease, box-shadow 0.25s ease;
 }
 .${SETTINGS_ROOT_CLASS} .lv-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 26px 52px rgba(18, 32, 56, 0.2);
-}
-.${SETTINGS_ROOT_CLASS} .lv-card.is-hidden {
-    display: none;
+    box-shadow: 0 28px 56px rgba(16, 32, 56, 0.22);
 }
 .${SETTINGS_ROOT_CLASS} .lv-card-header {
     display: flex;
@@ -133,12 +164,13 @@ const ensureStyleSheet = () => {
     margin: 0;
     font-size: 18px;
     font-weight: 600;
-    color: rgba(10, 18, 30, 0.95);
+    letter-spacing: 0.5px;
+    color: rgba(14, 22, 34, 0.95);
 }
 .${SETTINGS_ROOT_CLASS} .lv-card-header p {
     margin: 0;
     font-size: 13px;
-    color: rgba(10, 18, 30, 0.6);
+    color: rgba(14, 22, 34, 0.62);
 }
 .${SETTINGS_ROOT_CLASS} .lv-card-body {
     display: flex;
@@ -150,92 +182,111 @@ const ensureStyleSheet = () => {
     flex-direction: column;
     gap: 10px;
 }
+.${SETTINGS_ROOT_CLASS} .lv-field.is-disabled {
+    opacity: 0.55;
+}
 .${SETTINGS_ROOT_CLASS} .lv-label {
     display: flex;
-    align-items: center;
     justify-content: space-between;
+    align-items: center;
     font-size: 13px;
     font-weight: 600;
-    color: rgba(12, 22, 36, 0.78);
+    color: rgba(18, 26, 40, 0.78);
 }
-.${SETTINGS_ROOT_CLASS} .lv-inline-value {
-    font-size: 12px;
+.${SETTINGS_ROOT_CLASS} .lv-label-value {
     font-weight: 500;
-    color: rgba(12, 22, 36, 0.56);
+    font-size: 12px;
+    color: rgba(18, 26, 40, 0.55);
 }
-.${SETTINGS_ROOT_CLASS} .lv-control {
+.${SETTINGS_ROOT_CLASS} .lv-controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+.${SETTINGS_ROOT_CLASS} .lv-controls input[type='range'] {
+    flex: 1;
+    accent-color: rgba(74, 116, 186, 0.9);
+}
+.${SETTINGS_ROOT_CLASS} .lv-number-input {
+    width: 82px;
+    padding: 6px 8px;
+    border: 1px solid rgba(92, 128, 186, 0.35);
+    border-radius: 0;
+    background: rgba(255, 255, 255, 0.96);
+    color: rgba(16, 28, 44, 0.92);
+    font-size: 13px;
+}
+.${SETTINGS_ROOT_CLASS} .lv-select {
+    padding: 8px 10px;
+    border: 1px solid rgba(92, 128, 186, 0.35);
+    border-radius: 0;
+    background: rgba(255, 255, 255, 0.96);
+    color: rgba(16, 28, 44, 0.92);
+    font-size: 13px;
+}
+.${SETTINGS_ROOT_CLASS} .lv-checkbox {
     display: flex;
     align-items: center;
     gap: 12px;
 }
-.${SETTINGS_ROOT_CLASS} select,
-.${SETTINGS_ROOT_CLASS} input[type='number'],
-.${SETTINGS_ROOT_CLASS} input[type='range'] {
+.${SETTINGS_ROOT_CLASS} .lv-checkbox input[type='checkbox'] {
+    width: 18px;
+    height: 18px;
+    border-radius: 0;
+}
+.${SETTINGS_ROOT_CLASS} .lv-checkbox-description {
+    font-size: 12px;
+    color: rgba(16, 28, 44, 0.58);
+}
+.${SETTINGS_ROOT_CLASS} .lv-color-inputs {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+.${SETTINGS_ROOT_CLASS} .lv-color-inputs input[type='color'] {
+    width: 40px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid rgba(92, 128, 186, 0.35);
+    border-radius: 0;
+    background: transparent;
+}
+.${SETTINGS_ROOT_CLASS} .lv-color-inputs input[type='text'] {
     flex: 1;
-    min-width: 0;
-    padding: 8px 12px;
-    border: 1px solid rgba(82, 118, 176, 0.4);
+    padding: 6px 10px;
+    border: 1px solid rgba(92, 128, 186, 0.35);
     border-radius: 0;
     background: rgba(255, 255, 255, 0.96);
-    color: rgba(12, 22, 36, 0.85);
-    font-size: 13px;
-    outline: none;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-.${SETTINGS_ROOT_CLASS} input[type='range'] {
-    padding: 0;
-    cursor: pointer;
-}
-.${SETTINGS_ROOT_CLASS} select:focus,
-.${SETTINGS_ROOT_CLASS} input[type='number']:focus,
-.${SETTINGS_ROOT_CLASS} input[type='range']:focus {
-    border-color: rgba(66, 110, 198, 0.78);
-    box-shadow: 0 0 0 2px rgba(82, 118, 176, 0.16);
-}
-.${SETTINGS_ROOT_CLASS} .lv-switch {
-    min-width: 120px;
-    padding: 10px 18px;
-    border: 1px solid rgba(82, 118, 176, 0.45);
-    border-radius: 0;
-    background: rgba(236, 242, 255, 0.95);
-    color: rgba(12, 22, 36, 0.7);
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
-}
-.${SETTINGS_ROOT_CLASS} .lv-switch.is-active {
-    background: rgba(72, 112, 196, 0.92);
-    border-color: rgba(72, 112, 196, 0.92);
-    color: #fff;
+    color: rgba(16, 28, 44, 0.92);
 }
 .${SETTINGS_ROOT_CLASS} .lv-actions {
     display: flex;
     justify-content: flex-end;
 }
-.${SETTINGS_ROOT_CLASS} .lv-button {
+.${SETTINGS_ROOT_CLASS} .lv-reset-button {
     padding: 10px 20px;
-    border: 1px solid rgba(82, 118, 176, 0.45);
+    border: 1px solid rgba(92, 128, 186, 0.45);
     border-radius: 0;
-    background: rgba(236, 242, 255, 0.95);
-    color: rgba(12, 22, 36, 0.75);
-    font-size: 13px;
-    font-weight: 600;
+    background: rgba(245, 249, 255, 0.96);
+    color: rgba(18, 36, 68, 0.86);
     cursor: pointer;
-    transition: background 0.2s ease, border-color 0.2s ease;
+    font-size: 13px;
+    transition: background 0.2s ease, color 0.2s ease;
 }
-.${SETTINGS_ROOT_CLASS} .lv-button:hover {
-    background: rgba(72, 112, 196, 0.18);
-    border-color: rgba(72, 112, 196, 0.54);
+.${SETTINGS_ROOT_CLASS} .lv-reset-button:hover {
+    background: rgba(74, 116, 186, 0.1);
+    color: rgba(18, 36, 68, 0.96);
 }
 .${SETTINGS_ROOT_CLASS} .lv-placeholder {
-    padding: 48px 32px;
-    border: 1px dashed rgba(82, 118, 176, 0.45);
-    border-radius: 0;
-    background: rgba(255, 255, 255, 0.82);
-    text-align: center;
+    min-height: 220px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed rgba(92, 128, 186, 0.45);
+    background: rgba(255, 255, 255, 0.5);
+    color: rgba(18, 26, 40, 0.6);
     font-size: 14px;
-    color: rgba(12, 22, 36, 0.65);
+    letter-spacing: 0.4px;
 }
 `
     document.head.appendChild(style)
@@ -247,16 +298,16 @@ const ensureStyleSheet = () => {
 const registerPlaceholderSettings = (context, message) => {
     if (!context?.settings?.register || typeof document === 'undefined') return () => {}
     const unregister = context.settings.register({
-        id: 'core.lyric-visualizer/settings',
+        id: `${context.metadata.id}/settings`,
         title: '歌词音频可视化',
-        subtitle: '插件状态不可用',
+        subtitle: '插件初始化中',
         mount(target) {
             if (!target) return
             const root = document.createElement('div')
             root.className = SETTINGS_ROOT_CLASS
             const placeholder = document.createElement('div')
             placeholder.className = 'lv-placeholder'
-            placeholder.textContent = message || '暂时无法加载歌词可视化设置。'
+            placeholder.textContent = message || '插件正在准备播放器数据…'
             root.appendChild(placeholder)
             target.appendChild(root)
             return () => {
@@ -271,512 +322,500 @@ const registerPlaceholderSettings = (context, message) => {
         try {
             unregister?.()
         } catch (error) {
-            console.error('[LyricVisualizerPlugin] 注销占位设置失败', error)
+            console.error('[LyricVisualizerPlugin] 卸载占位设置失败', error)
         }
     }
 }
 
-const resolvePlayerStore = (context) => {
-    if (context?.stores?.player) return context.stores.player
-    const pinia = context?.pinia || context?.app?.config?.globalProperties?.$pinia || null
-    const registry = pinia && pinia._s
-    if (registry) {
-        try {
-            if (typeof registry.get === 'function') {
-                const store = registry.get('playerStore')
-                if (store) return store
-            }
-            if (registry instanceof Map && registry.has('playerStore')) {
-                return registry.get('playerStore')
-            }
-            if (registry.playerStore) return registry.playerStore
-        } catch (error) {
-            console.warn('[LyricVisualizerPlugin] 通过 Pinia 获取播放器状态失败', error)
-        }
+const createCard = (title, subtitle) => {
+    const card = document.createElement('section')
+    card.className = 'lv-card'
+    const header = document.createElement('header')
+    header.className = 'lv-card-header'
+    const heading = document.createElement('h2')
+    heading.textContent = title
+    header.appendChild(heading)
+    if (subtitle) {
+        const sub = document.createElement('p')
+        sub.textContent = subtitle
+        header.appendChild(sub)
     }
-    return null
+    const body = document.createElement('div')
+    body.className = 'lv-card-body'
+    card.appendChild(header)
+    card.appendChild(body)
+    return { element: card, body }
 }
 
-const createFieldContainer = (labelText) => {
+const createSliderField = ({ label, min, max, step = 1, suffix = '', format, getValue, setValue, sanitize, disabled }) => {
     const field = document.createElement('div')
     field.className = 'lv-field'
 
-    const label = document.createElement('div')
-    label.className = 'lv-label'
-    label.textContent = labelText
-    field.appendChild(label)
+    const labelEl = document.createElement('div')
+    labelEl.className = 'lv-label'
+    labelEl.textContent = label
+    const valueEl = document.createElement('span')
+    valueEl.className = 'lv-label-value'
+    labelEl.appendChild(valueEl)
+    field.appendChild(labelEl)
 
-    const inline = document.createElement('span')
-    inline.className = 'lv-inline-value'
-    label.appendChild(inline)
+    const controls = document.createElement('div')
+    controls.className = 'lv-controls'
+    const range = document.createElement('input')
+    range.type = 'range'
+    range.min = String(min)
+    range.max = String(max)
+    range.step = String(step)
+    controls.appendChild(range)
 
-    const control = document.createElement('div')
-    control.className = 'lv-control'
-    field.appendChild(control)
+    const number = document.createElement('input')
+    number.type = 'number'
+    number.className = 'lv-number-input'
+    number.min = String(min)
+    number.max = String(max)
+    number.step = String(step)
+    controls.appendChild(number)
 
-    return { field, label, inline, control }
-}
+    field.appendChild(controls)
 
-const createToggleField = (label, getter, setter) => {
-    const { field, inline, control } = createFieldContainer(label)
-    inline.remove()
-
-    const button = document.createElement('button')
-    button.type = 'button'
-    button.className = 'lv-switch'
-    const handleClick = () => {
-        try {
-            setter(!getter())
-        } catch (error) {
-            console.error('[LyricVisualizerPlugin] 切换可视化失败', error)
-        }
+    const formatValue = (value) => {
+        if (typeof format === 'function') return format(value)
+        return `${value}${suffix}`
     }
-    button.addEventListener('click', handleClick)
-    control.appendChild(button)
+
+    const applyValue = (raw) => {
+        const numeric = Number(raw)
+        const normalized = Number.isFinite(numeric) ? numeric : min
+        const sanitized = typeof sanitize === 'function'
+            ? sanitize(normalized)
+            : clampNumber(normalized, Number(min), Number(max), Number(min))
+        setValue(sanitized)
+    }
+
+    const onRangeInput = (event) => {
+        applyValue(event.target.value)
+    }
+    const onNumberChange = (event) => {
+        applyValue(event.target.value)
+    }
+
+    range.addEventListener('input', onRangeInput)
+    number.addEventListener('change', onNumberChange)
+    number.addEventListener('blur', onNumberChange)
 
     const update = () => {
-        const active = !!getter()
-        button.classList.toggle('is-active', active)
-        button.textContent = active ? '已开启' : '已关闭'
+        const value = Number(getValue())
+        const safeValue = Number.isFinite(value) ? value : Number(min)
+        valueEl.textContent = formatValue(safeValue)
+        range.value = String(safeValue)
+        number.value = String(safeValue)
+        const shouldDisable = typeof disabled === 'function' ? Boolean(disabled()) : false
+        range.disabled = shouldDisable
+        number.disabled = shouldDisable
+        if (shouldDisable) {
+            field.classList.add('is-disabled')
+        } else {
+            field.classList.remove('is-disabled')
+        }
     }
 
-    return {
-        element: field,
-        update,
-        destroy: () => button.removeEventListener('click', handleClick),
+    const destroy = () => {
+        range.removeEventListener('input', onRangeInput)
+        number.removeEventListener('change', onNumberChange)
+        number.removeEventListener('blur', onNumberChange)
     }
+
+    return { element: field, update, destroy }
 }
 
-const createSelectField = (label, options, getter, setter) => {
-    const { field, inline, control } = createFieldContainer(label)
-    inline.remove()
+const createSelectField = ({ label, options, getValue, setValue }) => {
+    const field = document.createElement('div')
+    field.className = 'lv-field'
+
+    const labelEl = document.createElement('div')
+    labelEl.className = 'lv-label'
+    labelEl.textContent = label
+    const valueEl = document.createElement('span')
+    valueEl.className = 'lv-label-value'
+    labelEl.appendChild(valueEl)
+    field.appendChild(labelEl)
 
     const select = document.createElement('select')
+    select.className = 'lv-select'
     for (const option of options) {
-        const node = document.createElement('option')
-        node.value = option.value
-        node.textContent = option.label
-        select.appendChild(node)
+        const opt = document.createElement('option')
+        opt.value = option.value
+        opt.textContent = option.label
+        select.appendChild(opt)
     }
-
-    const handleChange = (event) => {
-        try {
-            setter(event.target.value)
-        } catch (error) {
-            console.error('[LyricVisualizerPlugin] 更新选择项失败', error)
-        }
+    const onChange = () => {
+        setValue(select.value)
     }
-
-    select.addEventListener('change', handleChange)
-    control.appendChild(select)
+    select.addEventListener('change', onChange)
+    field.appendChild(select)
 
     const update = () => {
-        const value = getter()
-        if (select.value !== value) select.value = value
+        const current = getValue()
+        if (current === undefined || current === null) return
+        select.value = String(current)
+        const option = options.find((item) => String(item.value) === String(current))
+        valueEl.textContent = option ? option.label : ''
     }
 
-    return {
-        element: field,
-        update,
-        destroy: () => select.removeEventListener('change', handleChange),
+    const destroy = () => {
+        select.removeEventListener('change', onChange)
     }
+
+    return { element: field, update, destroy }
 }
 
-const createRangeField = (label, { min, max, step = 1, format }, getter, setter) => {
-    const { field, inline, control } = createFieldContainer(label)
-
-    const input = document.createElement('input')
-    input.type = 'range'
-    input.min = String(min)
-    input.max = String(max)
-    input.step = String(step)
-
-    const handleInput = (event) => {
-        const value = Number(event.target.value)
-        try {
-            setter(value)
-        } catch (error) {
-            console.error('[LyricVisualizerPlugin] 更新滑块失败', error)
-        }
+const createCheckboxField = ({ label, description, getValue, setValue }) => {
+    const field = document.createElement('div')
+    field.className = 'lv-field'
+    const wrapper = document.createElement('label')
+    wrapper.className = 'lv-checkbox'
+    const checkbox = document.createElement('input')
+    checkbox.type = 'checkbox'
+    wrapper.appendChild(checkbox)
+    const text = document.createElement('span')
+    text.textContent = label
+    wrapper.appendChild(text)
+    field.appendChild(wrapper)
+    if (description) {
+        const desc = document.createElement('div')
+        desc.className = 'lv-checkbox-description'
+        desc.textContent = description
+        field.appendChild(desc)
     }
 
-    input.addEventListener('input', handleInput)
-    control.appendChild(input)
+    const onChange = () => {
+        setValue(Boolean(checkbox.checked))
+    }
+
+    checkbox.addEventListener('change', onChange)
 
     const update = () => {
-        const value = getter()
-        input.value = String(value)
-        inline.textContent = typeof format === 'function' ? format(value) : `${value}`
+        checkbox.checked = Boolean(getValue())
     }
 
-    return {
-        element: field,
-        update,
-        destroy: () => input.removeEventListener('input', handleInput),
+    const destroy = () => {
+        checkbox.removeEventListener('change', onChange)
     }
+
+    return { element: field, update, destroy }
 }
 
-const createNumberField = (label, { min, max, step = 1, suffix = '' }, getter, setter) => {
-    const { field, inline, control } = createFieldContainer(label)
-    inline.textContent = suffix
+const createColorField = ({ label, getValue, setValue }) => {
+    const field = document.createElement('div')
+    field.className = 'lv-field'
 
-    const input = document.createElement('input')
-    input.type = 'number'
-    if (Number.isFinite(min)) input.min = String(min)
-    if (Number.isFinite(max)) input.max = String(max)
-    input.step = String(step)
+    const labelEl = document.createElement('div')
+    labelEl.className = 'lv-label'
+    labelEl.textContent = label
+    field.appendChild(labelEl)
 
-    const commitValue = () => {
-        const value = Number(input.value)
-        try {
-            setter(value)
-        } catch (error) {
-            console.error('[LyricVisualizerPlugin] 更新数值失败', error)
+    const controls = document.createElement('div')
+    controls.className = 'lv-color-inputs'
+    const colorInput = document.createElement('input')
+    colorInput.type = 'color'
+    const textInput = document.createElement('input')
+    textInput.type = 'text'
+
+    controls.appendChild(colorInput)
+    controls.appendChild(textInput)
+    field.appendChild(controls)
+
+    const syncColor = (value) => {
+        const sanitized = sanitizeColor(value)
+        let preview = sanitized
+        if (sanitized === 'black') preview = '#000000'
+        else if (sanitized === 'white') preview = '#ffffff'
+        else if (!/^#([0-9a-f]{6})$/i.test(sanitized)) {
+            preview = '#101623'
         }
+        colorInput.value = preview
+        textInput.value = sanitized
     }
 
-    input.addEventListener('change', commitValue)
-    input.addEventListener('blur', commitValue)
-    control.appendChild(input)
+    const onColorInput = () => {
+        setValue(colorInput.value)
+    }
+
+    const onTextChange = () => {
+        setValue(textInput.value)
+    }
+
+    colorInput.addEventListener('input', onColorInput)
+    textInput.addEventListener('change', onTextChange)
+    textInput.addEventListener('blur', onTextChange)
 
     const update = () => {
-        const value = getter()
-        input.value = Number.isFinite(value) ? String(value) : ''
+        syncColor(getValue())
     }
 
-    return {
-        element: field,
-        update,
-        destroy: () => {
-            input.removeEventListener('change', commitValue)
-            input.removeEventListener('blur', commitValue)
-        },
+    const destroy = () => {
+        colorInput.removeEventListener('input', onColorInput)
+        textInput.removeEventListener('change', onTextChange)
+        textInput.removeEventListener('blur', onTextChange)
     }
+
+    return { element: field, update, destroy }
 }
 
-const createCard = (root, { title, subtitle }) => {
-    const card = document.createElement('section')
-    card.className = 'lv-card'
-
-    const header = document.createElement('div')
-    header.className = 'lv-card-header'
-
-    if (title) {
-        const titleEl = document.createElement('h2')
-        titleEl.textContent = title
-        header.appendChild(titleEl)
+const createSettingsUI = (container, store, triggerUpdate) => {
+    if (!container || typeof document === 'undefined') {
+        return { update() {}, destroy() {} }
     }
-
-    if (subtitle) {
-        const subtitleEl = document.createElement('p')
-        subtitleEl.textContent = subtitle
-        header.appendChild(subtitleEl)
-    }
-
-    const body = document.createElement('div')
-    body.className = 'lv-card-body'
-
-    card.appendChild(header)
-    card.appendChild(body)
-    root.appendChild(card)
-
-    return { card, body }
-}
-
-const buildSettingsUI = (container, store) => {
-    if (!container || !store) return null
 
     const root = document.createElement('div')
     root.className = SETTINGS_ROOT_CLASS
-    container.appendChild(root)
 
-    const controls = []
-    const cleanups = []
+    const fields = []
 
-    const registerControl = (target, factory) => {
-        const control = factory()
-        if (!control) return
-        target.appendChild(control.element)
-        controls.push(control)
-        if (typeof control.destroy === 'function') {
-            cleanups.push(() => {
-                try {
-                    control.destroy()
-                } catch (error) {
-                    console.error('[LyricVisualizerPlugin] 清理控件失败', error)
-                }
-            })
-        }
+    const addField = (cardBody, factory) => {
+        const field = factory()
+        fields.push(field)
+        cardBody.appendChild(field.element)
     }
 
-    const basics = createCard(root, {
-        title: '基础设置',
-        subtitle: '控制歌词区域的可视化启用状态与主要参数',
-    })
+    const commit = (mutator) => {
+        mutator()
+        sanitizeVisualizerState(store)
+        triggerUpdate()
+    }
 
-    registerControl(basics.body, () =>
-        createToggleField('可视化开关', () => !!store.lyricVisualizer, (value) => {
-            assignIfChanged(store, 'lyricVisualizer', Boolean(value))
-        })
-    )
+    const generalCard = createCard('开关与风格', '控制歌词区域音频可视化的启用状态与基础样式')
+    addField(generalCard.body, () => createCheckboxField({
+        label: '启用歌词音频可视化',
+        description: '启用后会在歌词区域显示频谱动画，并在播放器中出现快捷开关。',
+        getValue: () => store.lyricVisualizer,
+        setValue: (value) => commit(() => assignIfChanged(store, 'lyricVisualizer', Boolean(value))),
+    }))
+    addField(generalCard.body, () => createSelectField({
+        label: '显示样式',
+        options: [
+            { value: 'bars', label: '柱状频谱' },
+            { value: 'radial', label: '辐射频谱' },
+        ],
+        getValue: () => (store.lyricVisualizerStyle === 'radial' ? 'radial' : 'bars'),
+        setValue: (value) => commit(() => assignIfChanged(store, 'lyricVisualizerStyle', value === 'radial' ? 'radial' : 'bars')),
+    }))
+    addField(generalCard.body, () => createColorField({
+        label: '主色调',
+        getValue: () => store.lyricVisualizerColor,
+        setValue: (value) => commit(() => assignIfChanged(store, 'lyricVisualizerColor', sanitizeColor(value))),
+    }))
+    addField(generalCard.body, () => createSliderField({
+        label: '画面透明度',
+        min: 0,
+        max: 100,
+        step: 1,
+        suffix: '%',
+        getValue: () => store.lyricVisualizerOpacity,
+        setValue: (value) => commit(() => assignIfChanged(store, 'lyricVisualizerOpacity', clampInteger(value, 0, 100, DEFAULTS.opacity)))),
+    }))
+    addField(generalCard.body, () => createSliderField({
+        label: '画面高度',
+        min: 80,
+        max: 480,
+        step: 10,
+        suffix: 'px',
+        getValue: () => store.lyricVisualizerHeight,
+        setValue: (value) => commit(() => assignIfChanged(store, 'lyricVisualizerHeight', clampInteger(value, 80, 480, DEFAULTS.height)))),
+    }))
 
-    registerControl(basics.body, () =>
-        createSelectField(
-            '显示样式',
-            [
-                { value: 'bars', label: '线性柱状' },
-                { value: 'radial', label: '环形光束' },
-            ],
-            () => sanitizeVisualizerStyle(store.lyricVisualizerStyle),
-            (value) => assignIfChanged(store, 'lyricVisualizerStyle', sanitizeVisualizerStyle(value))
-        )
-    )
+    const spectrumCard = createCard('频谱参数', '调节频率范围、柱体数量和动画平滑度')
+    addField(spectrumCard.body, () => createSliderField({
+        label: '最低采样频率',
+        min: 20,
+        max: 18000,
+        step: 10,
+        suffix: 'Hz',
+        getValue: () => store.lyricVisualizerFrequencyMin,
+        setValue: (value) => commit(() => {
+            const range = sanitizeFrequencyRange(value, store.lyricVisualizerFrequencyMax)
+            assignIfChanged(store, 'lyricVisualizerFrequencyMin', range.min)
+            assignIfChanged(store, 'lyricVisualizerFrequencyMax', range.max)
+        })),
+    }))
+    addField(spectrumCard.body, () => createSliderField({
+        label: '最高采样频率',
+        min: 200,
+        max: 20000,
+        step: 10,
+        suffix: 'Hz',
+        getValue: () => store.lyricVisualizerFrequencyMax,
+        setValue: (value) => commit(() => {
+            const range = sanitizeFrequencyRange(store.lyricVisualizerFrequencyMin, value)
+            assignIfChanged(store, 'lyricVisualizerFrequencyMin', range.min)
+            assignIfChanged(store, 'lyricVisualizerFrequencyMax', range.max)
+        })),
+    }))
+    addField(spectrumCard.body, () => createSliderField({
+        label: '柱体数量',
+        min: 8,
+        max: 120,
+        step: 1,
+        getValue: () => store.lyricVisualizerBarCount,
+        setValue: (value) => commit(() => assignIfChanged(store, 'lyricVisualizerBarCount', clampInteger(value, 8, 120, DEFAULTS.barCount)))),
+    }))
+    addField(spectrumCard.body, () => createSliderField({
+        label: '柱体宽度',
+        min: 4,
+        max: 100,
+        step: 1,
+        suffix: '%',
+        getValue: () => store.lyricVisualizerBarWidth,
+        setValue: (value) => commit(() => assignIfChanged(store, 'lyricVisualizerBarWidth', clampInteger(value, 4, 100, DEFAULTS.barWidth)))),
+    }))
+    addField(spectrumCard.body, () => createSliderField({
+        label: '动画平滑度',
+        min: 0,
+        max: 95,
+        step: 1,
+        suffix: '%',
+        format: (value) => `${(value / 100).toFixed(2)}s`,
+        getValue: () => Math.round(Number(store.lyricVisualizerTransitionDelay || 0) * 100),
+        setValue: (value) => commit(() => assignIfChanged(store, 'lyricVisualizerTransitionDelay', clampNumber(value / 100, 0, 0.95, DEFAULTS.transitionDelay)))),
+    }))
 
-    registerControl(basics.body, () =>
-        createRangeField(
-            '可视化高度',
-            { min: 80, max: 480, step: 10, format: (value) => `${value}px` },
-            () => sanitizeHeight(store.lyricVisualizerHeight),
-            (value) => assignIfChanged(store, 'lyricVisualizerHeight', sanitizeHeight(value))
-        )
-    )
+    const radialCard = createCard('辐射样式', '以下参数仅在选择“辐射频谱”时生效')
+    addField(radialCard.body, () => createSliderField({
+        label: '整体尺寸',
+        min: 20,
+        max: 400,
+        step: 5,
+        suffix: '%',
+        getValue: () => store.lyricVisualizerRadialSize,
+        setValue: (value) => commit(() => assignIfChanged(store, 'lyricVisualizerRadialSize', clampInteger(value, 20, 400, DEFAULTS.radialSize)))),
+        disabled: () => store.lyricVisualizerStyle !== 'radial',
+    }))
+    addField(radialCard.body, () => createSliderField({
+        label: '水平偏移',
+        min: -100,
+        max: 100,
+        step: 1,
+        suffix: '%',
+        getValue: () => store.lyricVisualizerRadialOffsetX,
+        setValue: (value) => commit(() => assignIfChanged(store, 'lyricVisualizerRadialOffsetX', clampInteger(value, -100, 100, DEFAULTS.radialOffsetX)))),
+        disabled: () => store.lyricVisualizerStyle !== 'radial',
+    }))
+    addField(radialCard.body, () => createSliderField({
+        label: '垂直偏移',
+        min: -100,
+        max: 100,
+        step: 1,
+        suffix: '%',
+        getValue: () => store.lyricVisualizerRadialOffsetY,
+        setValue: (value) => commit(() => assignIfChanged(store, 'lyricVisualizerRadialOffsetY', clampInteger(value, -100, 100, DEFAULTS.radialOffsetY)))),
+        disabled: () => store.lyricVisualizerStyle !== 'radial',
+    }))
+    addField(radialCard.body, () => createSliderField({
+        label: '中心区域尺寸',
+        min: 10,
+        max: 95,
+        step: 1,
+        suffix: '%',
+        getValue: () => store.lyricVisualizerRadialCoreSize,
+        setValue: (value) => commit(() => assignIfChanged(store, 'lyricVisualizerRadialCoreSize', clampInteger(value, 10, 95, DEFAULTS.radialCoreSize)))),
+        disabled: () => store.lyricVisualizerStyle !== 'radial',
+    }))
 
-    registerControl(basics.body, () =>
-        createRangeField(
-            '柱体数量',
-            { min: 8, max: 120, step: 2, format: (value) => `${value} 根` },
-            () => sanitizeBarCount(store.lyricVisualizerBarCount),
-            (value) => assignIfChanged(store, 'lyricVisualizerBarCount', sanitizeBarCount(value))
-        )
-    )
+    root.appendChild(generalCard.element)
+    root.appendChild(spectrumCard.element)
+    root.appendChild(radialCard.element)
 
-    registerControl(basics.body, () =>
-        createRangeField(
-            '柱体宽度',
-            { min: 4, max: 100, step: 1, format: (value) => `${value}%` },
-            () => sanitizeBarWidth(store.lyricVisualizerBarWidth),
-            (value) => assignIfChanged(store, 'lyricVisualizerBarWidth', sanitizeBarWidth(value))
-        )
-    )
-
-    registerControl(basics.body, () =>
-        createRangeField(
-            '透明度',
-            { min: 0, max: 100, step: 5, format: (value) => `${value}%` },
-            () => sanitizeOpacity(store.lyricVisualizerOpacity),
-            (value) => assignIfChanged(store, 'lyricVisualizerOpacity', sanitizeOpacity(value))
-        )
-    )
-
-    registerControl(basics.body, () =>
-        createRangeField(
-            '过渡延迟',
-            { min: 0, max: 95, step: 5, format: (value) => `${(value / 100).toFixed(2)}s` },
-            () => Math.round(sanitizeTransitionDelay(store.lyricVisualizerTransitionDelay) * 100),
-            (value) => assignIfChanged(store, 'lyricVisualizerTransitionDelay', sanitizeTransitionDelay(value / 100))
-        )
-    )
-
-    registerControl(basics.body, () =>
-        createNumberField(
-            '最低频率',
-            { min: 20, max: 20000, step: 10, suffix: 'Hz' },
-            () => sanitizeFrequencyRange(store.lyricVisualizerFrequencyMin, store.lyricVisualizerFrequencyMax).min,
-            (value) => {
-                const range = sanitizeFrequencyRange(value, store.lyricVisualizerFrequencyMax)
-                assignIfChanged(store, 'lyricVisualizerFrequencyMin', range.min)
-                assignIfChanged(store, 'lyricVisualizerFrequencyMax', range.max)
-            }
-        )
-    )
-
-    registerControl(basics.body, () =>
-        createNumberField(
-            '最高频率',
-            { min: 20, max: 20000, step: 10, suffix: 'Hz' },
-            () => sanitizeFrequencyRange(store.lyricVisualizerFrequencyMin, store.lyricVisualizerFrequencyMax).max,
-            (value) => {
-                const range = sanitizeFrequencyRange(store.lyricVisualizerFrequencyMin, value)
-                assignIfChanged(store, 'lyricVisualizerFrequencyMin', range.min)
-                assignIfChanged(store, 'lyricVisualizerFrequencyMax', range.max)
-            }
-        )
-    )
-
-    registerControl(basics.body, () =>
-        createSelectField(
-            '主颜色',
-            [
-                { value: 'black', label: '深色' },
-                { value: 'white', label: '浅色' },
-            ],
-            () => sanitizeColor(store.lyricVisualizerColor),
-            (value) => assignIfChanged(store, 'lyricVisualizerColor', sanitizeColor(value))
-        )
-    )
-
-    const radial = createCard(root, {
-        title: '环形样式',
-        subtitle: '仅在选择环形光束时生效的参数',
-    })
-
-    registerControl(radial.body, () =>
-        createRangeField(
-            '整体尺寸',
-            { min: 20, max: 400, step: 5, format: (value) => `${value}%` },
-            () => sanitizeRadialSize(store.lyricVisualizerRadialSize),
-            (value) => assignIfChanged(store, 'lyricVisualizerRadialSize', sanitizeRadialSize(value))
-        )
-    )
-
-    registerControl(radial.body, () =>
-        createRangeField(
-            '中心圆比例',
-            { min: 10, max: 95, step: 1, format: (value) => `${value}%` },
-            () => sanitizeRadialCoreSize(store.lyricVisualizerRadialCoreSize),
-            (value) => assignIfChanged(store, 'lyricVisualizerRadialCoreSize', sanitizeRadialCoreSize(value))
-        )
-    )
-
-    registerControl(radial.body, () =>
-        createRangeField(
-            '水平偏移',
-            { min: -100, max: 100, step: 1, format: (value) => `${value}%` },
-            () => sanitizeRadialOffset(store.lyricVisualizerRadialOffsetX),
-            (value) => assignIfChanged(store, 'lyricVisualizerRadialOffsetX', sanitizeRadialOffset(value))
-        )
-    )
-
-    registerControl(radial.body, () =>
-        createRangeField(
-            '垂直偏移',
-            { min: -100, max: 100, step: 1, format: (value) => `${value}%` },
-            () => sanitizeRadialOffset(store.lyricVisualizerRadialOffsetY),
-            (value) => assignIfChanged(store, 'lyricVisualizerRadialOffsetY', sanitizeRadialOffset(value))
-        )
-    )
-
-    const actions = createCard(root, {
-        title: '高级操作',
-        subtitle: '快速恢复官方推荐配置',
-    })
-
-    const actionRow = document.createElement('div')
-    actionRow.className = 'lv-actions'
-
+    const actions = document.createElement('div')
+    actions.className = 'lv-actions'
     const resetButton = document.createElement('button')
     resetButton.type = 'button'
-    resetButton.className = 'lv-button'
-    resetButton.textContent = '恢复默认设置'
+    resetButton.className = 'lv-reset-button'
+    resetButton.textContent = '恢复默认参数'
+    resetButton.addEventListener('click', () => {
+        applyDefaults(store)
+        sanitizeVisualizerState(store)
+        triggerUpdate()
+    })
+    actions.appendChild(resetButton)
+    root.appendChild(actions)
 
-    const handleReset = () => {
-        assignIfChanged(store, 'lyricVisualizerHeight', DEFAULTS.height)
-        assignIfChanged(store, 'lyricVisualizerFrequencyMin', DEFAULTS.frequencyMin)
-        assignIfChanged(store, 'lyricVisualizerFrequencyMax', DEFAULTS.frequencyMax)
-        assignIfChanged(store, 'lyricVisualizerTransitionDelay', DEFAULTS.transitionDelay)
-        assignIfChanged(store, 'lyricVisualizerBarCount', DEFAULTS.barCount)
-        assignIfChanged(store, 'lyricVisualizerBarWidth', DEFAULTS.barWidth)
-        assignIfChanged(store, 'lyricVisualizerOpacity', DEFAULTS.opacity)
-        assignIfChanged(store, 'lyricVisualizerColor', DEFAULTS.color)
-        assignIfChanged(store, 'lyricVisualizerStyle', DEFAULTS.style)
-        assignIfChanged(store, 'lyricVisualizerRadialSize', DEFAULTS.radialSize)
-        assignIfChanged(store, 'lyricVisualizerRadialOffsetX', DEFAULTS.radialOffsetX)
-        assignIfChanged(store, 'lyricVisualizerRadialOffsetY', DEFAULTS.radialOffsetY)
-        assignIfChanged(store, 'lyricVisualizerRadialCoreSize', DEFAULTS.radialCoreSize)
-    }
-
-    resetButton.addEventListener('click', handleReset)
-    actionRow.appendChild(resetButton)
-    actions.body.appendChild(actionRow)
-    cleanups.push(() => resetButton.removeEventListener('click', handleReset))
+    container.appendChild(root)
 
     const update = () => {
-        const mode = sanitizeVisualizerStyle(store.lyricVisualizerStyle)
-        radial.card.classList.toggle('is-hidden', mode !== 'radial')
-        for (const control of controls) {
+        for (const field of fields) {
             try {
-                control.update?.()
+                field.update()
             } catch (error) {
-                console.error('[LyricVisualizerPlugin] 同步控件状态失败', error)
+                console.error('[LyricVisualizerPlugin] 更新设置控件失败', error)
             }
         }
     }
 
-    update()
-
-    return {
-        update,
-        destroy: () => {
-            for (const cleanup of cleanups) {
-                try {
-                    cleanup()
-                } catch (error) {
-                    console.error('[LyricVisualizerPlugin] 清理设置界面失败', error)
-                }
+    const destroy = () => {
+        for (const field of fields) {
+            try {
+                field.destroy?.()
+            } catch (error) {
+                console.error('[LyricVisualizerPlugin] 清理设置控件失败', error)
             }
-            cleanups.length = 0
-            if (root.parentNode === container) {
-                container.removeChild(root)
-            }
-        },
+        }
+        if (root.parentNode === container) container.removeChild(root)
     }
+
+    return { update, destroy }
 }
 
-const setupPluginWithStore = (context, playerStore) => {
-    applySanitizedState(playerStore)
+const setupWithStore = (context, store) => {
+    sanitizeVisualizerState(store)
 
-    if (!playerStore[AUTO_ENABLE_FLAG_KEY]) {
-        assignIfChanged(playerStore, AUTO_ENABLE_FLAG_KEY, true)
-        assignIfChanged(playerStore, 'lyricVisualizer', true)
+    if (!store[AUTO_ENABLE_FLAG_KEY]) {
+        assignIfChanged(store, AUTO_ENABLE_FLAG_KEY, true)
+        if (DEFAULTS.enabled) assignIfChanged(store, 'lyricVisualizer', true)
     }
 
-    assignIfChanged(playerStore, 'lyricVisualizerPluginActive', true)
-    assignIfChanged(playerStore, 'lyricVisualizerToggleAvailable', true)
+    assignIfChanged(store, 'lyricVisualizerPluginActive', true)
+    assignIfChanged(store, 'lyricVisualizerToggleAvailable', true)
 
-    let uiInstance = null
+    let settingsUI = null
 
-    const updateUI = () => {
+    const triggerUpdate = () => {
         try {
-            uiInstance?.update?.()
+            settingsUI?.update?.()
         } catch (error) {
-            console.error('[LyricVisualizerPlugin] 更新设置界面失败', error)
+            console.error('[LyricVisualizerPlugin] 刷新设置界面失败', error)
         }
     }
 
-    const unsubscribe = typeof playerStore.$subscribe === 'function'
-        ? playerStore.$subscribe(() => {
-              applySanitizedState(playerStore)
-              updateUI()
+    const unsubscribe = typeof store.$subscribe === 'function'
+        ? store.$subscribe(() => {
+              sanitizeVisualizerState(store)
+              triggerUpdate()
           })
         : null
 
     const unregisterSettings = context.settings.register({
-        id: 'core.lyric-visualizer/settings',
+        id: `${context.metadata.id}/settings`,
         title: '歌词音频可视化',
-        subtitle: '调节歌词区域的频谱与视觉风格',
+        subtitle: '自定义歌词区域的可视化效果',
         mount(target) {
-            uiInstance = buildSettingsUI(target, playerStore)
-            updateUI()
+            settingsUI = createSettingsUI(target, store, triggerUpdate)
+            requestAnimationFrame(() => settingsUI?.update?.())
             return () => {
-                if (uiInstance) {
-                    try {
-                        uiInstance.destroy?.()
-                    } catch (error) {
-                        console.error('[LyricVisualizerPlugin] 卸载设置界面失败', error)
-                    }
-                    uiInstance = null
-                }
-            }
-        },
-        unmount(target) {
-            if (uiInstance) {
                 try {
-                    uiInstance.destroy?.()
+                    settingsUI?.destroy?.()
                 } catch (error) {
                     console.error('[LyricVisualizerPlugin] 卸载设置界面失败', error)
                 }
-                uiInstance = null
+                settingsUI = null
             }
+        },
+        unmount(target) {
+            try {
+                settingsUI?.destroy?.()
+            } catch (error) {
+                console.error('[LyricVisualizerPlugin] 清理设置界面失败', error)
+            }
+            settingsUI = null
             if (target) target.innerHTML = ''
         },
     })
@@ -797,15 +836,15 @@ const setupPluginWithStore = (context, playerStore) => {
         }
 
         try {
-            uiInstance?.destroy?.()
+            settingsUI?.destroy?.()
         } catch (error) {
             console.error('[LyricVisualizerPlugin] 清理设置界面失败', error)
         }
-        uiInstance = null
+        settingsUI = null
 
-        assignIfChanged(playerStore, 'lyricVisualizer', false)
-        assignIfChanged(playerStore, 'lyricVisualizerPluginActive', false)
-        assignIfChanged(playerStore, 'lyricVisualizerToggleAvailable', false)
+        assignIfChanged(store, 'lyricVisualizer', false)
+        assignIfChanged(store, 'lyricVisualizerPluginActive', false)
+        assignIfChanged(store, 'lyricVisualizerToggleAvailable', false)
     }
 }
 
@@ -818,13 +857,14 @@ module.exports = function activate(context) {
     let retryHandle = null
 
     const cleanupPlaceholder = () => {
-        if (!placeholderCleanup) return
-        try {
-            placeholderCleanup()
-        } catch (error) {
-            console.error('[LyricVisualizerPlugin] 清理占位设置失败', error)
+        if (placeholderCleanup) {
+            try {
+                placeholderCleanup()
+            } catch (error) {
+                console.error('[LyricVisualizerPlugin] 清理占位设置失败', error)
+            }
+            placeholderCleanup = null
         }
-        placeholderCleanup = null
     }
 
     const cleanupRuntime = () => {
@@ -832,69 +872,49 @@ module.exports = function activate(context) {
             try {
                 runtimeCleanup()
             } catch (error) {
-                console.error('[LyricVisualizerPlugin] 停止运行时失败', error)
+                console.error('[LyricVisualizerPlugin] 卸载运行时失败', error)
             }
         }
         runtimeCleanup = null
     }
 
-    const stopRetry = () => {
-        if (retryHandle !== null) {
-            clearTimeout(retryHandle)
-            retryHandle = null
-        }
-    }
-
-    const activateWithStore = (store) => {
-        if (!store || disposed) return
-        cleanupPlaceholder()
-        cleanupRuntime()
-        try {
-            runtimeCleanup = setupPluginWithStore(context, store)
-        } catch (error) {
-            console.error('[LyricVisualizerPlugin] 初始化运行时失败', error)
-            runtimeCleanup = null
-            if (!placeholderCleanup) {
-                placeholderCleanup = registerPlaceholderSettings(
-                    context,
-                    '插件正在重新尝试初始化，请稍候…'
-                )
-            }
-            stopRetry()
-            retryHandle = setTimeout(attemptResolveStore, 1000)
-        }
+    const scheduleRetry = () => {
+        if (retryHandle) clearTimeout(retryHandle)
+        retryHandle = setTimeout(attemptResolveStore, RETRY_DELAY_MS)
     }
 
     const attemptResolveStore = () => {
         if (disposed) return
         const store = resolvePlayerStore(context)
-        if (store) {
-            stopRetry()
-            activateWithStore(store)
-        } else {
-            stopRetry()
-            retryHandle = setTimeout(attemptResolveStore, 500)
+        if (!store) {
+            if (!placeholderCleanup) {
+                placeholderCleanup = registerPlaceholderSettings(context, '正在等待播放器状态，稍后即可调整参数…')
+            }
+            scheduleRetry()
+            return
+        }
+
+        cleanupPlaceholder()
+        cleanupRuntime()
+        try {
+            runtimeCleanup = setupWithStore(context, store)
+        } catch (error) {
+            console.error('[LyricVisualizerPlugin] 初始化失败，将稍后重试', error)
+            runtimeCleanup = null
+            if (!placeholderCleanup) {
+                placeholderCleanup = registerPlaceholderSettings(context, '初始化失败，正在准备重新连接播放器…')
+            }
+            scheduleRetry()
         }
     }
 
-    const initialStore = resolvePlayerStore(context)
-    if (initialStore) {
-        activateWithStore(initialStore)
-    } else {
-        console.warn('[LyricVisualizerPlugin] 未找到播放器状态，使用占位设置等待初始化')
-        placeholderCleanup = registerPlaceholderSettings(
-            context,
-            '播放器状态尚未就绪，暂时无法展示歌词可视化设置。'
-        )
-        attemptResolveStore()
-    }
+    attemptResolveStore()
 
     context.onCleanup(() => {
         disposed = true
-        stopRetry()
+        if (retryHandle) clearTimeout(retryHandle)
         cleanupRuntime()
         cleanupPlaceholder()
-
         try {
             removeStyle?.()
         } catch (error) {
