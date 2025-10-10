@@ -9,6 +9,43 @@ const builtinRegistry = Object.freeze([
     },
 ]);
 
+const PROTOCOL_PATTERN = /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//;
+
+const resolveModuleSpecifier = (value) => {
+    if (!value || typeof value !== 'string') return value;
+
+    const trimmed = value.trim();
+    if (!trimmed) return trimmed;
+
+    if (PROTOCOL_PATTERN.test(trimmed)) {
+        return trimmed;
+    }
+
+    const normalized = trimmed.replace(/\\/g, '/');
+
+    const isWindowsAbsolute = /^[a-zA-Z]:\//.test(normalized);
+    const isAbsolute = isWindowsAbsolute || normalized.startsWith('/');
+
+    if (isAbsolute) {
+        const absolutePath = isWindowsAbsolute ? normalized : normalized.startsWith('/') ? normalized : `/${normalized}`;
+        const fileUrl = isWindowsAbsolute ? `file:///${absolutePath}` : `file://${absolutePath}`;
+
+        try {
+            return new URL(fileUrl).href;
+        } catch (error) {
+            console.warn('[PluginRegistry] Failed to normalise absolute module path, falling back to encoded URI.', error);
+            return encodeURI(fileUrl);
+        }
+    }
+
+    try {
+        return new URL(normalized, import.meta.url).href;
+    } catch (error) {
+        console.warn('[PluginRegistry] Failed to resolve relative module path, returning raw value.', error);
+        return normalized;
+    }
+};
+
 const toRawDescriptor = (descriptor = {}, { forceBuiltin = false } = {}) => {
     if (!descriptor || typeof descriptor !== 'object') return null;
 
@@ -88,12 +125,12 @@ const createLoader = (descriptor) => {
     }
 
     if (descriptor.entry && typeof descriptor.entry === 'string') {
-        const entryPath = descriptor.entry;
+        const entryPath = resolveModuleSpecifier(descriptor.entry);
         return () => import(/* @vite-ignore */ entryPath);
     }
 
     if (descriptor.path && typeof descriptor.path === 'string') {
-        const modulePath = descriptor.path;
+        const modulePath = resolveModuleSpecifier(descriptor.path);
         return () => import(/* @vite-ignore */ modulePath);
     }
 
