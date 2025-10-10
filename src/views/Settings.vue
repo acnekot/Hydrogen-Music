@@ -109,6 +109,15 @@ const canResetPluginDirectory = computed(
         isPluginDirectoryCustomized.value
 );
 const pluginSettingsVersion = pluginSettingsVersionSignal;
+const pluginSettingsAvailability = computed(() => {
+    pluginSettingsVersion.value;
+    const availability = Object.create(null);
+    for (const plugin of plugins.value || []) {
+        if (!plugin || !plugin.id) continue;
+        availability[plugin.id] = hasPluginSettingsPage(plugin.id);
+    }
+    return availability;
+});
 
 if (isLogin()) {
     getVipInfo().then(result => {
@@ -416,8 +425,9 @@ const formatPluginTimestamp = (timestamp) => {
 };
 
 const pluginHasSettings = (pluginId) => {
-    pluginSettingsVersion.value;
-    return hasPluginSettingsPage(pluginId);
+    if (!pluginId) return false;
+    const availability = pluginSettingsAvailability.value;
+    return Boolean(availability && availability[pluginId]);
 };
 
 const openPluginSettings = (plugin) => {
