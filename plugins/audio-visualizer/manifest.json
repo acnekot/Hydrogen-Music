@@ -1,0 +1,11 @@
+{
+  "id": "example.lyric-visualizer",
+  "name": "歌词音频可视化",
+  "version": "1.0.0",
+  "description": "在播放器歌词区域呈现可自定义的音频频谱动画",
+  "author": "Hydrogen Team",
+  "homepage": "https://github.com/acnekot/Hydrogen-Music",
+  "main": "index.js",
+  "enabledByDefault": false,
+  "builtin": false
+}
