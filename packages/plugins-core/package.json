@@ -1,0 +1,35 @@
+{
+  "name": "@hydrogen/plugins-core",
+  "version": "0.1.0",
+  "description": "Hydrogen desktop plugin system core for Electron + Vue 3 + Pinia apps",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "watch": "tsc -p tsconfig.json --watch"
+  },
+  "keywords": [
+    "hydrogen",
+    "plugins",
+    "electron",
+    "vue",
+    "pinia"
+  ],
+  "author": "Hydrogen Team",
+  "license": "MIT",
+  "dependencies": {},
+  "peerDependencies": {
+    "electron": ">=23",
+    "vue": ">=3.3.0",
+    "pinia": ">=2.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}
