@@ -13,6 +13,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     const settingsStore = new Store({ name: 'settings' })
     const lastPlaylistStore = new Store({ name: 'lastPlaylist' })
     const musicVideoStore = new Store({ name: 'musicVideo' })
+    const pluginStore = new Store({ name: 'plugins' })
 
     // 全局存储桌面歌词窗口引用
     let globalLyricWindow = null;
@@ -191,6 +192,25 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             return initSettings
         }
     })
+    ipcMain.handle('plugins:get-registry', async () => {
+        try {
+            const registry = pluginStore.get('registry')
+            return Array.isArray(registry) ? registry : []
+        } catch (error) {
+            console.warn('[PluginManager] Failed to read registry from store:', error)
+            return []
+        }
+    })
+    ipcMain.handle('plugins:save-registry', async (_, registry = []) => {
+        const safeRegistry = Array.isArray(registry) ? registry : []
+        try {
+            pluginStore.set('registry', safeRegistry)
+            return safeRegistry
+        } catch (error) {
+            console.warn('[PluginManager] Failed to persist registry:', error)
+            throw error
+        }
+    })
     ipcMain.handle('dialog:openFile', async () => {
         const { canceled, filePaths } = await dialog.showOpenDialog({ properties: ['openDirectory'] })
         if (canceled) {
@@ -198,6 +218,23 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         } else {
             return filePaths[0]
         }
+    })
+    ipcMain.handle('plugins:open-file', async () => {
+        const { canceled, filePaths } = await dialog.showOpenDialog({
+            properties: ['openFile'],
+            filters: [
+                {
+                    name: 'JavaScript / TypeScript',
+                    extensions: ['js', 'mjs', 'cjs', 'ts'],
+                },
+            ],
+        })
+
+        if (canceled || !filePaths || filePaths.length === 0) {
+            return null
+        }
+
+        return filePaths[0]
     })
     ipcMain.handle('dialog:openImageFile', async () => {
         const { canceled, filePaths } = await dialog.showOpenDialog({

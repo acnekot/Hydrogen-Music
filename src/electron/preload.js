@@ -225,6 +225,12 @@ contextBridge.exposeInMainWorld('windowApi', {
     updateDockMenu,
 })
 
+contextBridge.exposeInMainWorld('pluginApi', {
+    getRegistry: () => ipcRenderer.invoke('plugins:get-registry'),
+    saveRegistry: (registry) => ipcRenderer.invoke('plugins:save-registry', registry),
+    openPluginFile: () => ipcRenderer.invoke('plugins:open-file'),
+})
+
 // 新的API用于处理登录功能和桌面歌词
 contextBridge.exposeInMainWorld('electronAPI', {
     clearNeteaseSession: clearLoginSession,
