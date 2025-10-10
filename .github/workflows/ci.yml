@@ -10,8 +10,9 @@ on:
       - 'test/**'
       - 'release/**'
       - '*'    # ✅ 任意新分支都会触发
+
 permissions:
-  contents: write  # ✅ 关键：允许 actions 机器人推送代码和打 tag
+  contents: write  # ✅ 允许 actions 机器人推送代码和打 tag
   
 jobs:
   build-windows:
@@ -63,11 +64,19 @@ jobs:
           git commit -m "chore: bump version to v${{ steps.genver.outputs.version }}" || echo "No changes to commit"
           git push
 
-      - name: Create version tag
+      # 🏷️ 安全创建 tag（自动避免重复）
+      - name: Create version tag (safe)
         shell: bash
         run: |
-          git tag v${{ steps.genver.outputs.version }}
-          git push origin v${{ steps.genver.outputs.version }}
+          TAG="v${{ steps.genver.outputs.version }}"
+          COUNT=1
+          while git ls-remote --tags origin | grep -q "$TAG"; do
+            TAG="v${{ steps.genver.outputs.version }}.$COUNT"
+            COUNT=$((COUNT+1))
+          done
+          git tag "$TAG"
+          git push origin "$TAG"
+          echo "Created tag: $TAG"
 
       # ⚙️ 打包 Windows 版
       - name: Build Windows dist
@@ -91,5 +100,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: HydrogenMusic-Windows-${{ steps.genver.outputs.version }}
-          path: release/**/*.exe
+          path: |
+            release/**/*.exe
+            release/**/*.zip
           if-no-files-found: ignore
