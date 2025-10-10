@@ -93,6 +93,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     })
 
     const builtinPluginIds = new Set()
+    const legacyBuiltinPluginIds = new Set(['core.lyric-visualizer'])
 
     const getPluginDirectory = () => {
         const stored = pluginStore.get('directory')
@@ -263,6 +264,25 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         }
     }
 
+    const purgeLegacyBuiltinPluginDirectories = async () => {
+        const pluginRoot = ensurePluginDirectory()
+
+        for (const legacyId of legacyBuiltinPluginIds) {
+            const targetDir = path.join(pluginRoot, legacyId)
+            if (!fs.existsSync(targetDir)) continue
+
+            try {
+                const manifest = await readPluginManifestFromDir(targetDir)
+                const shouldRemove = !manifest || manifest.builtin === true
+                if (shouldRemove) {
+                    await fsExtra.remove(targetDir)
+                }
+            } catch (error) {
+                console.warn('清理遗留内置插件失败:', targetDir, error)
+            }
+        }
+    }
+
     const syncBuiltinPlugins = async () => {
         builtinPluginIds.clear()
 
@@ -355,6 +375,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
 
     const syncPluginsFromDisk = async () => {
         const pluginRoot = ensurePluginDirectory()
+        await purgeLegacyBuiltinPluginDirectories()
         await syncBuiltinPlugins()
         let directories
         try {
@@ -362,6 +383,22 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         } catch (error) {
             console.error('读取插件目录失败:', error)
             return
+        }
+
+        let stored = getStoredPlugins()
+        let removedLegacyFromStore = false
+        if (stored.length) {
+            const filtered = []
+            for (const item of stored) {
+                if (legacyBuiltinPluginIds.has(item.id) && item.builtin === true) {
+                    removedLegacyFromStore = true
+                    continue
+                }
+                filtered.push(item)
+            }
+            if (removedLegacyFromStore) {
+                stored = filtered
+            }
         }
 
         const diskPlugins = new Map()
@@ -378,13 +415,16 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             diskPlugins.set(manifest.id, { ...manifest, dir: pluginDir })
         }
 
-        const stored = getStoredPlugins()
         const nextList = []
-        let changed = false
+        let changed = removedLegacyFromStore
 
         for (const [id, manifest] of diskPlugins.entries()) {
             const existing = stored.find(item => item.id === id)
             const isBuiltin = builtinPluginIds.has(id) || manifest.builtin === true
+            if (legacyBuiltinPluginIds.has(id) && isBuiltin) {
+                changed = true
+                continue
+            }
             const record = {
                 id,
                 name: manifest.name,
@@ -414,6 +454,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         }
 
         for (const plugin of stored) {
+            if (legacyBuiltinPluginIds.has(plugin.id) && plugin.builtin === true) continue
             if (!diskPlugins.has(plugin.id)) {
                 changed = true
             }
