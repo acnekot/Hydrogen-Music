@@ -10,7 +10,9 @@ on:
       - 'test/**'
       - 'release/**'
       - '*'    # ✅ 任意新分支都会触发
-
+permissions:
+  contents: write  # ✅ 关键：允许 actions 机器人推送代码和打 tag
+  
 jobs:
   build-windows:
     runs-on: windows-latest
