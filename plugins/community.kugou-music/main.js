@@ -325,6 +325,9 @@ class KugouSettingsPage {
         this.cleanupHandlers = [];
 
         this.root = null;
+        this.styleNode = null;
+        this.hostContainer = null;
+        this.hostContainerStyles = null;
         this.searchInput = null;
         this.searchButton = null;
         this.resultsContainer = null;
@@ -342,32 +345,41 @@ class KugouSettingsPage {
         const root = createElement('div', 'kugou-plugin');
         const style = document.createElement('style');
         style.textContent = `
-            .kugou-plugin { font-family: var(--font-family, 'Segoe UI', sans-serif); color: var(--text-color, #222); display: flex; flex-direction: column; gap: 16px; padding: 16px; }
-            .kugou-plugin__section { border: 1px solid rgba(0,0,0,0.08); border-radius: 12px; padding: 16px; background: rgba(255,255,255,0.75); backdrop-filter: blur(6px); box-shadow: 0 8px 20px rgba(15,23,42,0.08); }
-            .kugou-plugin__section h3 { margin: 0 0 12px; font-size: 16px; font-weight: 600; }
-            .kugou-plugin__form { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-            .kugou-plugin__form label { font-size: 13px; color: rgba(15,23,42,0.68); }
+            .kugou-plugin { font-family: var(--font-family, 'Segoe UI', sans-serif); color: #e2e8f0; display: flex; flex-direction: column; gap: 20px; padding: 24px; background: radial-gradient(circle at top left, rgba(30,64,175,0.22), transparent 55%) #020617; min-height: 100%; box-sizing: border-box; }
+            .kugou-plugin__section { border: 1px solid rgba(148,163,184,0.18); border-radius: 16px; padding: 20px; background: linear-gradient(145deg, rgba(15,23,42,0.92), rgba(15,23,42,0.7)); box-shadow: 0 24px 42px rgba(2,6,23,0.55); }
+            .kugou-plugin__section h3 { margin: 0 0 12px; font-size: 18px; font-weight: 600; letter-spacing: 0.01em; color: #f8fafc; }
+            .kugou-plugin__section-desc { margin: 0 0 18px; font-size: 13px; line-height: 1.7; color: rgba(226,232,240,0.72); }
+            .kugou-plugin__form { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+            .kugou-plugin__form label { font-size: 13px; color: rgba(226,232,240,0.86); letter-spacing: 0.02em; }
             .kugou-plugin__form input[type="text"],
-            .kugou-plugin__form select { min-width: 200px; padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(148,163,184,0.45); background: rgba(255,255,255,0.9); box-shadow: inset 0 1px 2px rgba(148,163,184,0.25); }
-            .kugou-plugin__button { border: none; border-radius: 999px; padding: 6px 16px; font-size: 13px; cursor: pointer; background: linear-gradient(135deg, #2563eb, #7c3aed); color: #fff; box-shadow: 0 6px 18px rgba(59,130,246,0.25); transition: transform 0.18s ease, box-shadow 0.18s ease; }
-            .kugou-plugin__button:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(59,130,246,0.3); }
-            .kugou-plugin__button--secondary { background: rgba(15,23,42,0.05); color: rgba(15,23,42,0.75); box-shadow: none; border: 1px solid rgba(148,163,184,0.4); }
-            .kugou-plugin__status { min-height: 20px; font-size: 13px; color: rgba(15,23,42,0.68); }
-            .kugou-plugin__results { display: flex; flex-direction: column; gap: 12px; max-height: 420px; overflow-y: auto; padding-right: 4px; }
-            .kugou-plugin__result { border-radius: 12px; padding: 12px; background: rgba(241,245,249,0.65); border: 1px solid rgba(148,163,184,0.24); box-shadow: inset 0 1px 0 rgba(255,255,255,0.65); }
-            .kugou-plugin__result-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
-            .kugou-plugin__result-title { font-weight: 600; font-size: 14px; color: rgba(15,23,42,0.92); }
-            .kugou-plugin__result-meta { font-size: 12px; color: rgba(15,23,42,0.6); display: flex; gap: 12px; flex-wrap: wrap; }
-            .kugou-plugin__result-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-            .kugou-plugin__audio { width: 100%; }
-            .kugou-plugin__lyric { white-space: pre-wrap; background: rgba(15,23,42,0.03); border-radius: 12px; padding: 12px; font-size: 13px; color: rgba(15,23,42,0.75); max-height: 260px; overflow-y: auto; }
-            .kugou-plugin__config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; align-items: end; }
+            .kugou-plugin__form select { min-width: 220px; padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(148,163,184,0.35); background: rgba(15,23,42,0.75); color: #f1f5f9; box-shadow: inset 0 1px 2px rgba(15,23,42,0.65); transition: border-color 0.18s ease, box-shadow 0.18s ease; }
+            .kugou-plugin__form input[type="text"]:focus,
+            .kugou-plugin__form select:focus { outline: none; border-color: rgba(96,165,250,0.9); box-shadow: 0 0 0 2px rgba(59,130,246,0.35); }
+            .kugou-plugin__button { border: none; border-radius: 999px; padding: 8px 18px; font-size: 13px; cursor: pointer; background: linear-gradient(135deg, #38bdf8, #6366f1); color: #0f172a; font-weight: 600; box-shadow: 0 8px 24px rgba(56,189,248,0.35); transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease; }
+            .kugou-plugin__button:hover { transform: translateY(-1px); box-shadow: 0 12px 32px rgba(99,102,241,0.45); filter: brightness(1.05); }
+            .kugou-plugin__button:active { transform: translateY(0); filter: brightness(0.95); }
+            .kugou-plugin__button--secondary { background: rgba(59,130,246,0.16); color: #e2e8f0; box-shadow: none; border: 1px solid rgba(148,163,184,0.32); }
+            .kugou-plugin__status { min-height: 22px; font-size: 13px; color: rgba(148,163,184,0.9); letter-spacing: 0.01em; }
+            .kugou-plugin__results { display: flex; flex-direction: column; gap: 14px; max-height: 420px; overflow-y: auto; padding-right: 6px; }
+            .kugou-plugin__results::-webkit-scrollbar { width: 6px; }
+            .kugou-plugin__results::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.3); border-radius: 999px; }
+            .kugou-plugin__result { border-radius: 14px; padding: 16px; background: rgba(30,41,59,0.75); border: 1px solid rgba(148,163,184,0.28); box-shadow: 0 14px 34px rgba(2,6,23,0.45); backdrop-filter: blur(4px); display: flex; flex-direction: column; gap: 12px; }
+            .kugou-plugin__result-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+            .kugou-plugin__result-title { font-weight: 600; font-size: 15px; color: #f8fafc; letter-spacing: 0.01em; }
+            .kugou-plugin__result-meta { font-size: 12px; color: rgba(226,232,240,0.65); display: flex; gap: 12px; flex-wrap: wrap; }
+            .kugou-plugin__result-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+            .kugou-plugin__audio { width: 100%; border-radius: 10px; background: rgba(15,23,42,0.6); }
+            .kugou-plugin__lyric { white-space: pre-wrap; background: rgba(15,23,42,0.65); border-radius: 12px; padding: 14px; font-size: 13px; color: rgba(226,232,240,0.82); max-height: 260px; overflow-y: auto; line-height: 1.6; }
+            .kugou-plugin__config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; align-items: end; }
             .kugou-plugin__config-item { display: flex; flex-direction: column; gap: 6px; }
-            .kugou-plugin__badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; background: rgba(37,99,235,0.12); color: rgba(37,99,235,0.85); font-size: 11px; }
+            .kugou-plugin__badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 999px; background: rgba(45,212,191,0.2); color: rgba(45,212,191,0.85); font-size: 11px; letter-spacing: 0.02em; }
+            .kugou-plugin__badge + .kugou-plugin__badge { margin-left: 4px; }
+            .kugou-plugin__inline-group { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
         `;
 
         const configSection = createElement('section', 'kugou-plugin__section');
         const configTitle = createElement('h3', null, '服务配置');
+        const configDescription = createElement('p', 'kugou-plugin__section-desc', '配置 KuGouMusicApi 的访问入口、首选音质与搜索类别。连接成功后即可直接在下方检索并试听歌曲。');
         const configForm = createElement('div', 'kugou-plugin__config-grid kugou-plugin__form');
 
         const baseUrlItem = createElement('div', 'kugou-plugin__config-item');
@@ -428,11 +440,15 @@ class KugouSettingsPage {
 
         const pingButton = createElement('button', 'kugou-plugin__button kugou-plugin__button--secondary', '测试连接');
 
-        configForm.append(baseUrlItem, qualityItem, typeItem, autoplayItem, pingButton);
-        configSection.append(configTitle, configForm);
+        const formFooter = createElement('div', 'kugou-plugin__inline-group');
+        formFooter.append(pingButton);
+
+        configForm.append(baseUrlItem, qualityItem, typeItem, autoplayItem);
+        configSection.append(configTitle, configDescription, configForm, formFooter);
 
         const searchSection = createElement('section', 'kugou-plugin__section');
         const searchTitle = createElement('h3', null, '酷狗搜索与试听');
+        const searchDescription = createElement('p', 'kugou-plugin__section-desc', '输入关键词后即可列出匹配的曲目。点击操作按钮可获取试听链接、复制直链或加载歌词。');
         const searchForm = createElement('div', 'kugou-plugin__form');
         const searchInput = createElement('input');
         searchInput.type = 'text';
@@ -442,19 +458,33 @@ class KugouSettingsPage {
         const resultsContainer = createElement('div', 'kugou-plugin__results');
 
         searchForm.append(searchInput, searchButton);
-        searchSection.append(searchTitle, searchForm, statusNode, resultsContainer);
+        searchSection.append(searchTitle, searchDescription, searchForm, statusNode, resultsContainer);
 
         const playerSection = createElement('section', 'kugou-plugin__section');
         const playerTitle = createElement('h3', null, '试听与歌词');
+        const playerDescription = createElement('p', 'kugou-plugin__section-desc', '播放最新获取的直链音频，并在下方查看或复制当前歌曲的歌词文本。');
         const audio = createElement('audio', 'kugou-plugin__audio');
         audio.controls = true;
         const lyricContainer = createElement('pre', 'kugou-plugin__lyric');
         lyricContainer.textContent = '歌词会显示在这里。';
-        playerSection.append(playerTitle, audio, lyricContainer);
+        playerSection.append(playerTitle, playerDescription, audio, lyricContainer);
 
         root.append(configSection, searchSection, playerSection);
         container.innerHTML = '';
+        const previousStyles = {
+            background: container.style.background,
+            color: container.style.color,
+            padding: container.style.padding,
+            overflowY: container.style.overflowY,
+        };
+        this.hostContainerStyles = previousStyles;
+        this.hostContainer = container;
+        container.style.background = '#020617';
+        container.style.color = '#e2e8f0';
+        container.style.padding = '0';
+        container.style.overflowY = 'auto';
         container.append(style, root);
+        this.styleNode = style;
 
         const applyConfig = () => {
             const nextConfig = {
@@ -663,10 +693,10 @@ class KugouSettingsPage {
     updateStatus(message, type = 'info') {
         if (!this.statusNode) return;
         const colors = {
-            info: 'rgba(37,99,235,0.85)',
-            success: 'rgba(22,163,74,0.85)',
-            warn: 'rgba(234,179,8,0.9)',
-            error: 'rgba(220,38,38,0.9)',
+            info: 'rgba(96,165,250,0.95)',
+            success: 'rgba(16,185,129,0.95)',
+            warn: 'rgba(234,179,8,0.95)',
+            error: 'rgba(248,113,113,0.95)',
         };
         this.statusNode.style.color = colors[type] || colors.info;
         this.statusNode.textContent = message || '';
@@ -676,9 +706,22 @@ class KugouSettingsPage {
         for (const handler of this.cleanupHandlers.splice(0)) {
             try { handler(); } catch (_) {}
         }
+        if (this.styleNode?.parentNode) {
+            this.styleNode.parentNode.removeChild(this.styleNode);
+        }
         if (this.root?.parentNode) {
             this.root.parentNode.removeChild(this.root);
         }
+        if (this.hostContainer) {
+            const styles = this.hostContainerStyles || {};
+            this.hostContainer.style.background = styles.background || '';
+            this.hostContainer.style.color = styles.color || '';
+            this.hostContainer.style.padding = styles.padding || '';
+            this.hostContainer.style.overflowY = styles.overflowY || '';
+        }
+        this.styleNode = null;
+        this.hostContainer = null;
+        this.hostContainerStyles = null;
         this.root = null;
         this.searchInput = null;
         this.searchButton = null;
