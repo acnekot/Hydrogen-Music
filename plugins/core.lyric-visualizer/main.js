@@ -182,9 +182,15 @@ const mountSettingsPage = (container, store, context) => {
 .hm-visualizer-settings {
     font-family: "Source Han Sans", "Microsoft Yahei", sans-serif;
     color: rgba(18, 24, 38, 0.92);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(226, 232, 244, 0.95));
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(226, 232, 244, 0.98));
     min-height: 100%;
     padding: 28px 32px 40px;
+    box-sizing: border-box;
+}
+.hm-visualizer-settings *,
+.hm-visualizer-settings *::before,
+.hm-visualizer-settings *::after {
+    color: inherit !important;
     box-sizing: border-box;
 }
 .hm-visualizer-settings h2 {
@@ -197,10 +203,11 @@ const mountSettingsPage = (container, store, context) => {
 }
 .hm-visualizer-card {
     border: 1px solid rgba(92, 122, 170, 0.28);
-    background: rgba(255, 255, 255, 0.82);
+    background: rgba(255, 255, 255, 0.88);
     box-shadow: 0 16px 38px rgba(26, 40, 68, 0.16);
     padding: 20px 24px 24px;
     margin-bottom: 24px;
+    color: inherit;
 }
 .hm-visualizer-row {
     display: flex;
@@ -216,7 +223,7 @@ const mountSettingsPage = (container, store, context) => {
     min-width: 160px;
     font-size: 14px;
     font-weight: 600;
-    color: rgba(18, 24, 38, 0.88);
+    color: inherit;
 }
 .hm-visualizer-inputs {
     flex: 1;
@@ -236,9 +243,16 @@ const mountSettingsPage = (container, store, context) => {
     width: 120px;
     padding: 6px 10px;
     border: 1px solid rgba(92, 122, 170, 0.35);
-    background: rgba(255, 255, 255, 0.95);
-    color: rgba(18, 24, 38, 0.92);
+    background: rgba(255, 255, 255, 0.96);
+    color: inherit;
     outline: none;
+}
+.hm-visualizer-inputs input[type="color"] {
+    width: 48px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid rgba(92, 122, 170, 0.35);
+    background: rgba(255, 255, 255, 0.96);
 }
 .hm-visualizer-toggle {
     display: inline-flex;
@@ -246,6 +260,7 @@ const mountSettingsPage = (container, store, context) => {
     gap: 12px;
     font-size: 15px;
     cursor: pointer;
+    color: inherit;
 }
 .hm-visualizer-toggle input[type="checkbox"] {
     width: 18px;
@@ -255,7 +270,7 @@ const mountSettingsPage = (container, store, context) => {
 .hm-visualizer-hint {
     margin: 6px 0 0;
     font-size: 13px;
-    color: rgba(18, 24, 38, 0.65);
+    color: rgba(18, 24, 38, 0.6) !important;
 }
 .hm-visualizer-radial {
     display: none;
@@ -273,6 +288,7 @@ const mountSettingsPage = (container, store, context) => {
     align-items: center;
     gap: 8px;
     cursor: pointer;
+    color: inherit;
 }
 .hm-visualizer-footer {
     display: flex;
@@ -283,12 +299,45 @@ const mountSettingsPage = (container, store, context) => {
     padding: 8px 18px;
     border: 1px solid rgba(92, 122, 170, 0.38);
     background: rgba(242, 245, 255, 0.92);
-    color: rgba(18, 24, 38, 0.86);
+    color: rgba(18, 24, 38, 0.88) !important;
     cursor: pointer;
-    transition: background 0.2s ease;
+    transition: background 0.2s ease, color 0.2s ease;
 }
-.hm-visualizer-button:hover {
+.hm-visualizer-button:hover,
+.hm-visualizer-button:focus-visible {
     background: rgba(255, 255, 255, 1);
+}
+.dark .hm-visualizer-settings {
+    color: var(--text, #f1f3f5);
+    background: linear-gradient(180deg, rgba(44, 52, 64, 0.96), rgba(32, 39, 50, 0.98));
+}
+.dark .hm-visualizer-card {
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(46, 56, 68, 0.86);
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.35);
+}
+.dark .hm-visualizer-hint {
+    color: rgba(241, 243, 245, 0.75) !important;
+}
+.dark .hm-visualizer-inputs input[type="number"],
+.dark .hm-visualizer-inputs input[type="text"],
+.dark .hm-visualizer-inputs select,
+.dark .hm-visualizer-inputs input[type="color"] {
+    background: rgba(29, 36, 46, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.24);
+    color: inherit !important;
+}
+.dark .hm-visualizer-inputs input[type="range"] {
+    accent-color: rgba(129, 168, 255, 0.85);
+}
+.dark .hm-visualizer-button {
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: rgba(76, 92, 120, 0.82);
+    color: var(--text, #f1f3f5) !important;
+}
+.dark .hm-visualizer-button:hover,
+.dark .hm-visualizer-button:focus-visible {
+    background: rgba(98, 118, 150, 0.88);
 }
 `;
     container.appendChild(style);
