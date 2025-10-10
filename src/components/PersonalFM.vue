@@ -8,7 +8,7 @@
         <div class="fm-content" v-if="currentSong && !loading">
             <div class="fm-main">
                 <div class="fm-cover" @click="togglePlay">
-                    <img :src="currentSong.album?.picUrl || '/src/assets/default-cover.png'" :alt="currentSong.name" />
+                    <img :src="currentSong.album?.picUrl || defaultCover" :alt="currentSong.name" />
                     <div class="fm-play-overlay">
                         <svg v-if="!isPlaying" width="40" height="40" viewBox="0 0 24 24" fill="white">
                             <path d="M8 5v14l11-7z" />
@@ -87,12 +87,14 @@ import { updatePlaylist } from '../api/playlist';
 import { getLikelist } from '../api/user';
 import { likeMusic } from '../api/song';
 import { storeToRefs } from 'pinia';
+import { DEFAULT_COVER_DATA_URL } from '../utils/brandAssets';
 
 const playerStore = usePlayerStore();
 const userStore = useUserStore();
 const libraryStore = useLibraryStore();
 const { songId, playing } = storeToRefs(playerStore);
 const { likelist } = storeToRefs(userStore);
+const defaultCover = DEFAULT_COVER_DATA_URL;
 
 // 创建一个计算属性来实时判断当前歌曲是否被喜欢
 const isCurrentSongLiked = computed(() => {

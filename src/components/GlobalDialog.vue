@@ -3,6 +3,7 @@
   import { dialogCancel, dialogConfirm } from '../utils/dialog'
   import { useOtherStore } from '../store/otherStore';
   import { storeToRefs } from 'pinia';
+  import { HALFTONE_PATTERN } from '../utils/brandAssets'
 
   const otherStore =  useOtherStore()
   const { dialogShow, dialogHeader, dialogText } = storeToRefs(otherStore)
@@ -10,12 +11,13 @@
   const isActive = ref(false)
   const onAfterEnter = () => isActive.value = true
   const onAfterLeave = () => isActive.value = false
+  const halftoneStyle = { '--halftone-overlay': HALFTONE_PATTERN }
 </script>
 
 <template>
   <div class="global-dialog" v-show="dialogShow"></div>
   <Transition name="dialog-fade" @after-enter="onAfterEnter" @after-leave="onAfterLeave">
-      <div class="dialog-container" :class="{'dialog-container-active': isActive}" v-if="dialogShow">
+      <div class="dialog-container" :class="{'dialog-container-active': isActive}" v-if="dialogShow" :style="halftoneStyle">
           <div class="dialog">
               <div class="dialog-header">
                   <span class="header-title">{{dialogHeader}}</span>
@@ -50,7 +52,7 @@
         z-index: 1000;
         width: 0;
         height: 0;
-        background-image: url('../assets/img/halftone.png');
+        background-image: var(--halftone-overlay);
         background-size: 40%;
         background-repeat: repeat;
         background-color: rgb(14, 14, 14);

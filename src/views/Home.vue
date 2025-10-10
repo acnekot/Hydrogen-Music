@@ -5,10 +5,12 @@
   import { noticeOpen } from "../utils/dialog";
   import { isLogin } from '../utils/authority'
   import { useUserStore } from '../store/userStore';
+  import { HALFTONE_PATTERN } from '../utils/brandAssets'
 
   const router  =useRouter()
   const userStore = useUserStore()
   const isActive = ref(false)
+  const halftoneStyle = { '--halftone-overlay': HALFTONE_PATTERN }
   const routerContainer = ref(null)
   const homeLink = ref(null)
   const cloudLink = ref(null)
@@ -128,7 +130,7 @@
                 <div class="img-mask"></div>
               </div>
               <transition name="app-option" @after-enter="onAfterEnter" @after-leave="onAfterLeave">
-                <div class="app-option" :class="{ 'app-option-active': isActive }" v-show="userStore.appOptionShow">
+                <div class="app-option" :class="{ 'app-option-active': isActive }" v-show="userStore.appOptionShow" :style="halftoneStyle">
                   <div class="option" @click="toSettings()">设置</div>
                   <div class="option" @click="userLogout()">退出登录</div>
   
@@ -241,7 +243,7 @@
             padding: 0;
             width: 100px;
             height: 0;
-            background-image: url('../assets/img/halftone.png');
+            background-image: var(--halftone-overlay);
             background-size: 120%;
             background-repeat: repeat;
             background-color: rgb(20, 20, 20);

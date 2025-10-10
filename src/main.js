@@ -9,6 +9,7 @@ import './assets/css/reset.css'
 import './assets/css/common.css'
 import './assets/css/fonts.css'
 import './assets/css/theme.css'
+import './utils/tauriBridge'
 import { initTheme } from './utils/theme'
 import { initMediaSession } from './utils/mediaSession'
 const app = createApp(App)

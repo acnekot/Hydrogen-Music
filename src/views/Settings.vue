@@ -10,6 +10,7 @@ import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
+import AppLogo from '../components/AppLogo.vue';
 import { setTheme, getSavedTheme } from '../utils/theme';
 
 const router = useRouter();
@@ -1858,7 +1859,7 @@ const clearFmRecent = () => {
             </div>
             <div class="app-version">
                 <div class="app-icon">
-                    <img src="../assets/icon/icon.ico" alt="" />
+                    <AppLogo class="app-logo-mark" size="100%" />
                 </div>
                 <div class="version">V0.5.6 AC.1</div>
                 <div class="update-check">
@@ -2369,7 +2370,10 @@ const clearFmRecent = () => {
                 margin-bottom: 10px;
                 width: 65px;
                 height: 65px;
-                img {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                .app-logo-mark {
                     width: 100%;
                     height: 100%;
                 }

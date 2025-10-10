@@ -1,7 +1,7 @@
 <template>
     <div class="global-dialog" v-show="visible"></div>
     <Transition name="dialog-fade" @after-enter="onAfterEnter" @after-leave="onAfterLeave">
-        <div class="dialog-container" :class="{'dialog-container-active': isActive}" v-if="visible">
+        <div class="dialog-container" :class="{'dialog-container-active': isActive}" v-if="visible" :style="halftoneStyle">
             <div class="dialog">
                 <div class="dialog-header">
                     <span class="header-title">{{ title }}</span>
@@ -83,6 +83,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { HALFTONE_PATTERN } from '../utils/brandAssets'
 
 const props = defineProps({
     visible: {
@@ -104,6 +105,7 @@ const isDownloading = ref(false)
 const manualDownloadUrl = ref('')
 const errorMessage = ref('')
 const isActive = ref(false)
+const halftoneStyle = { '--halftone-overlay': HALFTONE_PATTERN }
 
 const title = computed(() => {
     switch (updateStatus.value) {
@@ -208,7 +210,7 @@ onMounted(() => {
     z-index: 1000;
     width: 0;
     height: 0;
-    background-image: url('../assets/img/halftone.png');
+    background-image: var(--halftone-overlay);
     background-size: 40%;
     background-repeat: repeat;
     background-color: rgb(14, 14, 14);

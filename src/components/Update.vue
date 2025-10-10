@@ -1,8 +1,11 @@
 <script setup>
   import { ref } from 'vue'
+  import AppLogo from './AppLogo.vue'
+  import { HALFTONE_PATTERN } from '../utils/brandAssets'
   import { useOtherStore } from '../store/otherStore';
   const otherStore = useOtherStore()
   const show = ref(true)
+  const halftoneStyle = { '--halftone-overlay': HALFTONE_PATTERN }
   const toUpdate = () => {
     windowApi.toRegister("https://github.com/ldx123000/Hydrogen-Music/releases")
   }
@@ -17,9 +20,9 @@
 <template>
     <div class="update-page">
         <div class="update-container" :class="{'update-container-close': !show}">
-            <div class="back-img"></div>
+            <div class="back-img" :style="halftoneStyle"></div>
             <div class="logo">
-                <img src="../assets/icon/icon.ico" alt="">
+                <AppLogo class="logo-mark" size="100%" />
                 <div class="logo-title">
                     <div>Hydrogen</div>
                     <div>Music</div>
@@ -76,19 +79,19 @@
             0%{height: 0;}
             100%{height: 50%;}
         }
-        .back-img{
-            width: 70%;
-            height: 200%;
-            background-image: linear-gradient(to right, rgb(0, 0, 0), rgba(0, 0, 0, 0)), url('../assets/img/halftone.png');
-            transform: rotate(30deg);
-            position: absolute;
-            top: -60%;
-            right: -15%;
-            z-index: -1;
-        }
-        .logo{
-            width: 7vh;
-            height: 7vh;
+            .back-img{
+                width: 70%;
+                height: 200%;
+            background-image: linear-gradient(to right, rgb(0, 0, 0), rgba(0, 0, 0, 0)), var(--halftone-overlay);
+                transform: rotate(30deg);
+                position: absolute;
+                top: -60%;
+                right: -15%;
+                z-index: -1;
+            }
+            .logo{
+                width: 7vh;
+                height: 7vh;
             position: absolute;
             top: 4vh;
             left: 4vh;
@@ -100,7 +103,7 @@
                 0%{transform: translateY(10%);opacity: 0;}
                 100%{transform: translateY(0);opacity: 1;}
             }
-            img{
+            .logo-mark{
                 width: 100%;
                 height: 100%;
             }

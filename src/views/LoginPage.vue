@@ -1,5 +1,6 @@
 <script setup>
 import { useRouter } from 'vue-router';
+import NeteaseBadge from '../components/NeteaseBadge.vue'
 
 const router = useRouter();
 
@@ -15,7 +16,7 @@ const modeSelect = mode => {
         <div class="login-mode">
             <div class="mode-type" @click="modeSelect('netease')">
                 <div class="type-img">
-                    <img src="../assets/img/netease-music.png" alt="NetEase Cloud Music" />
+                    <NeteaseBadge size="100%" />
                 </div>
                 <div class="type-info">
                     <span class="type-title">网易云音乐</span>
@@ -89,15 +90,12 @@ const modeSelect = mode => {
             margin-right: 16px;
             width: 48px;
             height: 48px;
-            background-color: rgba(226, 0, 0, 1);
             display: flex;
             align-items: center;
             justify-content: center;
-
-            img {
+            :deep(svg) {
                 width: 100%;
                 height: 100%;
-                object-fit: cover;
             }
         }
 

@@ -5,6 +5,7 @@
   import LoginByAccount from './LoginByAccount.vue';
   import LoginByCookie from './LoginByCookie.vue';
   import LoginByEmbedded from './LoginByEmbedded.vue';
+  import NeteaseBadge from './NeteaseBadge.vue'
 
   const route = useRoute()
   const router = useRouter()
@@ -103,7 +104,7 @@
         </div>
         <div class="login-header">
             <div class="login-icon">
-                <img src="../assets/img/netease-music.png" alt="">
+                <NeteaseBadge size="100%" />
             </div>
             <span class="login-title">登录网易云账号</span>
         </div>
@@ -186,8 +187,10 @@
                 margin-bottom: 1.5vh;
                 width: 6.5vh;
                 height: 6.5vh;
-                background-color: rgb(226, 0, 0);
-                img{
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                :deep(svg){
                     width: 100%;
                     height: 100%;
                 }
