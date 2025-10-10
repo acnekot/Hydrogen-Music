@@ -212,6 +212,57 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         }
     }
 
+    const copyDirectoryResilient = async (sourceDir, targetDir) => {
+        let entries
+        try {
+            entries = await fs.promises.readdir(sourceDir)
+        } catch (error) {
+            console.error('读取目录失败:', sourceDir, error)
+            return
+        }
+
+        await fsExtra.ensureDir(targetDir)
+
+        for (const entry of entries) {
+            const sourcePath = path.join(sourceDir, entry)
+            const targetPath = path.join(targetDir, entry)
+
+            let stats
+            try {
+                stats = await fs.promises.stat(sourcePath)
+            } catch (error) {
+                console.warn('读取文件信息失败:', sourcePath, error)
+                continue
+            }
+
+            if (stats.isDirectory()) {
+                await copyDirectoryResilient(sourcePath, targetPath)
+            } else if (stats.isFile()) {
+                try {
+                    await fsExtra.ensureDir(path.dirname(targetPath))
+                    await fs.promises.copyFile(sourcePath, targetPath)
+                } catch (error) {
+                    console.error('复制文件失败:', sourcePath, error)
+                }
+            } else if (stats.isSymbolicLink()) {
+                try {
+                    const linkTarget = await fs.promises.readlink(sourcePath)
+                    await fsExtra.ensureDir(path.dirname(targetPath))
+                    await fs.promises.symlink(linkTarget, targetPath)
+                } catch (error) {
+                    console.warn('复制符号链接失败，尝试解析后复制:', sourcePath, error)
+                    try {
+                        const resolvedPath = await fs.promises.realpath(sourcePath)
+                        await fsExtra.ensureDir(path.dirname(targetPath))
+                        await fs.promises.copyFile(resolvedPath, targetPath)
+                    } catch (fallbackError) {
+                        console.error('复制符号链接失败:', sourcePath, fallbackError)
+                    }
+                }
+            }
+        }
+    }
+
     const syncBuiltinPlugins = async () => {
         builtinPluginIds.clear()
 
@@ -280,7 +331,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             } catch (_) {}
 
             try {
-                await fsExtra.copy(sourceDir, targetDir, { overwrite: true })
+                await copyDirectoryResilient(sourceDir, targetDir)
             } catch (error) {
                 console.error('复制内置插件失败:', manifest.id, error)
             }
