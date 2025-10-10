@@ -1,5 +1,6 @@
 const STYLE_ID = 'hm-lyric-visualizer-plugin-style'
 const SETTINGS_CLASS = 'hm-lyric-visualizer-settings'
+const AUTO_ENABLE_FLAG_KEY = 'lyricVisualizerHasAutoEnabled'
 
 const DEFAULTS = Object.freeze({
     height: 220,
@@ -243,6 +244,16 @@ const applySanitizedState = store => {
     store.lyricVisualizerRadialOffsetX = sanitizeRadialOffset(store.lyricVisualizerRadialOffsetX)
     store.lyricVisualizerRadialOffsetY = sanitizeRadialOffset(store.lyricVisualizerRadialOffsetY)
     store.lyricVisualizerRadialCoreSize = sanitizeRadialCoreSize(store.lyricVisualizerRadialCoreSize)
+}
+
+const ensureAutoEnableVisualizer = store => {
+    if (!store) return
+    if (!store[AUTO_ENABLE_FLAG_KEY]) {
+        store[AUTO_ENABLE_FLAG_KEY] = true
+        if (!store.lyricVisualizer) {
+            store.lyricVisualizer = true
+        }
+    }
 }
 
 const formatNumber = (value, suffix = '', precision = 0) => {
@@ -534,6 +545,8 @@ module.exports = function activate(context) {
 
     const removeStyle = ensureStyleSheet()
     applySanitizedState(playerStore)
+    ensureAutoEnableVisualizer(playerStore)
+    playerStore.lyricVisualizerToggleAvailable = true
     playerStore.lyricVisualizerPluginActive = true
 
     const unsubscribe = playerStore.$subscribe(() => {
@@ -587,5 +600,6 @@ module.exports = function activate(context) {
         uiRef = null
         playerStore.lyricVisualizer = false
         playerStore.lyricVisualizerPluginActive = false
+        playerStore.lyricVisualizerToggleAvailable = false
     })
 }

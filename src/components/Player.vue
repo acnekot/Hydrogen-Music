@@ -60,6 +60,7 @@ const {
     coverBlur,
     lyricVisualizer,
     lyricVisualizerPluginActive,
+    lyricVisualizerToggleAvailable,
 } = storeToRefs(playerStore);
 
 // 检查是否在FM模式
@@ -71,6 +72,9 @@ const isInFMMode = computed(() => {
 const isDjMode = computed(() => listInfo.value && listInfo.value.type === 'dj');
 
 const lyricVisualizerActive = computed(() => lyricVisualizer.value && lyricVisualizerPluginActive.value);
+const showLyricVisualizerToggle = computed(
+    () => lyricVisualizerToggleAvailable.value && lyricVisualizerPluginActive.value,
+);
 const lyricVisualizerToggleTitle = computed(() => (lyricVisualizerActive.value ? '关闭歌词可视化' : '开启歌词可视化'));
 
 const toggleLyricVisualizer = () => {
@@ -695,6 +699,7 @@ const toggleDjSub = async (isSubscribe) => {
 
                 <div class="comment-toggle-group">
                     <button
+                        v-if="showLyricVisualizerToggle"
                         class="visualizer-toggle-button"
                         type="button"
                         :title="lyricVisualizerToggleTitle"
