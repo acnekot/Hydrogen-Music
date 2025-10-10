@@ -10,8 +10,7 @@ import ContextMenu from './components/ContextMenu.vue';
 import GlobalDialog from './components/GlobalDialog.vue';
 import GlobalNotice from './components/GlobalNotice.vue';
 import Update from './components/Update.vue';
-import { initDesktopLyric } from './utils/desktopLyric';
-import { onMounted, computed } from 'vue';
+import { computed } from 'vue';
 
 import { usePlayerStore } from './store/playerStore';
 import { useOtherStore } from './store/otherStore';
@@ -63,10 +62,6 @@ const customBackgroundStyle = computed(() => {
         '--custom-background-blur': `${blurValue}px`,
         '--custom-background-brightness': `${brightnessValue}%`,
     };
-});
-
-onMounted(() => {
-    initDesktopLyric();
 });
 
 windowApi.checkUpdate((event, version) => {

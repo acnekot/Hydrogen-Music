@@ -12,7 +12,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
-        'desktop-lyric': resolve(__dirname, 'desktop-lyric.html')
+        'desktop-lyric': resolve(__dirname, 'src/plugins/desktop-lyric/index.html')
       },
       output: {
         // 手动代码分割，优化加载性能
