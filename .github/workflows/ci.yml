@@ -1,46 +1,93 @@
-name: Build & Package All Platforms
+name: Windows Auto Date Build
 
 on:
+  workflow_dispatch: # 手动触发
   push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
+    branches:
+      - main
+      - 'feature/**'
+      - 'dev/**'
+      - 'test/**'
+      - 'release/**'
+      - '*'    # ✅ 任意新分支都会触发
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        node-version: [18]
-    name: Build on ${{ matrix.os }}
+  build-windows:
+    runs-on: windows-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 18
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Build & Package
-        run: npm run dist -- --publish never
+      # 🧩 生成日期型版本号
+      - name: Generate date version
+        id: genver
+        shell: bash
+        run: |
+          DATE=$(date +'%Y.%m.%d')
+          EXISTING_TAGS=$(git tag -l "v${DATE}*")
+          COUNT=$(echo "$EXISTING_TAGS" | grep -c . || true)
+          if [ "$COUNT" -eq 0 ]; then
+            VERSION="$DATE"
+          else
+            VERSION="$DATE.$COUNT"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Generated version: $VERSION"
 
-      # ✅ 新版 actions/upload-artifact
+      # 🧾 更新 package.json 中 version 字段
+      - name: Update package.json version
+        shell: bash
+        run: |
+          node -e "let fs=require('fs');let j=require('./package.json');j.version='${{ steps.genver.outputs.version }}';fs.writeFileSync('package.json',JSON.stringify(j,null,2));"
+
+      - name: Commit version change
+        shell: bash
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add package.json
+          git commit -m "chore: bump version to v${{ steps.genver.outputs.version }}" || echo "No changes to commit"
+          git push
+
+      - name: Create version tag
+        shell: bash
+        run: |
+          git tag v${{ steps.genver.outputs.version }}
+          git push origin v${{ steps.genver.outputs.version }}
+
+      # ⚙️ 打包 Windows 版
+      - name: Build Windows dist
+        run: npm run dist -- --win --publish never
+
+      # 🧱 给打包产物加上日期后缀
+      - name: Rename build outputs with date
+        shell: bash
+        run: |
+          for f in release/**/*.exe; do
+            base=$(basename "$f" .exe)
+            mv "$f" "release/${base}-${{ steps.genver.outputs.version }}.exe"
+          done
+          for f in release/**/*.zip; do
+            base=$(basename "$f" .zip)
+            mv "$f" "release/${base}-${{ steps.genver.outputs.version }}.zip"
+          done
+
+      # 📦 上传带日期文件
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: HydrogenMusic-${{ matrix.os }}
-          path: |
-            release/**/*.AppImage
-            release/**/*.deb
-            release/**/*.rpm
-            release/**/*.dmg
-            release/**/*.zip
-            release/**/*.exe
+          name: HydrogenMusic-Windows-${{ steps.genver.outputs.version }}
+          path: release/**/*.exe
           if-no-files-found: ignore
