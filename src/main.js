@@ -11,14 +11,33 @@ import './assets/css/fonts.css'
 import './assets/css/theme.css'
 import { initTheme } from './utils/theme'
 import { initMediaSession } from './utils/mediaSession'
+import PluginManager from './utils/pluginManager'
+import { loadPluginRegistry } from './plugins/registry'
+
 const app = createApp(App)
 app.use(router)
 app.use(pinia)
 app.directive('lazy', lazy)
+
+const pluginManager = new PluginManager({ app, router, pinia })
+app.config.globalProperties.$pluginManager = pluginManager
+app.provide('pluginManager', pluginManager)
+
+if (typeof window !== 'undefined') {
+  window.__HYDROGEN_PLUGIN_MANAGER__ = pluginManager
+}
+
 // Initialize theme before app renders
 initTheme()
 app.mount('#app')
 init()
+
+loadPluginRegistry()
+  .then((registry) => pluginManager.loadFromRegistry(registry))
+  .catch((error) => {
+    console.error('[PluginManager] Failed to initialize plugins:', error)
+  })
+
 // Initialize System Media Transport Controls (Windows SMTC / macOS Now Playing)
 try { initMediaSession() } catch (_) {}
 
