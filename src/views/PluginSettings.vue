@@ -140,12 +140,22 @@ const goBack = () => {
 
 <style scoped>
 .plugin-settings-view {
+    --plugin-settings-bg: var(--settings-shell-bg, var(--bg, #f4f6f8));
+    --plugin-settings-surface: var(--settings-shell-surface, var(--panel, rgba(255, 255, 255, 0.92)));
+    --plugin-settings-text: var(--settings-shell-text, var(--text, #111213));
+    --plugin-settings-muted: var(--settings-shell-muted, var(--muted-text, rgba(17, 18, 19, 0.68)));
+    --plugin-settings-border: var(--settings-shell-border, var(--border, rgba(0, 0, 0, 0.18)));
+    --plugin-settings-button-bg: var(--settings-shell-button-bg, rgba(255, 255, 255, 0.88));
+    --plugin-settings-button-hover-bg: var(--settings-shell-button-hover-bg, rgba(255, 255, 255, 1));
+    --plugin-settings-shadow: var(--settings-shell-shadow, 0 22px 48px rgba(20, 32, 58, 0.18));
+    --plugin-settings-empty-bg: var(--settings-shell-empty-bg, rgba(255, 255, 255, 0.78));
+    --plugin-settings-empty-border: var(--settings-shell-empty-border, rgba(92, 122, 170, 0.32));
     display: flex;
     flex-direction: column;
     height: 100%;
     padding: 32px 40px;
-    color: #000;
-    background: linear-gradient(180deg, rgba(242, 246, 255, 0.65), rgba(224, 232, 246, 0.9));
+    color: var(--plugin-settings-text);
+    background: var(--plugin-settings-bg);
     overflow: auto;
     opacity: 0;
     transform: translateY(24px);
@@ -167,29 +177,29 @@ const goBack = () => {
 .back-button {
     padding: 8px 16px;
     border-radius: 0;
-    border: 1px solid rgba(92, 122, 170, 0.35);
-    background: rgba(255, 255, 255, 0.85);
-    color: rgba(28, 36, 50, 0.85);
+    border: 1px solid var(--plugin-settings-border);
+    background: var(--plugin-settings-button-bg);
+    color: var(--plugin-settings-text);
     font-size: 14px;
     cursor: pointer;
-    transition: background 0.2s ease;
+    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 .back-button:hover {
-    background: rgba(255, 255, 255, 1);
+    background: var(--plugin-settings-button-hover-bg);
 }
 
 .plugin-settings-title h1 {
     margin: 0;
     font-size: 22px;
     font-weight: 600;
-    color: rgba(28, 36, 50, 0.92);
+    color: var(--plugin-settings-text);
 }
 
 .plugin-settings-title p {
     margin: 6px 0 0;
     font-size: 14px;
-    color: rgba(28, 36, 50, 0.65);
+    color: var(--plugin-settings-muted);
 }
 
 .plugin-settings-body {
@@ -201,10 +211,10 @@ const goBack = () => {
 .plugin-settings-container {
     flex: 1;
     border-radius: 0;
-    background: #f0f0f0;
-    color: #000;
-    border: 1px solid rgba(92, 122, 170, 0.28);
-    box-shadow: 0 22px 48px rgba(20, 32, 58, 0.18);
+    background: var(--plugin-settings-surface);
+    color: inherit;
+    border: 1px solid var(--plugin-settings-border);
+    box-shadow: var(--plugin-settings-shadow);
     overflow: auto;
 }
 
@@ -213,34 +223,47 @@ const goBack = () => {
     text-align: center;
     padding: 48px 32px;
     border-radius: 0;
-    background: rgba(255, 255, 255, 0.78);
-    border: 1px dashed rgba(92, 122, 170, 0.4);
-    box-shadow: 0 18px 42px rgba(20, 32, 58, 0.12);
+    background: var(--plugin-settings-empty-bg);
+    border: 1px dashed var(--plugin-settings-empty-border);
+    box-shadow: var(--plugin-settings-shadow);
 }
 
 .plugin-settings-empty p {
     margin: 0 0 16px;
     font-size: 15px;
-    color: rgba(28, 36, 50, 0.72);
+    color: var(--plugin-settings-muted);
 }
 
 .back-link {
     padding: 8px 20px;
     border-radius: 0;
-    border: 1px solid rgba(92, 122, 170, 0.35);
-    background: rgba(255, 255, 255, 0.92);
-    color: rgba(28, 36, 50, 0.82);
+    border: 1px solid var(--plugin-settings-border);
+    background: var(--plugin-settings-button-bg);
+    color: var(--plugin-settings-text);
     cursor: pointer;
-    transition: background 0.2s ease;
+    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 .back-link:hover {
-    background: rgba(255, 255, 255, 1);
+    background: var(--plugin-settings-button-hover-bg);
 }
 
 .plugin-settings-error {
     padding: 48px 32px;
     text-align: center;
     color: rgba(196, 64, 64, 0.9);
+}
+
+:global(.dark) .plugin-settings-view {
+    --plugin-settings-bg: var(--settings-shell-bg, var(--bg, #21262b));
+    --plugin-settings-surface: var(--settings-shell-surface, var(--panel, rgba(52, 58, 68, 0.92)));
+    --plugin-settings-text: var(--settings-shell-text, var(--text, #f1f3f5));
+    --plugin-settings-muted: var(--settings-shell-muted, rgba(241, 243, 245, 0.72));
+    --plugin-settings-border: var(--settings-shell-border, var(--border, rgba(255, 255, 255, 0.24)));
+    --plugin-settings-button-bg: var(--settings-shell-button-bg, rgba(255, 255, 255, 0.12));
+    --plugin-settings-button-hover-bg: var(--settings-shell-button-hover-bg, rgba(255, 255, 255, 0.18));
+    --plugin-settings-shadow: var(--settings-shell-shadow, 0 18px 42px rgba(0, 0, 0, 0.55));
+    --plugin-settings-empty-bg: var(--settings-shell-empty-bg, rgba(255, 255, 255, 0.08));
+    --plugin-settings-empty-border: var(--settings-shell-empty-border, rgba(255, 255, 255, 0.22));
 }
 </style>
