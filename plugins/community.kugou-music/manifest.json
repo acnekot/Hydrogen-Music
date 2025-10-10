@@ -1,0 +1,8 @@
+{
+  "id": "community.kugou-music",
+  "name": "酷狗音乐 API 集成",
+  "version": "1.0.0",
+  "author": "Hydrogen Labs",
+  "description": "通过配置本地或远程的 KuGouMusicApi 服务，在 Hydrogen Music 中搜索、试听并获取酷狗音乐资源。",
+  "main": "main.js"
+}
