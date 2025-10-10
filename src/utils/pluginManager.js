@@ -92,8 +92,11 @@ class PluginManager {
         if (this.registry.has(name)) {
             this.logger.warn(`[PluginManager] Plugin descriptor "${name}" is already registered. Overwriting.`);
         }
+        const normalized = { ...descriptor, enabled: descriptor.enabled !== false };
 
-        this.registry.set(name, descriptor);
+        this.registry.set(name, normalized);
+        this.eventBus.emit('plugin:registered', { descriptor: normalized });
+        return normalized;
     }
 
     async loadFromRegistry(registry = []) {
@@ -102,14 +105,14 @@ class PluginManager {
 
         for (const descriptor of descriptors) {
             try {
-                this.register(descriptor);
-                if (descriptor.enabled === false) {
-                    results.skipped.push(descriptor.name);
+                const registered = this.register(descriptor);
+                if (registered.enabled === false) {
+                    results.skipped.push(registered.name);
                     continue;
                 }
 
-                await this.load(descriptor.name);
-                results.loaded.push(descriptor.name);
+                await this.load(registered.name);
+                results.loaded.push(registered.name);
             } catch (error) {
                 this.logger.error(`[PluginManager] Failed to load plugin "${descriptor?.name ?? 'unknown'}":`, error);
             }
@@ -137,16 +140,14 @@ class PluginManager {
             return this.plugins.get(descriptor.name).instance;
         }
 
-        const loader = descriptor.loader || descriptor.import || descriptor.load || descriptor.module;
+        const loader = this.#resolveLoader(descriptor);
         let pluginModule;
 
-        if (typeof loader === 'function') {
-            pluginModule = await loader();
-        } else if (descriptor.path && typeof descriptor.path === 'string') {
-            pluginModule = await import(/* @vite-ignore */ descriptor.path);
-        } else {
+        if (!loader) {
             throw new Error(`[PluginManager] Plugin "${descriptor.name}" does not provide a valid loader.`);
         }
+
+        pluginModule = await loader();
 
         const plugin = pluginModule?.default ?? pluginModule;
         this.#validatePlugin(plugin, descriptor);
@@ -204,6 +205,32 @@ class PluginManager {
         this.logger.info(`[PluginManager] Plugin "${name}" deactivated.`);
     }
 
+    async setEnabled(name, enabled) {
+        const descriptor = this.registry.get(name);
+        if (!descriptor) {
+            throw new Error(`[PluginManager] Plugin "${name}" is not registered.`);
+        }
+
+        const target = enabled !== false;
+        descriptor.enabled = target;
+
+        if (target) {
+            await this.load(name);
+        } else {
+            await this.unload(name);
+        }
+    }
+
+    async remove(name) {
+        const descriptor = this.registry.get(name);
+        if (!descriptor) return false;
+
+        await this.unload(name);
+        this.registry.delete(name);
+        this.eventBus.emit('plugin:removed', { name, descriptor });
+        return true;
+    }
+
     list() {
         return Array.from(this.registry.values()).map((descriptor) => ({
             name: descriptor.name,
@@ -211,6 +238,7 @@ class PluginManager {
             version: descriptor.version ?? '',
             enabled: descriptor.enabled !== false,
             loaded: this.plugins.has(descriptor.name),
+            builtin: descriptor.builtin === true,
         }));
     }
 
@@ -269,6 +297,28 @@ class PluginManager {
             error: (...args) => this.logger.error(`[Plugin:${name}]`, ...args),
             debug: (...args) => (this.logger.debug ?? this.logger.info).call(this.logger, `[Plugin:${name}]`, ...args),
         };
+    }
+
+    #resolveLoader(descriptor) {
+        const candidates = [descriptor.loader, descriptor.import, descriptor.load, descriptor.module];
+
+        for (const candidate of candidates) {
+            if (typeof candidate === 'function') {
+                return candidate;
+            }
+        }
+
+        if (descriptor.entry && typeof descriptor.entry === 'string') {
+            const entryPath = descriptor.entry;
+            return () => import(/* @vite-ignore */ entryPath);
+        }
+
+        if (descriptor.path && typeof descriptor.path === 'string') {
+            const modulePath = descriptor.path;
+            return () => import(/* @vite-ignore */ modulePath);
+        }
+
+        return null;
     }
 
     #validatePlugin(plugin, descriptor) {

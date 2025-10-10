@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, onActivated, watch } from 'vue';
+import { computed, ref, onActivated, watch, inject, onBeforeUnmount } from 'vue';
 import { onBeforeRouteLeave, useRouter } from 'vue-router';
 import { logout } from '../api/user';
 import { noticeOpen, dialogOpen } from '../utils/dialog';
@@ -11,10 +11,245 @@ import { usePlayerStore } from '../store/playerStore';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
 import { setTheme, getSavedTheme } from '../utils/theme';
+import { loadRawPluginRegistry, saveRawPluginRegistry, normalizePluginDescriptor } from '../plugins/registry';
 
 const router = useRouter();
 const userStore = useUserStore();
 const playerStore = usePlayerStore();
+const pluginManager = inject('pluginManager', null);
+
+const pluginRegistryRaw = ref([]);
+const pluginRuntime = ref({});
+const pluginBusyMap = ref({});
+const pluginRegistryLoading = ref(false);
+const pluginRegistryError = ref(null);
+const pluginImporting = ref(false);
+const pluginEventDisposers = [];
+
+const setPluginBusy = (name, busy) => {
+    if (!name) return;
+    if (busy) {
+        pluginBusyMap.value = { ...pluginBusyMap.value, [name]: true };
+    } else {
+        const { [name]: _, ...rest } = pluginBusyMap.value;
+        pluginBusyMap.value = rest;
+    }
+};
+
+const updatePluginRuntime = () => {
+    if (!pluginManager || typeof pluginManager.list !== 'function') {
+        pluginRuntime.value = {};
+        return;
+    }
+
+    const runtimeEntries = pluginManager.list();
+    const map = {};
+    for (const entry of runtimeEntries) {
+        if (entry && typeof entry.name === 'string') {
+            map[entry.name] = entry;
+        }
+    }
+    pluginRuntime.value = map;
+};
+
+const refreshPluginRegistry = async () => {
+    pluginRegistryLoading.value = true;
+    pluginRegistryError.value = null;
+    try {
+        const raw = await loadRawPluginRegistry();
+        pluginRegistryRaw.value = raw;
+        updatePluginRuntime();
+    } catch (error) {
+        pluginRegistryError.value = error instanceof Error ? error : new Error(String(error));
+        console.error('加载插件注册表失败:', error);
+    } finally {
+        pluginRegistryLoading.value = false;
+    }
+};
+
+const pluginManagerAvailable = computed(() => !!pluginManager && typeof pluginManager.setEnabled === 'function');
+
+const pluginsForDisplay = computed(() =>
+    pluginRegistryRaw.value.map(item => {
+        const runtime = pluginRuntime.value[item.name] ?? null;
+        return {
+            ...item,
+            enabled: item.enabled !== false,
+            loaded: runtime?.loaded ?? false,
+            runtimeEnabled: runtime?.enabled ?? item.enabled !== false,
+            busy: !!pluginBusyMap.value[item.name],
+        };
+    })
+);
+
+const togglePluginEnabled = async plugin => {
+    if (!plugin || !plugin.name) return;
+
+    const target = !plugin.enabled;
+    const previous = pluginRegistryRaw.value.map(item => ({ ...item }));
+    setPluginBusy(plugin.name, true);
+
+    try {
+        const next = previous.map(item => (item.name === plugin.name ? { ...item, enabled: target } : item));
+        const saved = await saveRawPluginRegistry(next);
+        pluginRegistryRaw.value = saved;
+
+        const updated = saved.find(item => item.name === plugin.name);
+        if (updated && pluginManagerAvailable.value) {
+            const descriptor = normalizePluginDescriptor(updated);
+            pluginManager.register(descriptor);
+            await pluginManager.setEnabled(plugin.name, target);
+        }
+
+        updatePluginRuntime();
+        noticeOpen(target ? '插件已启用' : '插件已禁用', 2);
+    } catch (error) {
+        console.error('切换插件状态失败:', error);
+        pluginRegistryError.value = error instanceof Error ? error : new Error(String(error));
+        pluginRegistryRaw.value = previous;
+        noticeOpen('切换插件状态失败', 2);
+    } finally {
+        setPluginBusy(plugin.name, false);
+    }
+};
+
+const removePlugin = async plugin => {
+    if (!plugin || !plugin.name) return;
+    if (plugin.builtin) {
+        noticeOpen('内置插件无法删除', 2);
+        return;
+    }
+
+    const previous = pluginRegistryRaw.value.map(item => ({ ...item }));
+    setPluginBusy(plugin.name, true);
+
+    try {
+        const next = previous.filter(item => item.name !== plugin.name);
+        const saved = await saveRawPluginRegistry(next);
+        pluginRegistryRaw.value = saved;
+
+        if (pluginManagerAvailable.value) {
+            await pluginManager.remove(plugin.name);
+        }
+
+        updatePluginRuntime();
+        noticeOpen('插件已删除', 2);
+    } catch (error) {
+        console.error('删除插件失败:', error);
+        pluginRegistryError.value = error instanceof Error ? error : new Error(String(error));
+        pluginRegistryRaw.value = previous;
+        noticeOpen('删除插件失败', 2);
+    } finally {
+        setPluginBusy(plugin.name, false);
+    }
+};
+
+const toFileUrl = filePath => {
+    if (!filePath) return '';
+    let normalized = String(filePath).replace(/\\/g, '/');
+    if (!normalized.startsWith('/')) {
+        normalized = `/${normalized}`;
+    }
+    return `file://${encodeURI(normalized)}`;
+};
+
+const importPluginFromFile = async () => {
+    if (typeof window === 'undefined' || !window.pluginApi?.openPluginFile) {
+        noticeOpen('当前环境不支持插件导入', 2);
+        return;
+    }
+    if (pluginImporting.value) return;
+
+    pluginImporting.value = true;
+
+    try {
+        const selectedPath = await window.pluginApi.openPluginFile();
+        if (!selectedPath) return;
+
+        const fileUrl = toFileUrl(selectedPath);
+        let pluginModule;
+        try {
+            pluginModule = await import(/* @vite-ignore */ fileUrl);
+        } catch (error) {
+            console.error('加载插件模块失败:', error);
+            noticeOpen('无法加载所选插件文件', 2);
+            return;
+        }
+
+        const pluginExport = pluginModule?.default ?? pluginModule;
+        if (!pluginExport || typeof pluginExport !== 'object' || !pluginExport.name) {
+            noticeOpen('插件文件缺少有效的 name 字段', 2);
+            return;
+        }
+
+        const descriptor = {
+            name: pluginExport.name,
+            description: pluginExport.description ?? '',
+            version: pluginExport.version ?? '',
+            enabled: true,
+            path: fileUrl,
+            sourcePath: selectedPath,
+            builtin: false,
+        };
+
+        if (pluginExport.options && typeof pluginExport.options === 'object') {
+            descriptor.options = { ...pluginExport.options };
+        }
+
+        const previous = pluginRegistryRaw.value.map(item => ({ ...item }));
+        const existingIndex = previous.findIndex(item => item.name === descriptor.name);
+        const next = existingIndex === -1
+            ? [...previous, descriptor]
+            : previous.map((item, index) => (index === existingIndex ? { ...item, ...descriptor, builtin: false } : item));
+
+        const saved = await saveRawPluginRegistry(next);
+        pluginRegistryRaw.value = saved;
+
+        if (pluginManagerAvailable.value) {
+            const updated = saved.find(item => item.name === descriptor.name);
+            if (updated) {
+                const normalized = normalizePluginDescriptor(updated);
+                pluginManager.register(normalized);
+                await pluginManager.setEnabled(descriptor.name, true);
+            }
+        }
+
+        updatePluginRuntime();
+        noticeOpen('插件导入成功', 2);
+    } catch (error) {
+        console.error('导入插件失败:', error);
+        pluginRegistryError.value = error instanceof Error ? error : new Error(String(error));
+        noticeOpen('导入插件失败', 2);
+    } finally {
+        pluginImporting.value = false;
+    }
+};
+
+const setupPluginEventListeners = () => {
+    if (!pluginManager || typeof pluginManager.on !== 'function' || pluginEventDisposers.length > 0) return;
+
+    const events = ['plugin:activated', 'plugin:deactivated', 'plugin:removed', 'plugin:registered'];
+    events.forEach(event => {
+        const dispose = pluginManager.on(event, () => {
+            updatePluginRuntime();
+        });
+        pluginEventDisposers.push(dispose);
+    });
+};
+
+setupPluginEventListeners();
+refreshPluginRegistry();
+
+onBeforeUnmount(() => {
+    while (pluginEventDisposers.length > 0) {
+        try {
+            const dispose = pluginEventDisposers.pop();
+            dispose?.();
+        } catch (_) {
+            /* ignore */
+        }
+    }
+});
 
 const vipInfo = ref(null);
 const musicLevel = ref('standard');
@@ -80,6 +315,9 @@ if (isLogin()) {
     });
 }
 onActivated(() => {
+    refreshPluginRegistry();
+    setupPluginEventListeners();
+
     windowApi.getSettings().then(settings => {
         if (!settings) return;
         musicLevel.value = settings.music.level;
@@ -1798,6 +2036,74 @@ const clearFmRecent = () => {
                         <div class="default-shortcuts" @click="setDefaultShortcuts()">恢复默认快捷键</div>
                     </div>
                 </div>
+                <div class="settings-item settings-item--plugins">
+                    <h2 class="item-title">插件</h2>
+                    <div class="line"></div>
+                    <div class="item-options plugin-manager">
+                        <div class="plugin-toolbar">
+                            <div class="plugin-toolbar__status">
+                                <span v-if="pluginRegistryLoading">正在加载插件列表...</span>
+                                <span v-else-if="pluginRegistryError" class="plugin-toolbar__status--error">
+                                    {{ pluginRegistryError?.message ?? pluginRegistryError }}
+                                </span>
+                            </div>
+                            <div class="plugin-toolbar__actions">
+                                <button
+                                    class="plugin-button"
+                                    :disabled="pluginImporting || !pluginManagerAvailable"
+                                    @click="importPluginFromFile"
+                                >
+                                    {{ pluginImporting ? '导入中...' : '导入插件' }}
+                                </button>
+                                <button class="plugin-button" :disabled="pluginRegistryLoading" @click="refreshPluginRegistry">
+                                    刷新
+                                </button>
+                            </div>
+                        </div>
+                        <div class="plugin-empty" v-if="!pluginRegistryLoading && pluginsForDisplay.length === 0">
+                            暂无插件
+                        </div>
+                        <div class="plugin-list" v-else>
+                            <div class="plugin-card" v-for="plugin in pluginsForDisplay" :key="plugin.name">
+                                <div class="plugin-card__header">
+                                    <div class="plugin-card__title">
+                                        <span class="plugin-card__name">{{ plugin.name }}</span>
+                                        <span v-if="plugin.version" class="plugin-card__version">v{{ plugin.version }}</span>
+                                        <span v-if="plugin.builtin" class="plugin-card__tag">内置</span>
+                                    </div>
+                                    <div class="plugin-card__badge" :class="{ 'plugin-card__badge--active': plugin.loaded }">
+                                        {{ plugin.loaded ? '已加载' : '未加载' }}
+                                    </div>
+                                </div>
+                                <div class="plugin-card__description">{{ plugin.description || '暂无描述' }}</div>
+                                <div
+                                    v-if="plugin.sourcePath || plugin.path || plugin.entry"
+                                    class="plugin-card__path"
+                                    :title="plugin.sourcePath || plugin.path || plugin.entry"
+                                >
+                                    {{ plugin.sourcePath || plugin.path || plugin.entry }}
+                                </div>
+                                <div class="plugin-card__actions">
+                                    <button
+                                        class="plugin-card__button"
+                                        :disabled="plugin.busy || pluginRegistryLoading || !pluginManagerAvailable"
+                                        @click="togglePluginEnabled(plugin)"
+                                    >
+                                        {{ plugin.enabled ? '禁用' : '启用' }}
+                                    </button>
+                                    <button
+                                        v-if="!plugin.builtin"
+                                        class="plugin-card__button plugin-card__button--danger"
+                                        :disabled="plugin.busy || pluginRegistryLoading || !pluginManagerAvailable"
+                                        @click="removePlugin(plugin)"
+                                    >
+                                        删除
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div class="settings-item">
                     <h2 class="item-title">其他</h2>
                     <div class="line"></div>
@@ -2356,6 +2662,176 @@ const clearFmRecent = () => {
                         &:hover {
                             cursor: pointer;
                             box-shadow: 0 0 0 1px black;
+                        }
+                    }
+                }
+            }
+            .settings-item--plugins {
+                .item-options.plugin-manager {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 16px;
+
+                    .plugin-toolbar {
+                        display: flex;
+                        flex-direction: row;
+                        align-items: center;
+                        justify-content: space-between;
+                        gap: 12px;
+
+                        &__status {
+                            font-size: 13px;
+                            color: rgba(0, 0, 0, 0.6);
+
+                            &--error {
+                                color: #d14343;
+                            }
+                        }
+
+                        &__actions {
+                            display: flex;
+                            flex-direction: row;
+                            gap: 10px;
+                        }
+                    }
+
+                    .plugin-button {
+                        padding: 6px 14px;
+                        border-radius: 8px;
+                        border: none;
+                        background: rgba(255, 255, 255, 0.4);
+                        color: #222;
+                        font-size: 13px;
+                        cursor: pointer;
+                        transition: all 0.2s ease;
+
+                        &:hover:enabled {
+                            background: rgba(255, 255, 255, 0.65);
+                        }
+
+                        &:disabled {
+                            opacity: 0.6;
+                            cursor: not-allowed;
+                        }
+                    }
+
+                    .plugin-empty {
+                        padding: 24px;
+                        text-align: center;
+                        border-radius: 12px;
+                        background: rgba(255, 255, 255, 0.25);
+                        color: rgba(0, 0, 0, 0.55);
+                    }
+
+                    .plugin-list {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 14px;
+                    }
+
+                    .plugin-card {
+                        padding: 18px;
+                        border-radius: 16px;
+                        background: rgba(255, 255, 255, 0.45);
+                        display: flex;
+                        flex-direction: column;
+                        gap: 10px;
+                        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05);
+
+                        &__header {
+                            display: flex;
+                            flex-direction: row;
+                            align-items: center;
+                            justify-content: space-between;
+                            gap: 12px;
+                        }
+
+                        &__title {
+                            display: flex;
+                            flex-wrap: wrap;
+                            align-items: center;
+                            gap: 8px;
+                        }
+
+                        &__name {
+                            font-size: 16px;
+                            font-weight: 600;
+                            color: #111;
+                        }
+
+                        &__version {
+                            font-size: 12px;
+                            color: rgba(0, 0, 0, 0.6);
+                        }
+
+                        &__tag {
+                            padding: 2px 8px;
+                            border-radius: 999px;
+                            background: rgba(0, 0, 0, 0.06);
+                            font-size: 12px;
+                            color: rgba(0, 0, 0, 0.6);
+                        }
+
+                        &__badge {
+                            padding: 4px 10px;
+                            border-radius: 999px;
+                            background: rgba(0, 0, 0, 0.08);
+                            font-size: 12px;
+                            color: rgba(0, 0, 0, 0.6);
+                            transition: background 0.2s ease, color 0.2s ease;
+
+                            &--active {
+                                background: rgba(46, 189, 133, 0.16);
+                                color: #1f8a5c;
+                            }
+                        }
+
+                        &__description {
+                            font-size: 13px;
+                            line-height: 1.6;
+                            color: rgba(0, 0, 0, 0.72);
+                            word-break: break-word;
+                        }
+
+                        &__path {
+                            font-size: 12px;
+                            color: rgba(0, 0, 0, 0.5);
+                            word-break: break-all;
+                        }
+
+                        &__actions {
+                            display: flex;
+                            flex-direction: row;
+                            gap: 10px;
+                        }
+
+                        &__button {
+                            padding: 6px 16px;
+                            border-radius: 10px;
+                            border: none;
+                            background: rgba(0, 0, 0, 0.08);
+                            color: #222;
+                            font-size: 13px;
+                            cursor: pointer;
+                            transition: all 0.2s ease;
+
+                            &:hover:enabled {
+                                background: rgba(0, 0, 0, 0.16);
+                            }
+
+                            &--danger {
+                                background: rgba(209, 67, 67, 0.15);
+                                color: #bb3c3c;
+
+                                &:hover:enabled {
+                                    background: rgba(209, 67, 67, 0.24);
+                                }
+                            }
+
+                            &:disabled {
+                                opacity: 0.6;
+                                cursor: not-allowed;
+                            }
                         }
                     }
                 }

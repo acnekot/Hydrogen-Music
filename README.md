@@ -49,6 +49,7 @@
 
 - [x] 友好的开发文档（参见 [`docs/plugin-development.md`](docs/plugin-development.md)）
 - [x] 好用的插件核心
+- [x] 设置页插件管理（导入 / 启用 / 禁用 / 删除）
 
 欢迎基于插件系统实现你的创意功能。
   

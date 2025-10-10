@@ -12,7 +12,7 @@ import './assets/css/theme.css'
 import { initTheme } from './utils/theme'
 import { initMediaSession } from './utils/mediaSession'
 import PluginManager from './utils/pluginManager'
-import pluginRegistry from './plugins/registry'
+import { loadPluginRegistry } from './plugins/registry'
 
 const app = createApp(App)
 app.use(router)
@@ -32,9 +32,11 @@ initTheme()
 app.mount('#app')
 init()
 
-pluginManager.loadFromRegistry(pluginRegistry).catch((error) => {
-  console.error('[PluginManager] Failed to initialize plugins:', error)
-})
+loadPluginRegistry()
+  .then((registry) => pluginManager.loadFromRegistry(registry))
+  .catch((error) => {
+    console.error('[PluginManager] Failed to initialize plugins:', error)
+  })
 
 // Initialize System Media Transport Controls (Windows SMTC / macOS Now Playing)
 try { initMediaSession() } catch (_) {}

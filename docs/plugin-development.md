@@ -52,7 +52,7 @@ const pluginRegistry = [
   {
     name: 'my-first-plugin',
     description: 'Hello Hydrogen!',
-    loader: () => import('./my-first-plugin/index.js'),
+    entry: './my-first-plugin/index.js',
   },
 ];
 
@@ -61,6 +61,21 @@ export default pluginRegistry;
 ```
 
 > **提示**：通过设置 `enabled: false` 可以将插件保留在注册表中但暂时不加载，便于调试或灰度发布。
+
+## 插件管理与设置
+
+在客户端中打开 **设置 → 插件** 可以直接管理当前的插件注册表：
+
+- 「导入插件」：通过文件选择器加载本地的 `*.js`/`*.mjs` 插件入口文件，系统会自动读取插件的 `name`、`description`、`version` 等元信息并写入注册表。
+- 「启用 / 禁用」：切换某个插件的启用状态，启用时立即激活，禁用时自动调用 `deactivate` 并卸载资源。
+- 「删除」：移除自定义插件（内置插件不可删除），同时从注册表与运行时卸载。
+- 「刷新」：重新从本地注册表加载配置，便于在外部修改配置文件后同步。
+
+所有插件配置都保存在 `electron-store` 的 `plugins` 命名空间中，会在应用启动时合并内置插件注册表并写回。若需要手动修改，可在开发者工具中通过
+`window.pluginApi.getRegistry()` 和 `window.pluginApi.saveRegistry(registry)` 访问、更新原始 JSON 数据。
+
+> 小提示：如果希望插件记录可以持久化存储，推荐在注册表条目中使用 `entry`（相对路径）或 `path`（绝对 `file://` 地址）字段描述模块位置，
+> 这样在序列化时无需保存动态函数。
 
 ## 插件上下文（PluginContext）
 
