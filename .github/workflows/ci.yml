@@ -1,46 +1,65 @@
-name: Build & Package All Platforms
+name: Auto Date Version & Build Hydrogen Music
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        node-version: [18]
-    name: Build on ${{ matrix.os }}
-
+  date-version-and-build:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
+      - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 18
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Build & Package
-        run: npm run dist -- --publish never
+      # 🧩 生成日期版本号
+      - name: Generate date version
+        id: genver
+        run: |
+          DATE=$(date +'%Y.%m.%d')
+          EXISTING_TAGS=$(git tag -l "v${DATE}*")
+          COUNT=$(echo "$EXISTING_TAGS" | grep -c . || true)
+          if [ "$COUNT" -eq 0 ]; then
+            VERSION="$DATE"
+          else
+            VERSION="$DATE.$COUNT"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Generated version: $VERSION"
 
-      # ✅ 新版 actions/upload-artifact
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+      # 🧾 更新 package.json 中的 version
+      - name: Update package.json version
+        run: |
+          node -e "let fs=require('fs');let f='./package.json';let j=require(f);j.version='${{ steps.genver.outputs.version }}';fs.writeFileSync(f, JSON.stringify(j,null,2));"
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add package.json
+          git commit -m "chore: bump version to v${{ steps.genver.outputs.version }}"
+          git push
+
+      - name: Create version tag
+        run: |
+          git tag v${{ steps.genver.outputs.version }}
+          git push origin v${{ steps.genver.outputs.version }}
+
+      # ⚙️ 触发打包三平台
+      - name: Trigger matrix build
+        uses: peter-evans/workflow-dispatch@v1
         with:
-          name: HydrogenMusic-${{ matrix.os }}
-          path: |
-            release/**/*.AppImage
-            release/**/*.deb
-            release/**/*.rpm
-            release/**/*.dmg
-            release/**/*.zip
-            release/**/*.exe
-          if-no-files-found: ignore
+          workflow: "Build & Package All Platforms"
+          ref: main
