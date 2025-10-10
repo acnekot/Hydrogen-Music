@@ -1,3 +1,5 @@
+import { ref } from 'vue'
+
 import { usePlayerStore } from '../store/playerStore'
 import { useUserStore } from '../store/userStore'
 import { useLibraryStore } from '../store/libraryStore'
@@ -8,6 +10,20 @@ import { noticeOpen } from '../utils/dialog'
 
 const activePlugins = new Map()
 let baseContext = null
+
+const pluginSettingsRegistry = new Map()
+const pluginSettingsVersion = ref(0)
+
+const notifyPluginSettingsChange = () => {
+    pluginSettingsVersion.value += 1
+}
+
+const clearPluginSettings = (pluginId) => {
+    if (!pluginId) return
+    if (pluginSettingsRegistry.delete(pluginId)) {
+        notifyPluginSettingsChange()
+    }
+}
 
 const getWindowApi = () => {
     if (typeof window === 'undefined') return null
@@ -46,6 +62,38 @@ const createPluginContext = (metadata) => {
     const windowApi = getWindowApi()
     const electronAPI = getElectronApi()
 
+    const normalizeSettingsPage = (page) => {
+        if (!page || (typeof page.mount !== 'function' && typeof page.render !== 'function')) {
+            throw new Error('插件设置页面必须提供 mount(container) 方法')
+        }
+        const mount = typeof page.mount === 'function' ? page.mount : page.render
+        const unmount = typeof page.unmount === 'function' ? page.unmount : (typeof page.dispose === 'function' ? page.dispose : null)
+        const order = Number.isFinite(page.order) ? Number(page.order) : 0
+        return {
+            pluginId: metadata.id,
+            id: page.id || metadata.id,
+            title: page.title || metadata.name || metadata.id,
+            subtitle: page.subtitle || page.description || metadata.description || '',
+            description: page.description || '',
+            icon: page.icon || null,
+            order,
+            mount,
+            unmount,
+        }
+    }
+
+    const registerSettingsPage = (page) => {
+        const normalized = normalizeSettingsPage(page)
+        pluginSettingsRegistry.set(metadata.id, normalized)
+        notifyPluginSettingsChange()
+        return () => {
+            if (pluginSettingsRegistry.get(metadata.id) === normalized) {
+                pluginSettingsRegistry.delete(metadata.id)
+                notifyPluginSettingsChange()
+            }
+        }
+    }
+
     const pluginBridge = {
         id: metadata.id,
         async readText(relativePath) {
@@ -83,6 +131,19 @@ const createPluginContext = (metadata) => {
         windowApi,
         electronAPI,
         utils: createPluginUtilities(),
+        settings: {
+            register(page) {
+                const unregister = registerSettingsPage(page)
+                cleanupHandlers.push(() => unregister())
+                return unregister
+            },
+            unregister() {
+                clearPluginSettings(metadata.id)
+            },
+            get() {
+                return pluginSettingsRegistry.get(metadata.id) || null
+            },
+        },
         onCleanup(handler) {
             if (typeof handler === 'function') cleanupHandlers.push(handler)
         },
@@ -135,6 +196,7 @@ const cleanupPlugin = (record) => {
             }
         }
     }
+    clearPluginSettings(record.metadata?.id)
 }
 
 export async function initPluginSystem({ app, router, pinia }) {
@@ -215,4 +277,18 @@ export function getActivePlugins() {
         version: record.metadata?.version,
         enabled: true,
     }))
+}
+
+export const pluginSettingsVersionSignal = pluginSettingsVersion
+
+export function getPluginSettingsPage(pluginId) {
+    return pluginSettingsRegistry.get(pluginId) || null
+}
+
+export function hasPluginSettingsPage(pluginId) {
+    return pluginSettingsRegistry.has(pluginId)
+}
+
+export function listPluginSettingsPages() {
+    return Array.from(pluginSettingsRegistry.values())
 }

@@ -11,7 +11,7 @@ import { usePlayerStore } from '../store/playerStore';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
 import { setTheme, getSavedTheme } from '../utils/theme';
-import { reloadPluginSystem } from '../plugins/pluginManager';
+import { reloadPluginSystem, pluginSettingsVersionSignal, hasPluginSettingsPage } from '../plugins/pluginManager';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -78,6 +78,7 @@ const newVersion = ref('');
 const plugins = ref([]);
 const pluginLoading = ref(false);
 const pluginImporting = ref(false);
+const pluginReloading = ref(false);
 const pluginProcessing = reactive({});
 const pluginApiAvailable = computed(() => typeof windowApi !== 'undefined' && typeof windowApi.listPlugins === 'function');
 const pluginDirectoryApiAvailable = computed(
@@ -95,6 +96,7 @@ const pluginDirectoryDefault = ref('');
 const pluginLegacyDirectory = ref('');
 const pluginDirectoryLoading = ref(false);
 const pluginDirectoryDisplay = computed(() => pluginDirectory.value || pluginDirectoryDefault.value || '未配置');
+const pluginSettingsVersion = pluginSettingsVersionSignal;
 
 if (isLogin()) {
     getVipInfo().then(result => {
@@ -259,6 +261,25 @@ const handleRefreshPlugins = async () => {
     await loadPlugins();
 };
 
+const handleReloadPluginSystem = async () => {
+    if (!pluginApiAvailable.value) {
+        noticeOpen('当前环境不支持插件管理', 2);
+        return;
+    }
+    if (pluginReloading.value) return;
+    pluginReloading.value = true;
+    try {
+        await reloadPluginSystem();
+        await loadPlugins(false);
+        noticeOpen('插件系统已重载', 2);
+    } catch (error) {
+        console.error('重载插件系统失败:', error);
+        noticeOpen('重载插件系统失败', 2);
+    } finally {
+        pluginReloading.value = false;
+    }
+};
+
 const handleImportPlugin = async () => {
     if (!pluginApiAvailable.value) {
         noticeOpen('当前环境不支持插件管理', 2);
@@ -349,6 +370,16 @@ const formatPluginTimestamp = (timestamp) => {
     } catch (_) {
         return '';
     }
+};
+
+const pluginHasSettings = (pluginId) => {
+    pluginSettingsVersion.value;
+    return hasPluginSettingsPage(pluginId);
+};
+
+const openPluginSettings = (plugin) => {
+    if (!plugin || !plugin.id) return;
+    router.push({ name: 'pluginSettings', params: { pluginId: plugin.id } });
 };
 
 const setAppSettings = () => {
@@ -2036,6 +2067,13 @@ const clearFmRecent = () => {
                                 >
                                     刷新列表
                                 </div>
+                                <div
+                                    class="plugin-button plugin-button--outline"
+                                    :class="{ 'plugin-button--disabled': pluginReloading || !pluginApiAvailable }"
+                                    @click="handleReloadPluginSystem"
+                                >
+                                    {{ pluginReloading ? '重载中…' : '重载插件' }}
+                                </div>
                             </div>
                             <div class="plugin-toolbar-right" v-if="pluginLoading">
                                 正在加载插件…
@@ -2073,6 +2111,14 @@ const clearFmRecent = () => {
                                             @click="togglePluginState(plugin)"
                                         >
                                             {{ plugin.enabled ? '禁用' : '启用' }}
+                                        </div>
+                                        <div
+                                            class="plugin-button plugin-button--outline"
+                                            v-if="plugin.enabled && pluginHasSettings(plugin.id)"
+                                            :class="{ 'plugin-button--disabled': !pluginApiAvailable || isPluginBusy(plugin.id) }"
+                                            @click="openPluginSettings(plugin)"
+                                        >
+                                            设置
                                         </div>
                                         <div
                                             class="plugin-button plugin-button--danger"
