@@ -9,6 +9,7 @@
     ⚠️ 如果原作者觉得不妥可以与我联系，我将删除该仓库
     <br />
     <a href="#%EF%B8%8F-安装" target="blank"><strong>📦️ 下载安装包</strong></a>
+    <a ><strong>📦️ 你也可以在Actions找到dev版本</strong></a>
     <h3 align="center">此分支是独立于<a href="https://github.com/Kaidesuyo/Hydrogen-Music" target="blank"><strong>Hydrogen-Music</strong></a>的分支
     <br />将由我acnekot进行维护 </h3>
     <h3 align="center">在此感谢ldx123000大佬的维护</h3>
