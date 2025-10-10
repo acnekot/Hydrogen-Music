@@ -88,7 +88,6 @@
       "icon": "./src/assets/icon/icon.ico",
       "target": [
         "nsis",
-        "portable",
         "zip"
       ],
       "verifyUpdateCodeSignature": false,
