@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, onActivated, watch } from 'vue';
+import { computed, ref, onActivated, watch, reactive } from 'vue';
 import { onBeforeRouteLeave, useRouter } from 'vue-router';
 import { logout } from '../api/user';
 import { noticeOpen, dialogOpen } from '../utils/dialog';
@@ -11,6 +11,7 @@ import { usePlayerStore } from '../store/playerStore';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
 import { setTheme, getSavedTheme } from '../utils/theme';
+import { reloadPluginSystem, pluginSettingsVersionSignal, hasPluginSettingsPage } from '../plugins/pluginManager';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -74,6 +75,50 @@ const shortcutCharacter = ['=', '-', '~', '@', '#', '$', '[', ']', ';', "'", ','
 const showUpdateDialog = ref(false);
 const newVersion = ref('');
 
+const plugins = ref([]);
+const pluginLoading = ref(false);
+const pluginImporting = ref(false);
+const appReloading = ref(false);
+const pluginProcessing = reactive({});
+const pluginApiAvailable = computed(() => typeof windowApi !== 'undefined' && typeof windowApi.listPlugins === 'function');
+const pluginDirectoryApiAvailable = computed(
+    () =>
+        typeof windowApi !== 'undefined' &&
+        typeof windowApi.getPluginDirectory === 'function' &&
+        typeof windowApi.setPluginDirectory === 'function' &&
+        typeof windowApi.choosePluginDirectory === 'function'
+);
+const pluginList = computed(() =>
+    [...plugins.value].sort((a, b) => (b.importTime || 0) - (a.importTime || 0))
+);
+const pluginDirectory = ref('');
+const pluginDirectoryDefault = ref('');
+const pluginDirectoryLoading = ref(false);
+const pluginDirectoryDisplay = computed(() => pluginDirectory.value || pluginDirectoryDefault.value || '未配置');
+const isPluginDirectoryCustomized = computed(() => {
+    const current = pluginDirectory.value?.trim?.() || '';
+    const fallback = pluginDirectoryDefault.value?.trim?.() || '';
+    if (!fallback) return Boolean(current);
+    if (!current) return false;
+    return current !== fallback;
+});
+const canResetPluginDirectory = computed(
+    () =>
+        pluginDirectoryApiAvailable.value &&
+        Boolean(pluginDirectoryDefault.value) &&
+        isPluginDirectoryCustomized.value
+);
+const pluginSettingsVersion = pluginSettingsVersionSignal;
+const pluginSettingsAvailability = computed(() => {
+    pluginSettingsVersion.value;
+    const availability = Object.create(null);
+    for (const plugin of plugins.value || []) {
+        if (!plugin || !plugin.id) continue;
+        availability[plugin.id] = hasPluginSettingsPage(plugin.id);
+    }
+    return availability;
+});
+
 if (isLogin()) {
     getVipInfo().then(result => {
         vipInfo.value = result.data;
@@ -104,6 +149,17 @@ onActivated(() => {
     
     // 设置更新事件监听器
     setupUpdateListeners();
+
+    if (pluginApiAvailable.value) {
+        loadPlugins();
+    } else {
+        plugins.value = [];
+    }
+    if (pluginDirectoryApiAvailable.value) {
+        loadPluginDirectory();
+    } else {
+        pluginDirectory.value = '';
+    }
 });
 
 // 设置更新监听器
@@ -113,6 +169,270 @@ const setupUpdateListeners = () => {
         newVersion.value = version;
         // 手动检查时直接在UpdateDialog中显示结果，不触发大窗弹出
     });
+};
+
+const setPluginProcessing = (id, state) => {
+    if (!id) return;
+    if (state) {
+        pluginProcessing[id] = true;
+    } else {
+        delete pluginProcessing[id];
+    }
+};
+
+const isPluginBusy = (id) => Boolean(id && pluginProcessing[id]);
+
+const loadPlugins = async (showError = true) => {
+    if (!pluginApiAvailable.value) {
+        plugins.value = [];
+        pluginLoading.value = false;
+        return;
+    }
+    pluginLoading.value = true;
+    try {
+        const result = await windowApi.listPlugins();
+        if (result?.success && Array.isArray(result.plugins)) {
+            plugins.value = result.plugins;
+        } else {
+            plugins.value = [];
+            if (showError) noticeOpen(result?.message || '加载插件列表失败', 2);
+        }
+    } catch (error) {
+        console.error('加载插件列表失败:', error);
+        plugins.value = [];
+        if (showError) noticeOpen('加载插件列表失败', 2);
+    } finally {
+        pluginLoading.value = false;
+    }
+};
+
+const loadPluginDirectory = async (showError = false) => {
+    if (!pluginDirectoryApiAvailable.value) {
+        pluginDirectory.value = '';
+        pluginDirectoryDefault.value = '';
+        pluginDirectoryLoading.value = false;
+        return;
+    }
+    pluginDirectoryLoading.value = true;
+    try {
+        const result = await windowApi.getPluginDirectory();
+        if (result?.success) {
+            pluginDirectory.value = result.directory || '';
+            pluginDirectoryDefault.value = result.defaultDirectory || '';
+        } else {
+            pluginDirectory.value = '';
+            if (showError) noticeOpen(result?.message || '加载插件目录失败', 2);
+        }
+    } catch (error) {
+        console.error('加载插件目录失败:', error);
+        pluginDirectory.value = '';
+        if (showError) noticeOpen('加载插件目录失败', 2);
+    } finally {
+        pluginDirectoryLoading.value = false;
+    }
+};
+
+const askMoveExistingPlugins = () =>
+    new Promise((resolve) => {
+        dialogOpen('移动插件', '是否将现有插件移动到新的目录？', (confirm) => {
+            resolve(Boolean(confirm));
+        });
+    });
+
+const changePluginDirectory = async () => {
+    if (!pluginDirectoryApiAvailable.value) {
+        noticeOpen('当前环境不支持修改插件目录', 2);
+        return;
+    }
+    if (pluginDirectoryLoading.value) return;
+    try {
+        const current = pluginDirectory.value || pluginDirectoryDefault.value || '';
+        const targetPath = await windowApi.choosePluginDirectory?.(current);
+        if (!targetPath) return;
+
+        const moveExisting = await askMoveExistingPlugins();
+        pluginDirectoryLoading.value = true;
+        const result = await windowApi.setPluginDirectory(targetPath, moveExisting);
+        if (!result?.success) {
+            noticeOpen(result?.message || '更新插件目录失败', 2);
+            return;
+        }
+        pluginDirectory.value = result.directory || targetPath;
+        pluginDirectoryDefault.value = result.defaultDirectory || pluginDirectoryDefault.value;
+        await loadPlugins(false);
+        await reloadPluginSystem();
+        noticeOpen(result.moved ? '已移动现有插件并更新插件目录' : '插件目录已更新', 2);
+    } catch (error) {
+        console.error('更新插件目录失败:', error);
+        noticeOpen('更新插件目录失败', 2);
+    } finally {
+        pluginDirectoryLoading.value = false;
+    }
+};
+
+const resetPluginDirectory = async () => {
+    if (!pluginDirectoryApiAvailable.value) {
+        noticeOpen('当前环境不支持修改插件目录', 2);
+        return;
+    }
+    if (!pluginDirectoryDefault.value) {
+        noticeOpen('未检测到默认插件目录', 2);
+        return;
+    }
+    if (pluginDirectoryLoading.value || !isPluginDirectoryCustomized.value) return;
+    try {
+        const moveExisting = await askMoveExistingPlugins();
+        pluginDirectoryLoading.value = true;
+        const result = await windowApi.setPluginDirectory(pluginDirectoryDefault.value, moveExisting);
+        if (!result?.success) {
+            noticeOpen(result?.message || '重置插件目录失败', 2);
+            return;
+        }
+        pluginDirectory.value = result.directory || pluginDirectoryDefault.value;
+        pluginDirectoryDefault.value = result.defaultDirectory || pluginDirectoryDefault.value;
+        await loadPlugins(false);
+        await reloadPluginSystem();
+        noticeOpen(result.moved ? '已重置插件目录并移动现有插件' : '插件目录已重置', 2);
+    } catch (error) {
+        console.error('重置插件目录失败:', error);
+        noticeOpen('重置插件目录失败', 2);
+    } finally {
+        pluginDirectoryLoading.value = false;
+    }
+};
+
+const handleRefreshPlugins = async () => {
+    if (!pluginApiAvailable.value) {
+        noticeOpen('当前环境不支持插件管理', 2);
+        return;
+    }
+    await loadPlugins();
+};
+
+const handleReloadApplication = async () => {
+    if (appReloading.value) return;
+    appReloading.value = true;
+    try {
+        if (typeof windowApi?.reloadApp === 'function') {
+            const result = await windowApi.reloadApp();
+            if (!result?.success) {
+                throw new Error(result?.message || '重载失败');
+            }
+        } else {
+            window.location.reload();
+        }
+    } catch (error) {
+        console.error('重载应用失败:', error);
+        noticeOpen('重载应用失败', 2);
+        appReloading.value = false;
+    }
+};
+
+const handleImportPlugin = async () => {
+    if (!pluginApiAvailable.value) {
+        noticeOpen('当前环境不支持插件管理', 2);
+        return;
+    }
+    if (typeof windowApi.choosePluginSource !== 'function' || typeof windowApi.importPlugin !== 'function') {
+        noticeOpen('当前环境不支持导入插件', 2);
+        return;
+    }
+    if (pluginImporting.value) return;
+    try {
+        const sourcePath = await windowApi.choosePluginSource?.();
+        if (!sourcePath) return;
+        pluginImporting.value = true;
+        const result = await windowApi.importPlugin(sourcePath);
+        if (!result?.success) {
+            noticeOpen(result?.message || '导入插件失败', 2);
+            await loadPlugins(false);
+            return;
+        }
+        noticeOpen(`已导入插件 ${result.plugin.name}`, 2);
+        await loadPlugins(false);
+        await reloadPluginSystem();
+    } catch (error) {
+        console.error('导入插件失败:', error);
+        noticeOpen('导入插件失败', 2);
+    } finally {
+        pluginImporting.value = false;
+    }
+};
+
+const togglePluginState = async (plugin) => {
+    if (!pluginApiAvailable.value || !plugin?.id) return;
+    if (isPluginBusy(plugin.id)) return;
+    setPluginProcessing(plugin.id, true);
+    try {
+        if (typeof windowApi.setPluginEnabled !== 'function') {
+            noticeOpen('当前环境不支持更新插件状态', 2);
+            return;
+        }
+        const result = await windowApi.setPluginEnabled(plugin.id, !plugin.enabled);
+        if (!result?.success) {
+            noticeOpen(result?.message || '更新插件状态失败', 2);
+            return;
+        }
+        noticeOpen(`${!plugin.enabled ? '已启用' : '已禁用'}插件 ${plugin.name}`, 2);
+        await loadPlugins(false);
+        await reloadPluginSystem();
+    } catch (error) {
+        console.error('更新插件状态失败:', error);
+        noticeOpen('更新插件状态失败', 2);
+    } finally {
+        setPluginProcessing(plugin.id, false);
+    }
+};
+
+const requestDeletePlugin = (plugin) => {
+    if (!pluginApiAvailable.value || !plugin?.id) return;
+    if (plugin.builtin) {
+        noticeOpen('内置插件无法删除', 2);
+        return;
+    }
+    dialogOpen('删除插件', `确定删除插件“${plugin.name}”吗？`, async (confirm) => {
+        if (!confirm) return;
+        setPluginProcessing(plugin.id, true);
+        try {
+            if (typeof windowApi.deletePlugin !== 'function') {
+                noticeOpen('当前环境不支持删除插件', 2);
+                return;
+            }
+            const result = await windowApi.deletePlugin(plugin.id);
+            if (!result?.success) {
+                noticeOpen(result?.message || '删除插件失败', 2);
+                return;
+            }
+            noticeOpen(`已删除插件 ${plugin.name}`, 2);
+            await loadPlugins(false);
+            await reloadPluginSystem();
+        } catch (error) {
+            console.error('删除插件失败:', error);
+            noticeOpen('删除插件失败', 2);
+        } finally {
+            setPluginProcessing(plugin.id, false);
+        }
+    });
+};
+
+const formatPluginTimestamp = (timestamp) => {
+    if (!timestamp) return '';
+    try {
+        return new Date(timestamp).toLocaleString();
+    } catch (_) {
+        return '';
+    }
+};
+
+const pluginHasSettings = (pluginId) => {
+    if (!pluginId) return false;
+    const availability = pluginSettingsAvailability.value;
+    return Boolean(availability && availability[pluginId]);
+};
+
+const openPluginSettings = (plugin) => {
+    if (!plugin || !plugin.id) return;
+    router.push({ name: 'pluginSettings', params: { pluginId: plugin.id } });
 };
 
 const setAppSettings = () => {
@@ -1352,340 +1672,6 @@ const clearFmRecent = () => {
                             </div>
                         </div>
                         <div class="option">
-                            <div class="option-name">开启歌词音频可视化</div>
-                            <div class="option-operation">
-                                <div class="toggle" @click="setLyricVisualizer()">
-                                    <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.lyricVisualizer }">{{ playerStore.lyricVisualizer ? '已开启' : '已关闭' }}</div>
-                                    <Transition name="toggle">
-                                        <div class="toggle-on" v-show="playerStore.lyricVisualizer"></div>
-                                    </Transition>
-                                </div>
-                            </div>
-                        </div>
-                        <div
-                            class="option"
-                            v-if="playerStore.lyricVisualizer"
-                        >
-                            <div class="option-name">可视化样式</div>
-                            <div class="option-operation option-operation--selector">
-                                <div class="selector-wrapper">
-                                    <Selector v-model="playerStore.lyricVisualizerStyle" :options="lyricVisualizerStyleOptions" />
-                                </div>
-                                <div class="option-reset" @click="resetLyricVisualizerStyle">重置</div>
-                            </div>
-                        </div>
-                        <div
-                            class="option"
-                            v-if="playerStore.lyricVisualizer && playerStore.lyricVisualizerStyle === 'radial'"
-                        >
-                            <div class="option-name">圆环大小</div>
-                            <div class="option-operation option-operation--selector">
-                                <div class="selector-wrapper">
-                                    <Selector
-                                        v-model="playerStore.lyricVisualizerRadialSize"
-                                        :options="lyricVisualizerRadialSizeOptions"
-                                    />
-                                </div>
-                                <div class="option-add-group">
-                                    <input
-                                        type="number"
-                                        min="10"
-                                        v-model="lyricVisualizerRadialSizeCustom"
-                                        @keyup.enter="addLyricVisualizerRadialSizeOption"
-                                    />
-                                    <div
-                                        class="option-add"
-                                        :class="{ 'option-add--remove': lyricVisualizerRadialSizeAction.mode === 'remove' }"
-                                        @click="addLyricVisualizerRadialSizeOption"
-                                    >
-                                        {{ lyricVisualizerRadialSizeAction.mode === 'remove' ? '删除' : '添加' }}
-                                    </div>
-                                </div>
-                                <div class="option-reset" @click="resetLyricVisualizerRadialSize">重置</div>
-                            </div>
-                        </div>
-                        <div
-                            class="option"
-                            v-if="playerStore.lyricVisualizer && playerStore.lyricVisualizerStyle === 'radial'"
-                        >
-                            <div class="option-name">中心圆尺寸</div>
-                            <div class="option-operation option-operation--selector">
-                                <div class="selector-wrapper">
-                                    <Selector
-                                        v-model="playerStore.lyricVisualizerRadialCoreSize"
-                                        :options="lyricVisualizerRadialCoreSizeOptions"
-                                    />
-                                </div>
-                                <div class="option-add-group">
-                                    <input
-                                        type="number"
-                                        min="10"
-                                        max="95"
-                                        v-model="lyricVisualizerRadialCoreSizeCustom"
-                                        @keyup.enter="addLyricVisualizerRadialCoreSizeOption"
-                                    />
-                                    <div
-                                        class="option-add"
-                                        :class="{ 'option-add--remove': lyricVisualizerRadialCoreSizeAction.mode === 'remove' }"
-                                        @click="addLyricVisualizerRadialCoreSizeOption"
-                                    >
-                                        {{ lyricVisualizerRadialCoreSizeAction.mode === 'remove' ? '删除' : '添加' }}
-                                    </div>
-                                </div>
-                                <div class="option-reset" @click="resetLyricVisualizerRadialCoreSize">重置</div>
-                            </div>
-                        </div>
-                        <div
-                            class="option"
-                            v-if="playerStore.lyricVisualizer && playerStore.lyricVisualizerStyle === 'radial'"
-                        >
-                            <div class="option-name">X轴偏移</div>
-                            <div class="option-operation option-operation--selector">
-                                <div class="selector-wrapper">
-                                    <Selector
-                                        v-model="playerStore.lyricVisualizerRadialOffsetX"
-                                        :options="lyricVisualizerRadialOffsetXOptions"
-                                    />
-                                </div>
-                                <div class="option-add-group">
-                                    <input
-                                        type="number"
-                                        v-model="lyricVisualizerRadialOffsetXCustom"
-                                        @keyup.enter="addLyricVisualizerRadialOffsetXOption"
-                                    />
-                                    <div
-                                        class="option-add"
-                                        :class="{ 'option-add--remove': lyricVisualizerRadialOffsetXAction.mode === 'remove' }"
-                                        @click="addLyricVisualizerRadialOffsetXOption"
-                                    >
-                                        {{ lyricVisualizerRadialOffsetXAction.mode === 'remove' ? '删除' : '添加' }}
-                                    </div>
-                                </div>
-                                <div class="option-reset" @click="resetLyricVisualizerRadialOffsetX">重置</div>
-                            </div>
-                        </div>
-                        <div
-                            class="option"
-                            v-if="playerStore.lyricVisualizer && playerStore.lyricVisualizerStyle === 'radial'"
-                        >
-                            <div class="option-name">Y轴偏移</div>
-                            <div class="option-operation option-operation--selector">
-                                <div class="selector-wrapper">
-                                    <Selector
-                                        v-model="playerStore.lyricVisualizerRadialOffsetY"
-                                        :options="lyricVisualizerRadialOffsetYOptions"
-                                    />
-                                </div>
-                                <div class="option-add-group">
-                                    <input
-                                        type="number"
-                                        v-model="lyricVisualizerRadialOffsetYCustom"
-                                        @keyup.enter="addLyricVisualizerRadialOffsetYOption"
-                                    />
-                                    <div
-                                        class="option-add"
-                                        :class="{ 'option-add--remove': lyricVisualizerRadialOffsetYAction.mode === 'remove' }"
-                                        @click="addLyricVisualizerRadialOffsetYOption"
-                                    >
-                                        {{ lyricVisualizerRadialOffsetYAction.mode === 'remove' ? '删除' : '添加' }}
-                                    </div>
-                                </div>
-                                <div class="option-reset" @click="resetLyricVisualizerRadialOffsetY">重置</div>
-                            </div>
-                        </div>
-                        <div class="option" v-if="playerStore.lyricVisualizer">
-                            <div class="option-name">可视化高度</div>
-                            <div class="option-operation option-operation--selector">
-                                <div class="selector-wrapper">
-                                    <Selector v-model="playerStore.lyricVisualizerHeight" :options="lyricVisualizerHeightOptions" />
-                                </div>
-                                <div class="option-add-group">
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        v-model="lyricVisualizerHeightCustom"
-                                        @keyup.enter="addLyricVisualizerHeightOption"
-                                    />
-                                    <div
-                                        class="option-add"
-                                        :class="{ 'option-add--remove': lyricVisualizerHeightAction.mode === 'remove' }"
-                                        @click="addLyricVisualizerHeightOption"
-                                    >
-                                        {{ lyricVisualizerHeightAction.mode === 'remove' ? '删除' : '添加' }}
-                                    </div>
-                                </div>
-                                <div class="option-reset" @click="resetLyricVisualizerHeight">重置</div>
-                            </div>
-                        </div>
-                        <div class="option" v-if="playerStore.lyricVisualizer">
-                            <div class="option-name">柱体数量</div>
-                            <div class="option-operation option-operation--selector">
-                                <div class="selector-wrapper">
-                                    <Selector v-model="playerStore.lyricVisualizerBarCount" :options="lyricVisualizerBarCountOptions" />
-                                </div>
-                                <div class="option-add-group">
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        v-model="lyricVisualizerBarCountCustom"
-                                        @keyup.enter="addLyricVisualizerBarCountOption"
-                                    />
-                                    <div
-                                        class="option-add"
-                                        :class="{ 'option-add--remove': lyricVisualizerBarCountAction.mode === 'remove' }"
-                                        @click="addLyricVisualizerBarCountOption"
-                                    >
-                                        {{ lyricVisualizerBarCountAction.mode === 'remove' ? '删除' : '添加' }}
-                                    </div>
-                                </div>
-                                <div class="option-reset" @click="resetLyricVisualizerBarCount">重置</div>
-                            </div>
-                        </div>
-                        <div class="option" v-if="playerStore.lyricVisualizer">
-                            <div class="option-name">柱体宽度</div>
-                            <div class="option-operation option-operation--selector">
-                                <div class="selector-wrapper">
-                                    <Selector v-model="playerStore.lyricVisualizerBarWidth" :options="lyricVisualizerBarWidthOptions" />
-                                </div>
-                                <div class="option-add-group">
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        v-model="lyricVisualizerBarWidthCustom"
-                                        @keyup.enter="addLyricVisualizerBarWidthOption"
-                                    />
-                                    <div
-                                        class="option-add"
-                                        :class="{ 'option-add--remove': lyricVisualizerBarWidthAction.mode === 'remove' }"
-                                        @click="addLyricVisualizerBarWidthOption"
-                                    >
-                                        {{ lyricVisualizerBarWidthAction.mode === 'remove' ? '删除' : '添加' }}
-                                    </div>
-                                </div>
-                                <div class="option-reset" @click="resetLyricVisualizerBarWidth">重置</div>
-                            </div>
-                        </div>
-                        <div class="option" v-if="playerStore.lyricVisualizer">
-                            <div class="option-name">频率范围</div>
-                            <div class="option-operation option-operation--range">
-                                <div class="option-group">
-                                    <span class="option-group-label">最低</span>
-                                    <div class="selector-wrapper">
-                                        <Selector
-                                            v-model="playerStore.lyricVisualizerFrequencyMin"
-                                            :options="lyricVisualizerFrequencyMinOptions"
-                                        />
-                                    </div>
-                                    <div class="option-add-group">
-                                        <input
-                                            type="number"
-                                            min="20"
-                                            v-model="lyricVisualizerFrequencyMinCustom"
-                                            @keyup.enter="addLyricVisualizerFrequencyMinOption"
-                                        />
-                                        <div
-                                            class="option-add"
-                                            :class="{ 'option-add--remove': lyricVisualizerFrequencyMinAction.mode === 'remove' }"
-                                            @click="addLyricVisualizerFrequencyMinOption"
-                                        >
-                                            {{ lyricVisualizerFrequencyMinAction.mode === 'remove' ? '删除' : '添加' }}
-                                        </div>
-                                    </div>
-                                    <div class="option-reset" @click="resetLyricVisualizerFrequencyMin">重置</div>
-                                </div>
-                                <div class="option-group">
-                                    <span class="option-group-label">最高</span>
-                                    <div class="selector-wrapper">
-                                        <Selector
-                                            v-model="playerStore.lyricVisualizerFrequencyMax"
-                                            :options="lyricVisualizerFrequencyMaxOptions"
-                                        />
-                                    </div>
-                                    <div class="option-add-group">
-                                        <input
-                                            type="number"
-                                            min="20"
-                                            v-model="lyricVisualizerFrequencyMaxCustom"
-                                            @keyup.enter="addLyricVisualizerFrequencyMaxOption"
-                                        />
-                                        <div
-                                            class="option-add"
-                                            :class="{ 'option-add--remove': lyricVisualizerFrequencyMaxAction.mode === 'remove' }"
-                                            @click="addLyricVisualizerFrequencyMaxOption"
-                                        >
-                                            {{ lyricVisualizerFrequencyMaxAction.mode === 'remove' ? '删除' : '添加' }}
-                                        </div>
-                                    </div>
-                                    <div class="option-reset" @click="resetLyricVisualizerFrequencyMax">重置</div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="option" v-if="playerStore.lyricVisualizer">
-                            <div class="option-name">可视化透明度</div>
-                            <div class="option-operation option-operation--selector">
-                                <div class="selector-wrapper">
-                                    <Selector
-                                        v-model="playerStore.lyricVisualizerOpacity"
-                                        :options="lyricVisualizerOpacityOptions"
-                                    />
-                                </div>
-                                <div class="option-add-group">
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        max="100"
-                                        v-model="lyricVisualizerOpacityCustom"
-                                        @keyup.enter="addLyricVisualizerOpacityOption"
-                                    />
-                                    <div
-                                        class="option-add"
-                                        :class="{ 'option-add--remove': lyricVisualizerOpacityAction.mode === 'remove' }"
-                                        @click="addLyricVisualizerOpacityOption"
-                                    >
-                                        {{ lyricVisualizerOpacityAction.mode === 'remove' ? '删除' : '添加' }}
-                                    </div>
-                                </div>
-                                <div class="option-reset" @click="resetLyricVisualizerOpacity">重置</div>
-                            </div>
-                        </div>
-                        <div class="option" v-if="playerStore.lyricVisualizer">
-                            <div class="option-name">可视化颜色</div>
-                            <div class="option-operation option-operation--selector">
-                                <div class="selector-wrapper">
-                                    <Selector v-model="playerStore.lyricVisualizerColor" :options="lyricVisualizerColorOptions" />
-                                </div>
-                            </div>
-                        </div>
-                        <div class="option" v-if="playerStore.lyricVisualizer">
-                            <div class="option-name">过渡延迟</div>
-                            <div class="option-operation option-operation--selector">
-                                <div class="selector-wrapper">
-                                    <Selector
-                                        v-model="playerStore.lyricVisualizerTransitionDelay"
-                                        :options="lyricVisualizerTransitionDelayOptions"
-                                    />
-                                </div>
-                                <div class="option-add-group">
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        min="0"
-                                        max="0.95"
-                                        v-model="lyricVisualizerTransitionDelayCustom"
-                                        @keyup.enter="addLyricVisualizerTransitionDelayOption"
-                                    />
-                                    <div
-                                        class="option-add"
-                                        :class="{ 'option-add--remove': lyricVisualizerTransitionDelayAction.mode === 'remove' }"
-                                        @click="addLyricVisualizerTransitionDelayOption"
-                                    >
-                                        {{ lyricVisualizerTransitionDelayAction.mode === 'remove' ? '删除' : '添加' }}
-                                    </div>
-                                </div>
-                                <div class="option-reset" @click="resetLyricVisualizerTransitionDelay">重置</div>
-                            </div>
-                        </div>
-                        <div class="option">
                             <div class="option-name">歌词字体大小</div>
                             <div class="option-operation">
                                 <input v-model="lyricSize" name="lyricSize" />
@@ -1754,6 +1740,121 @@ const clearFmRecent = () => {
                                     <div class="tip">您可以同时添加多个目录,右键移除您不需要的目录。数据量过大时需要一定扫描时间,请稍等。</div>
                                 </div>
                                 <div class="add-option" @click="selectFolder('local')">添加</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-item">
+                    <h2 class="item-title">插件</h2>
+                    <div class="line"></div>
+                    <div class="item-options item-options--plugins">
+                        <div class="plugin-directory" v-if="pluginDirectoryApiAvailable">
+                            <div class="plugin-directory-info">
+                                <div class="plugin-directory-label">插件目录</div>
+                                <div class="plugin-directory-path" :title="pluginDirectoryDisplay">
+                                    {{ pluginDirectoryDisplay }}
+                                </div>
+                            </div>
+                            <div class="plugin-directory-actions">
+                                <div
+                                    class="plugin-button plugin-button--outline"
+                                    :class="{ 'plugin-button--disabled': pluginDirectoryLoading }"
+                                    @click="changePluginDirectory"
+                                >
+                                    {{ pluginDirectoryLoading ? '处理中…' : '更改目录' }}
+                                </div>
+                                <div
+                                    v-if="canResetPluginDirectory"
+                                    class="plugin-button plugin-button--outline"
+                                    :class="{ 'plugin-button--disabled': pluginDirectoryLoading }"
+                                    @click="resetPluginDirectory"
+                                >
+                                    重置
+                                </div>
+                            </div>
+                        </div>
+                        <div class="plugin-toolbar">
+                            <div class="plugin-toolbar-left">
+                                <div
+                                    class="plugin-button"
+                                    :class="{ 'plugin-button--loading': pluginImporting, 'plugin-button--disabled': !pluginApiAvailable }"
+                                    @click="handleImportPlugin"
+                                >
+                                    {{ pluginImporting ? '导入中…' : '导入插件' }}
+                                </div>
+                                <div
+                                    class="plugin-button plugin-button--outline"
+                                    :class="{ 'plugin-button--disabled': pluginLoading || !pluginApiAvailable }"
+                                    @click="handleRefreshPlugins"
+                                >
+                                    刷新列表
+                                </div>
+                                <div
+                                    class="plugin-button plugin-button--outline"
+                                    :class="{ 'plugin-button--disabled': appReloading || !pluginApiAvailable }"
+                                    @click="handleReloadApplication"
+                                >
+                                    {{ appReloading ? '重载中…' : '重载' }}
+                                </div>
+                            </div>
+                            <div class="plugin-toolbar-right" v-if="pluginLoading">
+                                正在加载插件…
+                            </div>
+                        </div>
+                        <div class="plugin-empty" v-if="!pluginApiAvailable">
+                            当前运行环境不支持插件管理。
+                        </div>
+                        <div class="plugin-empty" v-else-if="!pluginLoading && pluginList.length === 0">
+                            暂无已导入的插件。
+                        </div>
+                        <div class="plugin-list" v-else>
+                            <div class="plugin-card" v-for="plugin in pluginList" :key="plugin.id">
+                                <div class="plugin-card-header">
+                                    <div class="plugin-card-title" :title="plugin.name">{{ plugin.name }}</div>
+                                    <div class="plugin-card-header-meta">
+                                        <span class="plugin-card-badge" v-if="plugin.builtin">内置</span>
+                                        <div class="plugin-card-version" v-if="plugin.version">v{{ plugin.version }}</div>
+                                    </div>
+                                </div>
+                                <div class="plugin-card-meta">
+                                    <span class="plugin-card-author" v-if="plugin.author" :title="plugin.author">
+                                        {{ plugin.author }}
+                                    </span>
+                                    <span class="plugin-card-id" :title="plugin.id">{{ plugin.id }}</span>
+                                </div>
+                                <div class="plugin-card-description" :title="plugin.description">
+                                    {{ plugin.description || '开发者尚未提供描述。' }}
+                                </div>
+                                <div class="plugin-card-footer">
+                                    <div class="plugin-card-time" v-if="plugin.importTime">
+                                        导入时间：{{ formatPluginTimestamp(plugin.importTime) }}
+                                    </div>
+                                    <div class="plugin-card-actions">
+                                        <div
+                                            class="plugin-button plugin-button--outline"
+                                            :class="{ 'plugin-button--disabled': !pluginApiAvailable || isPluginBusy(plugin.id) }"
+                                            @click="togglePluginState(plugin)"
+                                        >
+                                            {{ plugin.enabled ? '禁用' : '启用' }}
+                                        </div>
+                                        <div
+                                            class="plugin-button plugin-button--outline"
+                                            v-if="plugin.enabled && pluginHasSettings(plugin.id)"
+                                            :class="{ 'plugin-button--disabled': !pluginApiAvailable || isPluginBusy(plugin.id) }"
+                                            @click="openPluginSettings(plugin)"
+                                        >
+                                            设置
+                                        </div>
+                                        <div
+                                            v-if="!plugin.builtin"
+                                            class="plugin-button plugin-button--danger"
+                                            :class="{ 'plugin-button--disabled': !pluginApiAvailable || isPluginBusy(plugin.id) }"
+                                            @click="requestDeletePlugin(plugin)"
+                                        >
+                                            删除
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -2015,6 +2116,172 @@ const clearFmRecent = () => {
                 }
                 .item-options {
                     outline: none;
+                    &.item-options--plugins {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 16px;
+                        .plugin-directory {
+                            display: flex;
+                            flex-wrap: wrap;
+                            align-items: center;
+                            justify-content: space-between;
+                            gap: 12px;
+                            padding: 16px;
+                            background-color: rgba(255, 255, 255, 0.3);
+                            border-radius: 0;
+                            .plugin-directory-info {
+                                display: flex;
+                                flex-direction: column;
+                                gap: 6px;
+                                min-width: 0;
+                                .plugin-directory-label {
+                                    font: 14px SourceHanSansCN-Bold;
+                                    color: rgba(0, 0, 0, 0.8);
+                                }
+                                .plugin-directory-path {
+                                    font: 13px SourceHanSansCN-Regular;
+                                    color: rgba(0, 0, 0, 0.85);
+                                    word-break: break-all;
+                                }
+                            }
+                            .plugin-directory-actions {
+                                display: flex;
+                                flex-wrap: wrap;
+                                gap: 12px;
+                            }
+                        }
+                        .plugin-toolbar {
+                            display: flex;
+                            flex-wrap: wrap;
+                            align-items: center;
+                            justify-content: space-between;
+                            gap: 12px;
+                            .plugin-toolbar-left {
+                                display: flex;
+                                flex-wrap: wrap;
+                                gap: 12px;
+                            }
+                            .plugin-toolbar-right {
+                                font: 13px SourceHanSansCN-Bold;
+                                color: rgba(0, 0, 0, 0.65);
+                            }
+                        }
+                        .plugin-empty {
+                            padding: 18px;
+                            font: 14px SourceHanSansCN-Regular;
+                            color: rgba(0, 0, 0, 0.65);
+                            background-color: rgba(255, 255, 255, 0.3);
+                            border-radius: 0;
+                        }
+                        .plugin-list {
+                            display: grid;
+                            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+                            gap: 16px;
+                        }
+                        .plugin-card {
+                            display: flex;
+                            flex-direction: column;
+                            gap: 12px;
+                            padding: 16px;
+                            background-color: rgba(255, 255, 255, 0.35);
+                            border-radius: 0;
+                            transition: 0.2s;
+                            &:hover {
+                                box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+                            }
+                            .plugin-card-header {
+                                display: flex;
+                                align-items: baseline;
+                                justify-content: space-between;
+                                gap: 8px;
+                                .plugin-card-title {
+                                    font: 16px SourceHanSansCN-Bold;
+                                    color: black;
+                                    overflow: hidden;
+                                    text-overflow: ellipsis;
+                                    white-space: nowrap;
+                                }
+                                .plugin-card-header-meta {
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 6px;
+                                }
+                                .plugin-card-badge {
+                                    padding: 2px 6px;
+                                    font: 11px SourceHanSansCN-Bold;
+                                    color: rgba(0, 0, 0, 0.7);
+                                    border: 1px solid rgba(0, 0, 0, 0.2);
+                                    background: rgba(255, 255, 255, 0.6);
+                                }
+                                .plugin-card-version {
+                                    font: 12px SourceHanSansCN-Bold;
+                                    color: rgba(0, 0, 0, 0.65);
+                                }
+                            }
+                            .plugin-card-meta {
+                                display: flex;
+                                gap: 10px;
+                                font: 12px SourceHanSansCN-Regular;
+                                color: rgba(0, 0, 0, 0.65);
+                                .plugin-card-author,
+                                .plugin-card-id {
+                                    max-width: 100%;
+                                    overflow: hidden;
+                                    text-overflow: ellipsis;
+                                    white-space: nowrap;
+                                }
+                            }
+                            .plugin-card-description {
+                                min-height: 44px;
+                                font: 13px SourceHanSansCN-Regular;
+                                color: rgba(0, 0, 0, 0.75);
+                                line-height: 1.5;
+                                word-break: break-word;
+                            }
+                            .plugin-card-footer {
+                                display: flex;
+                                flex-direction: column;
+                                gap: 10px;
+                                .plugin-card-time {
+                                    font: 12px SourceHanSansCN-Regular;
+                                    color: rgba(0, 0, 0, 0.55);
+                                }
+                                .plugin-card-actions {
+                                    display: flex;
+                                    flex-wrap: wrap;
+                                    gap: 10px;
+                                }
+                            }
+                        }
+                        .plugin-button {
+                            min-width: 120px;
+                            padding: 6px 16px;
+                            border-radius: 0;
+                            font: 13px SourceHanSansCN-Bold;
+                            color: black;
+                            background-color: rgba(255, 255, 255, 0.5);
+                            text-align: center;
+                            transition: 0.2s;
+                            user-select: none;
+                            &:hover {
+                                cursor: pointer;
+                                opacity: 0.85;
+                            }
+                        }
+                        .plugin-button--outline {
+                            background-color: transparent;
+                            border: 1px solid rgba(0, 0, 0, 0.12);
+                        }
+                        .plugin-button--danger {
+                            background-color: rgba(220, 53, 69, 0.85);
+                            color: white;
+                        }
+                        .plugin-button--disabled,
+                        .plugin-button--loading {
+                            opacity: 0.6;
+                            pointer-events: none;
+                        }
+                    }
                     .option {
                         margin-bottom: 32px;
                         display: flex;

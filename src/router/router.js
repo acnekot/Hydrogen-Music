@@ -12,6 +12,7 @@ import RecommendSongs from '../components/RecommendSongs.vue'
 import LocalMusicDetail from '../components/LocalMusicDetail.vue'
 import SearchResult from '../views/SearchResult.vue'
 import Settings from '../views/Settings.vue'
+import PluginSettings from '../views/PluginSettings.vue'
 import RadioDetail from '../components/RadioDetail.vue'
 
 import { useUserStore } from '../store/userStore'
@@ -179,6 +180,11 @@ const routes = [
         beforeEnter: (to, from, next) => {
             next()
         }
+    },
+    {
+        path: '/settings/plugins/:pluginId',
+        name: 'pluginSettings',
+        component: PluginSettings,
     },
 ]
 

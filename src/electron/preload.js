@@ -163,6 +163,39 @@ function openKugouLogin() {
 function clearKugouSession() {
     return ipcRenderer.invoke('clear-kugou-session')
 }
+function choosePluginSource() {
+    return ipcRenderer.invoke('plugin:choose-source')
+}
+function importPlugin(sourcePath) {
+    return ipcRenderer.invoke('plugin:import', sourcePath)
+}
+function choosePluginDirectory(currentPath) {
+    return ipcRenderer.invoke('plugin:choose-directory', currentPath)
+}
+function getPluginDirectory() {
+    return ipcRenderer.invoke('plugin:get-directory')
+}
+function setPluginDirectory(targetPath, moveExisting) {
+    return ipcRenderer.invoke('plugin:set-directory', targetPath, moveExisting)
+}
+function listPlugins() {
+    return ipcRenderer.invoke('plugin:list')
+}
+function setPluginEnabled(pluginId, enabled) {
+    return ipcRenderer.invoke('plugin:set-enabled', pluginId, enabled)
+}
+function deletePlugin(pluginId) {
+    return ipcRenderer.invoke('plugin:delete', pluginId)
+}
+function getEnabledPlugins() {
+    return ipcRenderer.invoke('plugin:get-enabled')
+}
+function readPluginFile(pluginId, relativePath, encoding) {
+    return ipcRenderer.invoke('plugin:read-file', pluginId, relativePath, encoding)
+}
+function reloadApp() {
+    return ipcRenderer.invoke('app:reload')
+}
 contextBridge.exposeInMainWorld('windowApi', {
     windowMin,
     windowMax,
@@ -223,6 +256,17 @@ contextBridge.exposeInMainWorld('windowApi', {
     setWindowTile,
     updatePlaylistStatus,
     updateDockMenu,
+    choosePluginSource,
+    importPlugin,
+    choosePluginDirectory,
+    getPluginDirectory,
+    setPluginDirectory,
+    listPlugins,
+    setPluginEnabled,
+    deletePlugin,
+    getEnabledPlugins,
+    readPluginFile,
+    reloadApp,
 })
 
 // 新的API用于处理登录功能和桌面歌词

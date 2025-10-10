@@ -26,6 +26,7 @@ const {
     lyricInterludeTime,
     lyricBlur,
     lyricVisualizer,
+    lyricVisualizerPluginActive,
     lyricVisualizerHeight,
     lyricVisualizerFrequencyMin,
     lyricVisualizerFrequencyMax,
@@ -79,6 +80,7 @@ const syncingLayout = ref(false);
 
 const lyricVisualizerCanvas = ref(null);
 const visualizerContainerSize = reactive({ width: 0, height: 0 });
+const lyricVisualizerEnabled = computed(() => lyricVisualizerPluginActive.value && lyricVisualizer.value);
 
 const clampNumber = (value, min, max, fallback = min) => {
     const numeric = Number(value);
@@ -296,8 +298,8 @@ const visualizerCanvasStyle = computed(() => {
     };
 });
 
-const shouldShowVisualizerInLyrics = computed(() => lyricVisualizer.value && lyricAreaVisible.value);
-const shouldShowVisualizerInPlaceholder = computed(() => lyricVisualizer.value && !lyricAreaVisible.value);
+const shouldShowVisualizerInLyrics = computed(() => lyricVisualizerEnabled.value && lyricAreaVisible.value);
+const shouldShowVisualizerInPlaceholder = computed(() => lyricVisualizerEnabled.value && !lyricAreaVisible.value);
 const shouldShowVisualizer = computed(
     () => shouldShowVisualizerInLyrics.value || shouldShowVisualizerInPlaceholder.value
 );

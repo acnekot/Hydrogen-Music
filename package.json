@@ -63,6 +63,7 @@
       "src/assets/icon/**/*",
       "src/assets/fonts/**/*",
       "src/electron/**/*",
+      "plugins/**/*",
       "!**/.DS_Store",
       "!**/node_modules",
       "!release/**/*",

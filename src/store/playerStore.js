@@ -42,6 +42,9 @@ export const usePlayerStore = defineStore('playerStore', {
             lyricBlur: false,
             isDesktopLyricOpen: false, // 桌面歌词是否打开
             lyricVisualizer: false, // 歌词区域音频可视化开关
+            lyricVisualizerPluginActive: false, // 歌词可视化插件是否已就绪
+            lyricVisualizerToggleAvailable: false, // 是否在播放器展示歌词可视化开关
+            lyricVisualizerHasAutoEnabled: false, // 是否已自动开启过歌词可视化
             lyricVisualizerHeight: 220, // 可视化高度（像素）
             lyricVisualizerFrequencyMin: 20, // 频谱最低采样频率（Hz）
             lyricVisualizerFrequencyMax: 8000, // 频谱最高采样频率（Hz）
@@ -95,6 +98,7 @@ export const usePlayerStore = defineStore('playerStore', {
             'lyricVisualizerRadialOffsetX',
             'lyricVisualizerRadialOffsetY',
             'lyricVisualizerRadialCoreSize',
+            'lyricVisualizerHasAutoEnabled',
             'customBackgroundEnabled',
             'customBackgroundImage',
             'customBackgroundMode',
