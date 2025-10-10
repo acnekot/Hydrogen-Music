@@ -1,34 +1,48 @@
-name: Build Hydrogen Music
+name: Build & Package All Platforms
 
 on:
   push:
     tags:
-      - 'v*'     # 推送 tag 时触发
-  workflow_dispatch:  # 手动触发
+      - 'v*'        # 当 push 新的版本 tag 时触发
+  workflow_dispatch: # 手动触发也可以
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+        node-version: [18]
+    name: Build on ${{ matrix.os }}
 
-      - name: Use Node.js
-        uses: actions/setup-node@v3
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Build dist files
+      - name: Build & Package
+        # 注意：在 electron-builder 的命令中加上 `--publish never`
         run: npm run dist -- --publish never
 
-      - name: Upload artifacts
+      - name: Collect artifacts
+        # 根据不同平台收集不同文件
         uses: actions/upload-artifact@v3
         with:
-          name: HydrogenMusic-linux
+          name: hydrogen-${{ matrix.os }}
           path: |
             release/**/*.AppImage
             release/**/*.deb
             release/**/*.rpm
+            release/**/*.dmg
+            release/**/*.zip
+            release/**/*.exe
+            # 你也可以按需要加上其它格式
+
