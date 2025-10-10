@@ -1,29 +1,34 @@
-name: CI
+name: Build Hydrogen Music
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
+    tags:
+      - 'v*'     # 推送 tag 时触发
+  workflow_dispatch:  # 手动触发
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Setup Node.js
+      - name: Use Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 18
-          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Install dependencies
-        run: npm install
-        
-      - name: Build
+      - name: Build dist files
         run: npm run dist -- --publish never
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: HydrogenMusic-linux
+          path: |
+            release/**/*.AppImage
+            release/**/*.deb
+            release/**/*.rpm
