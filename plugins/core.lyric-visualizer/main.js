@@ -180,9 +180,19 @@ const mountSettingsPage = (container, store, context) => {
     const style = document.createElement('style');
     style.textContent = `
 .hm-visualizer-settings {
+    --hm-visualizer-text: var(--settings-text, var(--text, #121826));
+    --hm-visualizer-muted: var(--settings-muted, var(--muted-text, rgba(18, 24, 38, 0.6)));
+    --hm-visualizer-background: var(--settings-background, var(--bg, #eef1f9));
+    --hm-visualizer-surface: var(--settings-surface, var(--panel, rgba(255, 255, 255, 0.94)));
+    --hm-visualizer-input-surface: var(--settings-input-bg, var(--layer, rgba(255, 255, 255, 0.92)));
+    --hm-visualizer-border: var(--settings-border, var(--border, rgba(92, 122, 170, 0.35)));
+    --hm-visualizer-shadow: var(--settings-shadow, var(--shadow, 0 16px 38px rgba(26, 40, 68, 0.12)));
+    --hm-visualizer-accent: var(--settings-accent, #4c6edb);
+    --hm-visualizer-button-bg: var(--settings-button-bg, rgba(242, 245, 255, 0.92));
+    --hm-visualizer-button-hover: var(--settings-button-hover-bg, rgba(255, 255, 255, 1));
     font-family: "Source Han Sans", "Microsoft Yahei", sans-serif;
-    color: rgba(18, 24, 38, 0.92);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(226, 232, 244, 0.98));
+    color: var(--hm-visualizer-text);
+    background: var(--hm-visualizer-background);
     min-height: 100%;
     padding: 28px 32px 40px;
     box-sizing: border-box;
@@ -190,23 +200,24 @@ const mountSettingsPage = (container, store, context) => {
 .hm-visualizer-settings *,
 .hm-visualizer-settings *::before,
 .hm-visualizer-settings *::after {
-    color: inherit !important;
     box-sizing: border-box;
 }
 .hm-visualizer-settings h2 {
     margin: 24px 0 12px;
     font-size: 18px;
     font-weight: 600;
+    color: inherit;
 }
 .hm-visualizer-settings h2:first-of-type {
     margin-top: 0;
 }
 .hm-visualizer-card {
-    border: 1px solid rgba(92, 122, 170, 0.28);
-    background: rgba(255, 255, 255, 0.88);
-    box-shadow: 0 16px 38px rgba(26, 40, 68, 0.16);
+    border: 1px solid var(--hm-visualizer-border);
+    background: var(--hm-visualizer-surface);
+    box-shadow: var(--hm-visualizer-shadow);
     padding: 20px 24px 24px;
     margin-bottom: 24px;
+    border-radius: 16px;
     color: inherit;
 }
 .hm-visualizer-row {
@@ -231,28 +242,34 @@ const mountSettingsPage = (container, store, context) => {
     flex-wrap: wrap;
     gap: 12px;
     align-items: center;
+    color: inherit;
+}
+.hm-visualizer-inputs span {
+    color: var(--hm-visualizer-muted);
 }
 .hm-visualizer-inputs input[type="range"] {
     flex: 1 1 220px;
     min-width: 200px;
-    accent-color: rgba(70, 108, 196, 0.85);
+    accent-color: var(--hm-visualizer-accent);
 }
 .hm-visualizer-inputs input[type="number"],
 .hm-visualizer-inputs input[type="text"],
 .hm-visualizer-inputs select {
     width: 120px;
     padding: 6px 10px;
-    border: 1px solid rgba(92, 122, 170, 0.35);
-    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid var(--hm-visualizer-border);
+    background: var(--hm-visualizer-input-surface);
     color: inherit;
     outline: none;
+    border-radius: 10px;
 }
 .hm-visualizer-inputs input[type="color"] {
     width: 48px;
     height: 28px;
     padding: 0;
-    border: 1px solid rgba(92, 122, 170, 0.35);
-    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid var(--hm-visualizer-border);
+    background: var(--hm-visualizer-input-surface);
+    border-radius: 8px;
 }
 .hm-visualizer-toggle {
     display: inline-flex;
@@ -266,11 +283,12 @@ const mountSettingsPage = (container, store, context) => {
     width: 18px;
     height: 18px;
     cursor: pointer;
+    accent-color: var(--hm-visualizer-accent);
 }
 .hm-visualizer-hint {
     margin: 6px 0 0;
     font-size: 13px;
-    color: rgba(18, 24, 38, 0.6) !important;
+    color: var(--hm-visualizer-muted);
 }
 .hm-visualizer-radial {
     display: none;
@@ -290,6 +308,9 @@ const mountSettingsPage = (container, store, context) => {
     cursor: pointer;
     color: inherit;
 }
+.hm-visualizer-color-option input[type="radio"] {
+    accent-color: var(--hm-visualizer-accent);
+}
 .hm-visualizer-footer {
     display: flex;
     justify-content: flex-end;
@@ -297,47 +318,17 @@ const mountSettingsPage = (container, store, context) => {
 }
 .hm-visualizer-button {
     padding: 8px 18px;
-    border: 1px solid rgba(92, 122, 170, 0.38);
-    background: rgba(242, 245, 255, 0.92);
-    color: rgba(18, 24, 38, 0.88) !important;
+    border: 1px solid var(--hm-visualizer-border);
+    background: var(--hm-visualizer-button-bg);
+    color: inherit;
     cursor: pointer;
-    transition: background 0.2s ease, color 0.2s ease;
+    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    border-radius: 12px;
 }
 .hm-visualizer-button:hover,
 .hm-visualizer-button:focus-visible {
-    background: rgba(255, 255, 255, 1);
-}
-.dark .hm-visualizer-settings {
-    color: var(--text, #f1f3f5);
-    background: linear-gradient(180deg, rgba(44, 52, 64, 0.96), rgba(32, 39, 50, 0.98));
-}
-.dark .hm-visualizer-card {
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    background: rgba(46, 56, 68, 0.86);
-    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.35);
-}
-.dark .hm-visualizer-hint {
-    color: rgba(241, 243, 245, 0.75) !important;
-}
-.dark .hm-visualizer-inputs input[type="number"],
-.dark .hm-visualizer-inputs input[type="text"],
-.dark .hm-visualizer-inputs select,
-.dark .hm-visualizer-inputs input[type="color"] {
-    background: rgba(29, 36, 46, 0.92);
-    border: 1px solid rgba(255, 255, 255, 0.24);
-    color: inherit !important;
-}
-.dark .hm-visualizer-inputs input[type="range"] {
-    accent-color: rgba(129, 168, 255, 0.85);
-}
-.dark .hm-visualizer-button {
-    border: 1px solid rgba(255, 255, 255, 0.22);
-    background: rgba(76, 92, 120, 0.82);
-    color: var(--text, #f1f3f5) !important;
-}
-.dark .hm-visualizer-button:hover,
-.dark .hm-visualizer-button:focus-visible {
-    background: rgba(98, 118, 150, 0.88);
+    background: var(--hm-visualizer-button-hover);
+    border-color: var(--hm-visualizer-accent);
 }
 `;
     container.appendChild(style);
