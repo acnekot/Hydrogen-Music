@@ -5,6 +5,7 @@ import { usePlayerStore } from '../store/playerStore';
 import { getLyricVisualizerAudioEnv } from '../utils/lyricVisualizerAudio';
 import { computeCustomBackgroundStyle } from '../utils/customBackground';
 import { storeToRefs } from 'pinia';
+import { usePluginArea } from '../plugins/index.js';
 
 const playerStore = usePlayerStore();
 const {
@@ -76,6 +77,18 @@ const suppressLyricFlash = ref(true);
 
 // 在高频同步中避免并发测量
 const syncingLayout = ref(false);
+
+const pluginVisualizers = usePluginArea('ui:lyric-visualizers');
+const resolvedPluginVisualizers = computed(() => {
+    return pluginVisualizers.value
+        .map((entry, index) => ({
+            ...entry,
+            key: entry.id || `${entry.__plugin?.id || 'visualizer'}-${index}`,
+            order: typeof entry.order === 'number' ? entry.order : 0,
+            props: entry.props || {},
+        }))
+        .sort((a, b) => a.order - b.order);
+});
 
 const lyricVisualizerCanvas = ref(null);
 const visualizerContainerSize = reactive({ width: 0, height: 0 });
@@ -296,11 +309,9 @@ const visualizerCanvasStyle = computed(() => {
     };
 });
 
-const shouldShowVisualizerInLyrics = computed(() => lyricVisualizer.value && lyricAreaVisible.value);
-const shouldShowVisualizerInPlaceholder = computed(() => lyricVisualizer.value && !lyricAreaVisible.value);
-const shouldShowVisualizer = computed(
-    () => shouldShowVisualizerInLyrics.value || shouldShowVisualizerInPlaceholder.value
-);
+const shouldShowVisualizerInLyrics = computed(() => false);
+const shouldShowVisualizerInPlaceholder = computed(() => false);
+const shouldShowVisualizer = computed(() => false);
 
 let analyserDataArray = null;
 let canvasCtx = null;
@@ -1269,12 +1280,12 @@ onUnmounted(() => {
 
 <template>
     <div class="lyric-container" :class="lyricContainerClasses" :style="lyricBackgroundStyle">
-        <canvas
-            v-if="shouldShowVisualizer"
-            ref="lyricVisualizerCanvas"
-            class="lyric-visualizer"
-            :style="visualizerCanvasStyle"
-        ></canvas>
+        <component
+            v-for="visualizer in resolvedPluginVisualizers"
+            :is="visualizer.component"
+            :key="visualizer.key"
+            v-bind="visualizer.props"
+        />
         <Transition name="fade" @after-enter="onLyricAreaAfterEnter">
             <div v-show="hasLyricsList && hasAnyLyricContent && lyricShow && lyricType.indexOf('original') != -1" class="lyric-area" :class="{ 'no-flash': suppressLyricFlash }" ref="lyricScroll">
                 <div class="lyric-scroll-area" ref="lyricScrollArea"></div>
@@ -1450,14 +1461,6 @@ onUnmounted(() => {
     justify-content: center;
     align-items: center;
     z-index: 1;
-    .lyric-visualizer {
-        position: absolute;
-        pointer-events: none;
-        z-index: 0;
-        opacity: 0.75;
-        mix-blend-mode: multiply;
-        transition: opacity 0.35s cubic-bezier(0.3, 0, 0.12, 1);
-    }
     &.lyric-container--custom {
         background: transparent;
     }

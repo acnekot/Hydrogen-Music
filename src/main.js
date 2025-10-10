@@ -11,12 +11,14 @@ import './assets/css/fonts.css'
 import './assets/css/theme.css'
 import { initTheme } from './utils/theme'
 import { initMediaSession } from './utils/mediaSession'
+import { setupPlugins } from './plugins/index.js'
 const app = createApp(App)
 app.use(router)
 app.use(pinia)
 app.directive('lazy', lazy)
 // Initialize theme before app renders
 initTheme()
+setupPlugins(app)
 app.mount('#app')
 init()
 // Initialize System Media Transport Controls (Windows SMTC / macOS Now Playing)
