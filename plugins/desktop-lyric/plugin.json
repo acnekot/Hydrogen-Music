@@ -1,0 +1,8 @@
+{
+  "id": "desktop-lyric",
+  "name": "桌面歌词",
+  "version": "1.0.0",
+  "author": "Hydrogen Music",
+  "description": "提供可拖动、锁定并支持多歌词来源的桌面歌词窗口",
+  "entry": "index.js"
+}

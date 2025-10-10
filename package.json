@@ -9,20 +9,16 @@
     "email": "acnekot@gmail.com"
   },
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "tauri dev",
+    "build": "tauri build",
     "preview": "vite preview",
     "kugou:mock": "node mock/kugouApiServer.js",
-    "start": "nodemon --exec electron . --watch ./ --ext .html",
-    "_dist": "如果想要发布到github中去：vite build && electron-builder -p always",
-    "dist": "vite build && node scripts/build.js"
+    "web:dev": "vite"
   },
   "dependencies": {
     "@neteaseapireborn/api": "^4.28.25",
     "axios": "^1.2.0",
-    "electron-store": "^8.1.0",
-    "electron-updater": "^5.3.0",
-    "electron-win-state": "^1.1.22",
+    "@tauri-apps/api": "^1.5.3",
     "fs-extra": "^11.1.0",
     "howler": "^2.2.3",
     "js-cookie": "^3.0.1",
@@ -41,10 +37,8 @@
     "vue-virtual-scroller": "^2.0.0-beta.8"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^1.5.8",
     "@vitejs/plugin-vue": "^3.2.0",
-    "electron": "^21.2.0",
-    "electron-builder": "^23.6.0",
-    "nodemon": "^2.0.20",
     "sass": "^1.56.1",
     "vite": "^3.2.0"
   },
@@ -57,7 +51,6 @@
     },
     "files": [
       "background.js",
-      "desktop-lyric.html",
       "index.html",
       "dist/**/*",
       "src/assets/icon/**/*",

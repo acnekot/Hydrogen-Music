@@ -180,6 +180,14 @@ const routes = [
             next()
         }
     },
+    {
+        path: '/settings/plugins',
+        name: 'settings-plugins',
+        component: Settings,
+        beforeEnter: (to, from, next) => {
+            next()
+        }
+    },
 ]
 
 const router = createRouter({

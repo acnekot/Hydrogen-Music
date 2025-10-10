@@ -11,7 +11,6 @@ import { usePlayerStore } from '../store/playerStore';
 import { useLocalStore } from '../store/localStore';
 import { useOtherStore } from '../store/otherStore';
 import { storeToRefs } from 'pinia';
-import { toggleDesktopLyric } from '../utils/desktopLyric';
 
 // 定义 props 和 emit
 const props = defineProps({
@@ -55,7 +54,6 @@ const {
     listInfo,
     lyricsObjArr,
     currentLyricIndex, // 添加当前歌词索引
-    isDesktopLyricOpen,
     coverBlur,
 } = storeToRefs(playerStore);
 
@@ -695,21 +693,6 @@ const toggleDjSub = async (isSubscribe) => {
                         d="M853.333333 85.333333a85.333333 85.333333 0 0 1 85.333334 85.333334v469.333333a85.333333 85.333333 0 0 1-85.333334 85.333333H298.666667L128 896V170.666667a85.333333 85.333333 0 0 1 85.333333-85.333334h640z m0 85.333334H213.333333v530.773333L285.44 640H853.333333V170.666667z m-512 128v85.333333H256v-85.333333h85.333333z m341.333334 0v85.333333H384v-85.333333h298.666667z m-341.333334 170.666666v85.333334H256v-85.333334h85.333333z m256 0v85.333334H384v-85.333334h213.333333z"
                     ></path>
                 </svg>
-                <!-- 桌面歌词控制按钮 -->
-                <svg
-                    @click="toggleDesktopLyric"
-                    :class="{ active: isDesktopLyricOpen }"
-                    class="icon desktop-lyric-btn"
-                    viewBox="0 0 1024 1024"
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="200"
-                    height="200"
-                >
-                    <path
-                        d="M896 128H128c-70.4 0-128 57.6-128 128v512c0 70.4 57.6 128 128 128h768c70.4 0 128-57.6 128-128V256c0-70.4-57.6-128-128-128zM128 192h768c35.2 0 64 28.8 64 64v85.333333H64V256c0-35.2 28.8-64 64-64z m768 640H128c-35.2 0-64-28.8-64-64V405.333333h896V768c0 35.2-28.8 64-64 64z"
-                    ></path>
-                    <path d="M256 576h512v64H256z m0 128h384v64H256z"></path>
-                </svg>
             </div>
         </div>
 
@@ -1152,30 +1135,5 @@ const toggleDjSub = async (isSubscribe) => {
         }
     }
 
-    .desktop-lyric-btn {
-        opacity: 0.5;
-        transition: all 0.2s ease;
-
-        path {
-            fill: #8a8a8a;
-        }
-
-        &.active {
-            opacity: 1;
-
-            path {
-                fill: #000000;
-            }
-        }
-
-        &:hover {
-            opacity: 0.8;
-            transform: scale(1.05);
-        }
-
-        &:active {
-            transform: scale(0.95);
-        }
-    }
 }
 </style>
