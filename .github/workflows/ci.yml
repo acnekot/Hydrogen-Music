@@ -95,12 +95,17 @@ jobs:
             mv "$f" "release/${base}-${{ steps.genver.outputs.version }}.zip"
           done
 
-      # 📦 上传带日期文件
-      - name: Upload build artifacts
+      # 📦 分开上传安装版与绿色版
+      - name: Upload installer (EXE)
         uses: actions/upload-artifact@v4
         with:
-          name: HydrogenMusic-Windows-${{ steps.genver.outputs.version }}
-          path: |
-            release/**/*.exe
-            release/**/*.zip
+          name: HydrogenMusic-Installer-${{ steps.genver.outputs.version }}
+          path: release/**/*.exe
+          if-no-files-found: ignore
+
+      - name: Upload portable (ZIP)
+        uses: actions/upload-artifact@v4
+        with:
+          name: HydrogenMusic-Portable-${{ steps.genver.outputs.version }}
+          path: release/**/*.zip
           if-no-files-found: ignore
