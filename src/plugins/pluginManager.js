@@ -44,6 +44,19 @@ const buildStores = (pinia) => ({
     cloud: useCloudStore(pinia),
 })
 
+const ensureBaseStores = () => {
+    if (!baseContext || !baseContext.pinia) return null
+    if (!baseContext.stores || !baseContext.stores.player) {
+        try {
+            baseContext.stores = buildStores(baseContext.pinia)
+        } catch (error) {
+            console.error('[Plugin] 初始化 Pinia store 失败:', error)
+            baseContext.stores = null
+        }
+    }
+    return baseContext.stores || null
+}
+
 const createPluginUtilities = () => ({
     notice: (message, duration = 2) => {
         try {
@@ -114,11 +127,13 @@ const createPluginContext = (metadata) => {
         },
     }
 
+    const stores = ensureBaseStores()
+
     const context = {
         app: baseContext.app,
         router: baseContext.router,
         pinia: baseContext.pinia,
-        stores: baseContext.stores,
+        stores,
         metadata: {
             id: metadata.id,
             name: metadata.name,
@@ -212,6 +227,8 @@ export async function initPluginSystem({ app, router, pinia }) {
         pinia,
         stores: buildStores(pinia),
     }
+
+    ensureBaseStores()
 
     await reloadPluginSystem()
 }

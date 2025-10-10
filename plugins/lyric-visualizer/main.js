@@ -243,10 +243,50 @@ const ensureStyleSheet = () => {
     display: flex;
     justify-content: flex-end;
 }
+.${SETTINGS_ROOT_CLASS} .lv-empty {
+    padding: 32px;
+    text-align: center;
+    font-size: 14px;
+    color: rgba(12, 20, 34, 0.62);
+    border: 1px dashed rgba(86, 122, 184, 0.35);
+    background: rgba(255, 255, 255, 0.75);
+}
 `
     document.head.appendChild(style)
     return () => {
         if (style.parentNode) style.parentNode.removeChild(style)
+    }
+}
+
+const registerUnavailableSettings = (context, message) => {
+    if (!context?.settings?.register || typeof document === 'undefined') return () => {}
+    const unregister = context.settings.register({
+        id: 'core.lyric-visualizer/settings',
+        title: '歌词音频可视化',
+        subtitle: '插件状态不可用',
+        mount(target) {
+            if (!target) return
+            const root = document.createElement('div')
+            root.className = SETTINGS_ROOT_CLASS
+            const placeholder = document.createElement('div')
+            placeholder.className = 'lv-empty'
+            placeholder.textContent = message || '暂时无法加载插件设置，请稍后重试。'
+            root.appendChild(placeholder)
+            target.appendChild(root)
+            return () => {
+                if (root.parentNode === target) target.removeChild(root)
+            }
+        },
+        unmount(target) {
+            if (target) target.innerHTML = ''
+        },
+    })
+    return () => {
+        try {
+            unregister?.()
+        } catch (error) {
+            console.error('[LyricVisualizerPlugin] 注销占位设置失败', error)
+        }
     }
 }
 
@@ -701,16 +741,53 @@ const buildSettingsUI = (container, store) => {
     }
 }
 
+const resolvePlayerStore = (context) => {
+    if (context?.stores?.player) return context.stores.player
+    const pinia = context?.pinia || context?.app?.config?.globalProperties?.$pinia || null
+    const registry = pinia && pinia._s
+    if (registry) {
+        try {
+            if (typeof registry.get === 'function') {
+                const store = registry.get('playerStore')
+                if (store) return store
+            }
+            if (registry instanceof Map && registry.has('playerStore')) {
+                return registry.get('playerStore')
+            }
+            if (registry.playerStore) return registry.playerStore
+        } catch (error) {
+            console.warn('[LyricVisualizerPlugin] 通过 Pinia 获取播放器状态失败', error)
+        }
+    }
+    return null
+}
+
 module.exports = function activate(context) {
-    const playerStore = context?.stores?.player
+    const removeStyle = ensureStyleSheet()
+    const playerStore = resolvePlayerStore(context)
     if (!playerStore) {
-        console.warn('[LyricVisualizerPlugin] 未找到 playerStore，插件未启用')
+        console.warn('[LyricVisualizerPlugin] 未找到播放器状态，插件未启用')
+        const unregisterPlaceholder = registerUnavailableSettings(
+            context,
+            '播放器状态尚未就绪，暂时无法展示歌词可视化设置。'
+        )
+        context?.onCleanup?.(() => {
+            try {
+                unregisterPlaceholder?.()
+            } catch (error) {
+                console.error('[LyricVisualizerPlugin] 清理占位设置失败', error)
+            }
+            try {
+                removeStyle?.()
+            } catch (error) {
+                console.error('[LyricVisualizerPlugin] 移除样式失败', error)
+            }
+        })
         return
     }
 
     applySanitizedState(playerStore)
 
-    const removeStyle = ensureStyleSheet()
     let uiInstance = null
 
     if (!playerStore[AUTO_ENABLE_FLAG_KEY]) {
