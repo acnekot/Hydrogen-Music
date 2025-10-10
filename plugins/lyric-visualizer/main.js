@@ -722,31 +722,7 @@ const buildSettingsUI = (container, store) => {
     }
 }
 
-module.exports = function activate(context) {
-    const removeStyle = ensureStyleSheet()
-    const playerStore = resolvePlayerStore(context)
-
-    if (!playerStore) {
-        console.warn('[LyricVisualizerPlugin] 未找到播放器状态，无法启用插件')
-        const unregisterPlaceholder = registerPlaceholderSettings(
-            context,
-            '播放器状态尚未就绪，暂时无法展示歌词可视化设置。'
-        )
-        context?.onCleanup?.(() => {
-            try {
-                unregisterPlaceholder?.()
-            } catch (error) {
-                console.error('[LyricVisualizerPlugin] 清理占位设置失败', error)
-            }
-            try {
-                removeStyle?.()
-            } catch (error) {
-                console.error('[LyricVisualizerPlugin] 移除样式失败', error)
-            }
-        })
-        return
-    }
-
+const setupPluginWithStore = (context, playerStore) => {
     applySanitizedState(playerStore)
 
     if (!playerStore[AUTO_ENABLE_FLAG_KEY]) {
@@ -805,7 +781,7 @@ module.exports = function activate(context) {
         },
     })
 
-    context.onCleanup(() => {
+    return () => {
         try {
             unregisterSettings?.()
         } catch (error) {
@@ -827,14 +803,102 @@ module.exports = function activate(context) {
         }
         uiInstance = null
 
+        assignIfChanged(playerStore, 'lyricVisualizer', false)
+        assignIfChanged(playerStore, 'lyricVisualizerPluginActive', false)
+        assignIfChanged(playerStore, 'lyricVisualizerToggleAvailable', false)
+    }
+}
+
+module.exports = function activate(context) {
+    const removeStyle = ensureStyleSheet()
+
+    let disposed = false
+    let runtimeCleanup = null
+    let placeholderCleanup = null
+    let retryHandle = null
+
+    const cleanupPlaceholder = () => {
+        if (!placeholderCleanup) return
+        try {
+            placeholderCleanup()
+        } catch (error) {
+            console.error('[LyricVisualizerPlugin] 清理占位设置失败', error)
+        }
+        placeholderCleanup = null
+    }
+
+    const cleanupRuntime = () => {
+        if (typeof runtimeCleanup === 'function') {
+            try {
+                runtimeCleanup()
+            } catch (error) {
+                console.error('[LyricVisualizerPlugin] 停止运行时失败', error)
+            }
+        }
+        runtimeCleanup = null
+    }
+
+    const stopRetry = () => {
+        if (retryHandle !== null) {
+            clearTimeout(retryHandle)
+            retryHandle = null
+        }
+    }
+
+    const activateWithStore = (store) => {
+        if (!store || disposed) return
+        cleanupPlaceholder()
+        cleanupRuntime()
+        try {
+            runtimeCleanup = setupPluginWithStore(context, store)
+        } catch (error) {
+            console.error('[LyricVisualizerPlugin] 初始化运行时失败', error)
+            runtimeCleanup = null
+            if (!placeholderCleanup) {
+                placeholderCleanup = registerPlaceholderSettings(
+                    context,
+                    '插件正在重新尝试初始化，请稍候…'
+                )
+            }
+            stopRetry()
+            retryHandle = setTimeout(attemptResolveStore, 1000)
+        }
+    }
+
+    const attemptResolveStore = () => {
+        if (disposed) return
+        const store = resolvePlayerStore(context)
+        if (store) {
+            stopRetry()
+            activateWithStore(store)
+        } else {
+            stopRetry()
+            retryHandle = setTimeout(attemptResolveStore, 500)
+        }
+    }
+
+    const initialStore = resolvePlayerStore(context)
+    if (initialStore) {
+        activateWithStore(initialStore)
+    } else {
+        console.warn('[LyricVisualizerPlugin] 未找到播放器状态，使用占位设置等待初始化')
+        placeholderCleanup = registerPlaceholderSettings(
+            context,
+            '播放器状态尚未就绪，暂时无法展示歌词可视化设置。'
+        )
+        attemptResolveStore()
+    }
+
+    context.onCleanup(() => {
+        disposed = true
+        stopRetry()
+        cleanupRuntime()
+        cleanupPlaceholder()
+
         try {
             removeStyle?.()
         } catch (error) {
             console.error('[LyricVisualizerPlugin] 移除样式失败', error)
         }
-
-        assignIfChanged(playerStore, 'lyricVisualizer', false)
-        assignIfChanged(playerStore, 'lyricVisualizerPluginActive', false)
-        assignIfChanged(playerStore, 'lyricVisualizerToggleAvailable', false)
     })
 }
