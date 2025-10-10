@@ -11,10 +11,27 @@ import './assets/css/fonts.css'
 import './assets/css/theme.css'
 import { initTheme } from './utils/theme'
 import { initMediaSession } from './utils/mediaSession'
+import { createPluginManager } from './plugins/core/pluginManager'
+import { PLUGIN_MANAGER_KEY } from './plugins/core/injectionKeys'
+import { getBuiltinPlugins } from './plugins'
+
 const app = createApp(App)
 app.use(router)
 app.use(pinia)
 app.directive('lazy', lazy)
+
+const pluginManager = createPluginManager({
+  app,
+  router,
+  pinia,
+  electronAPI: typeof window !== 'undefined' ? window.electronAPI : undefined
+})
+
+pluginManager.registerPlugins(getBuiltinPlugins())
+
+app.provide(PLUGIN_MANAGER_KEY, pluginManager)
+app.config.globalProperties.$plugins = pluginManager
+
 // Initialize theme before app renders
 initTheme()
 app.mount('#app')
