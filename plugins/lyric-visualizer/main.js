@@ -26,9 +26,17 @@ const clampNumber = (value, min, max, fallback) => {
     return numeric
 }
 
-const sanitizeHeight = (value) => clampNumber(Math.round(Number(value) || DEFAULTS.height), 120, 480, DEFAULTS.height)
-const sanitizeBarCount = (value) => clampNumber(Math.round(Number(value) || DEFAULTS.barCount), 8, 96, DEFAULTS.barCount)
-const sanitizeBarWidth = (value) => clampNumber(Math.round(Number(value) || DEFAULTS.barWidth), 10, 100, DEFAULTS.barWidth)
+const sanitizeHeight = (value) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) return DEFAULTS.height
+    return Math.max(1, Math.round(numeric))
+}
+const sanitizeBarCount = (value) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) return DEFAULTS.barCount
+    return Math.max(1, Math.round(numeric))
+}
+const sanitizeBarWidth = (value) => clampNumber(Math.round(Number(value) || DEFAULTS.barWidth), 1, 100, DEFAULTS.barWidth)
 const sanitizeOpacity = (value) => clampNumber(Math.round(Number(value) || DEFAULTS.opacity), 0, 100, DEFAULTS.opacity)
 const sanitizeTransitionDelay = (value) => {
     const numeric = Number(value)
@@ -38,9 +46,9 @@ const sanitizeTransitionDelay = (value) => {
 }
 const sanitizeVisualizerStyle = (value) => (value === 'radial' ? 'radial' : DEFAULTS.style)
 const sanitizeColor = (value) => (value === 'white' ? 'white' : 'black')
-const sanitizeRadialSize = (value) => clampNumber(Math.round(Number(value) || DEFAULTS.radialSize), 40, 200, DEFAULTS.radialSize)
+const sanitizeRadialSize = (value) => clampNumber(Math.round(Number(value) || DEFAULTS.radialSize), 10, 400, DEFAULTS.radialSize)
 const sanitizeRadialOffset = (value) => clampNumber(Math.round(Number(value) || 0), -100, 100, 0)
-const sanitizeRadialCoreSize = (value) => clampNumber(Math.round(Number(value) || DEFAULTS.radialCoreSize), 20, 95, DEFAULTS.radialCoreSize)
+const sanitizeRadialCoreSize = (value) => clampNumber(Math.round(Number(value) || DEFAULTS.radialCoreSize), 10, 95, DEFAULTS.radialCoreSize)
 const sanitizeFrequencyRange = (minValue, maxValue) => {
     let min = clampNumber(Math.round(Number(minValue) || DEFAULTS.frequencyMin), 20, 20000, DEFAULTS.frequencyMin)
     let max = clampNumber(Math.round(Number(maxValue) || DEFAULTS.frequencyMax), 20, 20000, DEFAULTS.frequencyMax)
@@ -484,7 +492,7 @@ const buildSettingsUI = (container, store) => {
             '高度',
             {
                 min: 120,
-                max: 480,
+                max: 600,
                 step: 10,
                 format: (value) => `${value}px`,
             },
@@ -497,8 +505,8 @@ const buildSettingsUI = (container, store) => {
         createRangeField(
             '柱体数量',
             {
-                min: 8,
-                max: 96,
+                min: 16,
+                max: 160,
                 step: 1,
                 format: (value) => `${value} 个`,
             },
@@ -511,7 +519,7 @@ const buildSettingsUI = (container, store) => {
         createRangeField(
             '柱体宽度',
             {
-                min: 10,
+                min: 1,
                 max: 100,
                 step: 1,
                 format: (value) => `${value}%`,
@@ -602,7 +610,7 @@ const buildSettingsUI = (container, store) => {
             '整体尺寸',
             {
                 min: 40,
-                max: 200,
+                max: 320,
                 step: 1,
                 format: (value) => `${value}%`,
             },
@@ -615,7 +623,7 @@ const buildSettingsUI = (container, store) => {
         createRangeField(
             '中心比例',
             {
-                min: 20,
+                min: 10,
                 max: 95,
                 step: 1,
                 format: (value) => `${value}%`,
