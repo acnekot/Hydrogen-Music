@@ -163,6 +163,27 @@ function openKugouLogin() {
 function clearKugouSession() {
     return ipcRenderer.invoke('clear-kugou-session')
 }
+function choosePluginSource() {
+    return ipcRenderer.invoke('plugin:choose-source')
+}
+function importPlugin(sourcePath) {
+    return ipcRenderer.invoke('plugin:import', sourcePath)
+}
+function listPlugins() {
+    return ipcRenderer.invoke('plugin:list')
+}
+function setPluginEnabled(pluginId, enabled) {
+    return ipcRenderer.invoke('plugin:set-enabled', pluginId, enabled)
+}
+function deletePlugin(pluginId) {
+    return ipcRenderer.invoke('plugin:delete', pluginId)
+}
+function getEnabledPlugins() {
+    return ipcRenderer.invoke('plugin:get-enabled')
+}
+function readPluginFile(pluginId, relativePath, encoding) {
+    return ipcRenderer.invoke('plugin:read-file', pluginId, relativePath, encoding)
+}
 contextBridge.exposeInMainWorld('windowApi', {
     windowMin,
     windowMax,
@@ -223,6 +244,13 @@ contextBridge.exposeInMainWorld('windowApi', {
     setWindowTile,
     updatePlaylistStatus,
     updateDockMenu,
+    choosePluginSource,
+    importPlugin,
+    listPlugins,
+    setPluginEnabled,
+    deletePlugin,
+    getEnabledPlugins,
+    readPluginFile,
 })
 
 // 新的API用于处理登录功能和桌面歌词

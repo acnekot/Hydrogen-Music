@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, onActivated, watch } from 'vue';
+import { computed, ref, onActivated, watch, reactive } from 'vue';
 import { onBeforeRouteLeave, useRouter } from 'vue-router';
 import { logout } from '../api/user';
 import { noticeOpen, dialogOpen } from '../utils/dialog';
@@ -11,6 +11,7 @@ import { usePlayerStore } from '../store/playerStore';
 import Selector from '../components/Selector.vue';
 import UpdateDialog from '../components/UpdateDialog.vue';
 import { setTheme, getSavedTheme } from '../utils/theme';
+import { reloadPluginSystem } from '../plugins/pluginManager';
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -74,6 +75,15 @@ const shortcutCharacter = ['=', '-', '~', '@', '#', '$', '[', ']', ';', "'", ','
 const showUpdateDialog = ref(false);
 const newVersion = ref('');
 
+const plugins = ref([]);
+const pluginLoading = ref(false);
+const pluginImporting = ref(false);
+const pluginProcessing = reactive({});
+const pluginApiAvailable = computed(() => typeof windowApi !== 'undefined' && typeof windowApi.listPlugins === 'function');
+const pluginList = computed(() =>
+    [...plugins.value].sort((a, b) => (b.importTime || 0) - (a.importTime || 0))
+);
+
 if (isLogin()) {
     getVipInfo().then(result => {
         vipInfo.value = result.data;
@@ -104,6 +114,12 @@ onActivated(() => {
     
     // 设置更新事件监听器
     setupUpdateListeners();
+
+    if (pluginApiAvailable.value) {
+        loadPlugins();
+    } else {
+        plugins.value = [];
+    }
 });
 
 // 设置更新监听器
@@ -113,6 +129,141 @@ const setupUpdateListeners = () => {
         newVersion.value = version;
         // 手动检查时直接在UpdateDialog中显示结果，不触发大窗弹出
     });
+};
+
+const setPluginProcessing = (id, state) => {
+    if (!id) return;
+    if (state) {
+        pluginProcessing[id] = true;
+    } else {
+        delete pluginProcessing[id];
+    }
+};
+
+const isPluginBusy = (id) => Boolean(id && pluginProcessing[id]);
+
+const loadPlugins = async (showError = true) => {
+    if (!pluginApiAvailable.value) {
+        plugins.value = [];
+        pluginLoading.value = false;
+        return;
+    }
+    pluginLoading.value = true;
+    try {
+        const result = await windowApi.listPlugins();
+        if (result?.success && Array.isArray(result.plugins)) {
+            plugins.value = result.plugins;
+        } else {
+            plugins.value = [];
+            if (showError) noticeOpen(result?.message || '加载插件列表失败', 2);
+        }
+    } catch (error) {
+        console.error('加载插件列表失败:', error);
+        plugins.value = [];
+        if (showError) noticeOpen('加载插件列表失败', 2);
+    } finally {
+        pluginLoading.value = false;
+    }
+};
+
+const handleRefreshPlugins = async () => {
+    if (!pluginApiAvailable.value) {
+        noticeOpen('当前环境不支持插件管理', 2);
+        return;
+    }
+    await loadPlugins();
+};
+
+const handleImportPlugin = async () => {
+    if (!pluginApiAvailable.value) {
+        noticeOpen('当前环境不支持插件管理', 2);
+        return;
+    }
+    if (typeof windowApi.choosePluginSource !== 'function' || typeof windowApi.importPlugin !== 'function') {
+        noticeOpen('当前环境不支持导入插件', 2);
+        return;
+    }
+    if (pluginImporting.value) return;
+    try {
+        const sourcePath = await windowApi.choosePluginSource?.();
+        if (!sourcePath) return;
+        pluginImporting.value = true;
+        const result = await windowApi.importPlugin(sourcePath);
+        if (!result?.success) {
+            noticeOpen(result?.message || '导入插件失败', 2);
+            await loadPlugins(false);
+            return;
+        }
+        noticeOpen(`已导入插件 ${result.plugin.name}`, 2);
+        await loadPlugins(false);
+        await reloadPluginSystem();
+    } catch (error) {
+        console.error('导入插件失败:', error);
+        noticeOpen('导入插件失败', 2);
+    } finally {
+        pluginImporting.value = false;
+    }
+};
+
+const togglePluginState = async (plugin) => {
+    if (!pluginApiAvailable.value || !plugin?.id) return;
+    if (isPluginBusy(plugin.id)) return;
+    setPluginProcessing(plugin.id, true);
+    try {
+        if (typeof windowApi.setPluginEnabled !== 'function') {
+            noticeOpen('当前环境不支持更新插件状态', 2);
+            return;
+        }
+        const result = await windowApi.setPluginEnabled(plugin.id, !plugin.enabled);
+        if (!result?.success) {
+            noticeOpen(result?.message || '更新插件状态失败', 2);
+            return;
+        }
+        noticeOpen(`${!plugin.enabled ? '已启用' : '已禁用'}插件 ${plugin.name}`, 2);
+        await loadPlugins(false);
+        await reloadPluginSystem();
+    } catch (error) {
+        console.error('更新插件状态失败:', error);
+        noticeOpen('更新插件状态失败', 2);
+    } finally {
+        setPluginProcessing(plugin.id, false);
+    }
+};
+
+const requestDeletePlugin = (plugin) => {
+    if (!pluginApiAvailable.value || !plugin?.id) return;
+    dialogOpen('删除插件', `确定删除插件“${plugin.name}”吗？`, async (confirm) => {
+        if (!confirm) return;
+        setPluginProcessing(plugin.id, true);
+        try {
+            if (typeof windowApi.deletePlugin !== 'function') {
+                noticeOpen('当前环境不支持删除插件', 2);
+                return;
+            }
+            const result = await windowApi.deletePlugin(plugin.id);
+            if (!result?.success) {
+                noticeOpen(result?.message || '删除插件失败', 2);
+                return;
+            }
+            noticeOpen(`已删除插件 ${plugin.name}`, 2);
+            await loadPlugins(false);
+            await reloadPluginSystem();
+        } catch (error) {
+            console.error('删除插件失败:', error);
+            noticeOpen('删除插件失败', 2);
+        } finally {
+            setPluginProcessing(plugin.id, false);
+        }
+    });
+};
+
+const formatPluginTimestamp = (timestamp) => {
+    if (!timestamp) return '';
+    try {
+        return new Date(timestamp).toLocaleString();
+    } catch (_) {
+        return '';
+    }
 };
 
 const setAppSettings = () => {
@@ -1759,6 +1910,77 @@ const clearFmRecent = () => {
                     </div>
                 </div>
                 <div class="settings-item">
+                    <h2 class="item-title">插件</h2>
+                    <div class="line"></div>
+                    <div class="item-options item-options--plugins">
+                        <div class="plugin-toolbar">
+                            <div class="plugin-toolbar-left">
+                                <div
+                                    class="plugin-button"
+                                    :class="{ 'plugin-button--loading': pluginImporting, 'plugin-button--disabled': !pluginApiAvailable }"
+                                    @click="handleImportPlugin"
+                                >
+                                    {{ pluginImporting ? '导入中…' : '导入插件' }}
+                                </div>
+                                <div
+                                    class="plugin-button plugin-button--outline"
+                                    :class="{ 'plugin-button--disabled': pluginLoading || !pluginApiAvailable }"
+                                    @click="handleRefreshPlugins"
+                                >
+                                    刷新列表
+                                </div>
+                            </div>
+                            <div class="plugin-toolbar-right" v-if="pluginLoading">
+                                正在加载插件…
+                            </div>
+                        </div>
+                        <div class="plugin-empty" v-if="!pluginApiAvailable">
+                            当前运行环境不支持插件管理。
+                        </div>
+                        <div class="plugin-empty" v-else-if="!pluginLoading && pluginList.length === 0">
+                            暂无已导入的插件。
+                        </div>
+                        <div class="plugin-list" v-else>
+                            <div class="plugin-card" v-for="plugin in pluginList" :key="plugin.id">
+                                <div class="plugin-card-header">
+                                    <div class="plugin-card-title" :title="plugin.name">{{ plugin.name }}</div>
+                                    <div class="plugin-card-version" v-if="plugin.version">v{{ plugin.version }}</div>
+                                </div>
+                                <div class="plugin-card-meta">
+                                    <span class="plugin-card-author" v-if="plugin.author" :title="plugin.author">
+                                        {{ plugin.author }}
+                                    </span>
+                                    <span class="plugin-card-id" :title="plugin.id">{{ plugin.id }}</span>
+                                </div>
+                                <div class="plugin-card-description" :title="plugin.description">
+                                    {{ plugin.description || '开发者尚未提供描述。' }}
+                                </div>
+                                <div class="plugin-card-footer">
+                                    <div class="plugin-card-time" v-if="plugin.importTime">
+                                        导入时间：{{ formatPluginTimestamp(plugin.importTime) }}
+                                    </div>
+                                    <div class="plugin-card-actions">
+                                        <div
+                                            class="plugin-button plugin-button--outline"
+                                            :class="{ 'plugin-button--disabled': !pluginApiAvailable || isPluginBusy(plugin.id) }"
+                                            @click="togglePluginState(plugin)"
+                                        >
+                                            {{ plugin.enabled ? '禁用' : '启用' }}
+                                        </div>
+                                        <div
+                                            class="plugin-button plugin-button--danger"
+                                            :class="{ 'plugin-button--disabled': !pluginApiAvailable || isPluginBusy(plugin.id) }"
+                                            @click="requestDeletePlugin(plugin)"
+                                        >
+                                            删除
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-item">
                     <h2 class="item-title">快捷键</h2>
                     <div class="line"></div>
                     <div class="item-options" tabindex="0" @keydown="inputShortcut($event)">
@@ -2015,6 +2237,130 @@ const clearFmRecent = () => {
                 }
                 .item-options {
                     outline: none;
+                    &.item-options--plugins {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 16px;
+                        .plugin-toolbar {
+                            display: flex;
+                            flex-wrap: wrap;
+                            align-items: center;
+                            justify-content: space-between;
+                            gap: 12px;
+                            .plugin-toolbar-left {
+                                display: flex;
+                                flex-wrap: wrap;
+                                gap: 12px;
+                            }
+                            .plugin-toolbar-right {
+                                font: 13px SourceHanSansCN-Bold;
+                                color: rgba(0, 0, 0, 0.65);
+                            }
+                        }
+                        .plugin-empty {
+                            padding: 18px;
+                            font: 14px SourceHanSansCN-Regular;
+                            color: rgba(0, 0, 0, 0.65);
+                            background-color: rgba(255, 255, 255, 0.3);
+                            border-radius: 10px;
+                        }
+                        .plugin-list {
+                            display: grid;
+                            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+                            gap: 16px;
+                        }
+                        .plugin-card {
+                            display: flex;
+                            flex-direction: column;
+                            gap: 12px;
+                            padding: 16px;
+                            background-color: rgba(255, 255, 255, 0.35);
+                            border-radius: 12px;
+                            transition: 0.2s;
+                            &:hover {
+                                box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+                            }
+                            .plugin-card-header {
+                                display: flex;
+                                align-items: baseline;
+                                justify-content: space-between;
+                                gap: 8px;
+                                .plugin-card-title {
+                                    font: 16px SourceHanSansCN-Bold;
+                                    color: black;
+                                    overflow: hidden;
+                                    text-overflow: ellipsis;
+                                    white-space: nowrap;
+                                }
+                                .plugin-card-version {
+                                    font: 12px SourceHanSansCN-Bold;
+                                    color: rgba(0, 0, 0, 0.65);
+                                }
+                            }
+                            .plugin-card-meta {
+                                display: flex;
+                                gap: 10px;
+                                font: 12px SourceHanSansCN-Regular;
+                                color: rgba(0, 0, 0, 0.65);
+                                .plugin-card-author,
+                                .plugin-card-id {
+                                    max-width: 100%;
+                                    overflow: hidden;
+                                    text-overflow: ellipsis;
+                                    white-space: nowrap;
+                                }
+                            }
+                            .plugin-card-description {
+                                min-height: 44px;
+                                font: 13px SourceHanSansCN-Regular;
+                                color: rgba(0, 0, 0, 0.75);
+                                line-height: 1.5;
+                                word-break: break-word;
+                            }
+                            .plugin-card-footer {
+                                display: flex;
+                                flex-direction: column;
+                                gap: 10px;
+                                .plugin-card-time {
+                                    font: 12px SourceHanSansCN-Regular;
+                                    color: rgba(0, 0, 0, 0.55);
+                                }
+                                .plugin-card-actions {
+                                    display: flex;
+                                    flex-wrap: wrap;
+                                    gap: 10px;
+                                }
+                            }
+                        }
+                        .plugin-button {
+                            min-width: 120px;
+                            padding: 6px 16px;
+                            border-radius: 8px;
+                            font: 13px SourceHanSansCN-Bold;
+                            color: black;
+                            background-color: rgba(255, 255, 255, 0.5);
+                            text-align: center;
+                            transition: 0.2s;
+                            user-select: none;
+                            &:hover {
+                                cursor: pointer;
+                                opacity: 0.85;
+                            }
+                        }
+                        .plugin-button--outline {
+                            background-color: transparent;
+                            border: 1px solid rgba(0, 0, 0, 0.12);
+                        }
+                        .plugin-button--danger {
+                            background-color: rgba(220, 53, 69, 0.85);
+                            color: white;
+                        }
+                        .plugin-button--disabled,
+                        .plugin-button--loading {
+                            opacity: 0.6;
+                            pointer-events: none;
+                        }
+                    }
                     .option {
                         margin-bottom: 32px;
                         display: flex;
