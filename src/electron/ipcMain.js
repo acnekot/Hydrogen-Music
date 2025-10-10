@@ -14,12 +14,65 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     const settingsStore = new Store({ name: 'settings' })
     const lastPlaylistStore = new Store({ name: 'lastPlaylist' })
     const musicVideoStore = new Store({ name: 'musicVideo' })
-    const pluginStore = new Store({ name: 'plugins', defaults: { list: [] } })
+
+    const computeDefaultPluginDirectory = () => {
+        try {
+            if (app?.isPackaged) {
+                const exeDir = path.dirname(app.getPath('exe'))
+                if (exeDir) return path.join(exeDir, 'plugins')
+            }
+            const appPath = app?.getAppPath?.()
+            if (appPath) return path.join(appPath, 'plugins')
+        } catch (error) {
+            console.warn('Failed to resolve default plugin directory, falling back to userData path', error)
+        }
+        return path.join(app.getPath('userData'), 'plugins')
+    }
+
+    const defaultPluginDirectory = computeDefaultPluginDirectory()
+    const legacyPluginDirectory = path.join(app.getPath('userData'), 'plugins')
+
+    const normalizeDirectory = (dirPath) => {
+        if (!dirPath || typeof dirPath !== 'string') return null
+        const trimmed = dirPath.trim()
+        if (!trimmed) return null
+        try {
+            return path.normalize(path.resolve(trimmed))
+        } catch (error) {
+            console.warn('Failed to normalize plugin directory path', dirPath, error)
+            return null
+        }
+    }
+
+    const pluginStore = new Store({
+        name: 'plugins',
+        defaults: { list: [], directory: defaultPluginDirectory },
+    })
+
+    const getPluginDirectory = () => {
+        const stored = pluginStore.get('directory')
+        const normalizedStored = normalizeDirectory(stored)
+        if (normalizedStored) {
+            pluginStore.set('directory', normalizedStored)
+            return normalizedStored
+        }
+        pluginStore.set('directory', defaultPluginDirectory)
+        return defaultPluginDirectory
+    }
 
     const ensurePluginDirectory = () => {
-        const pluginRoot = path.join(app.getPath('userData'), 'plugins')
+        const pluginRoot = getPluginDirectory()
         fsExtra.ensureDirSync(pluginRoot)
         return pluginRoot
+    }
+
+    const isSamePath = (a, b) => {
+        try {
+            if (!a || !b) return false
+            return path.normalize(path.resolve(a)) === path.normalize(path.resolve(b))
+        } catch (_) {
+            return false
+        }
     }
 
     const getStoredPlugins = () => {
@@ -232,11 +285,31 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         }
     })
     ipcMain.handle('plugin:choose-source', async () => {
-        const { canceled, filePaths } = await dialog.showOpenDialog({ properties: ['openDirectory'] })
+        const defaultPath = ensurePluginDirectory()
+        const { canceled, filePaths } = await dialog.showOpenDialog({
+            properties: ['openDirectory', 'createDirectory'],
+            defaultPath: fs.existsSync(defaultPath) ? defaultPath : undefined,
+        })
         if (canceled || !filePaths || filePaths.length === 0) {
             return null
         }
-        return filePaths[0]
+        return path.normalize(filePaths[0])
+    })
+    ipcMain.handle('plugin:choose-directory', async (_event, currentPath) => {
+        try {
+            const normalizedCurrent = normalizeDirectory(currentPath) || ensurePluginDirectory()
+            const { canceled, filePaths } = await dialog.showOpenDialog({
+                properties: ['openDirectory', 'createDirectory'],
+                defaultPath: fs.existsSync(normalizedCurrent) ? normalizedCurrent : undefined,
+            })
+            if (canceled || !filePaths || filePaths.length === 0) {
+                return null
+            }
+            return path.normalize(filePaths[0])
+        } catch (error) {
+            console.error('选择插件目录失败:', error)
+            return null
+        }
     })
     ipcMain.handle('dialog:openImageFile', async () => {
         const { canceled, filePaths } = await dialog.showOpenDialog({
@@ -1091,6 +1164,76 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         // 可以在这里添加取消更新的逻辑，例如停止下载等
         win.setProgressBar(-1); // 隐藏进度条
     });
+
+    ipcMain.handle('plugin:get-directory', async () => {
+        try {
+            const directory = ensurePluginDirectory()
+            const normalizedLegacy = normalizeDirectory(legacyPluginDirectory)
+            const legacyExists =
+                normalizedLegacy && !isSamePath(directory, normalizedLegacy) && fs.existsSync(normalizedLegacy)
+            return {
+                success: true,
+                directory,
+                defaultDirectory: defaultPluginDirectory,
+                legacyDirectory: legacyExists ? normalizedLegacy : null,
+            }
+        } catch (error) {
+            console.error('获取插件目录失败:', error)
+            return { success: false, message: error.message || '获取插件目录失败' }
+        }
+    })
+
+    ipcMain.handle('plugin:set-directory', async (_event, targetPath, moveExisting = false) => {
+        try {
+            const normalizedTarget = normalizeDirectory(targetPath)
+            if (!normalizedTarget) throw new Error('无效的插件目录')
+
+            const previousDir = ensurePluginDirectory()
+            if (isSamePath(previousDir, normalizedTarget)) {
+                return {
+                    success: true,
+                    directory: previousDir,
+                    defaultDirectory: defaultPluginDirectory,
+                    moved: false,
+                }
+            }
+
+            if (normalizedTarget.startsWith(previousDir + path.sep)) {
+                throw new Error('新的插件目录不能位于旧目录内部')
+            }
+            if (previousDir.startsWith(normalizedTarget + path.sep)) {
+                throw new Error('新的插件目录不能包含旧目录')
+            }
+
+            await fsExtra.ensureDir(normalizedTarget)
+
+            let moved = false
+            if (moveExisting && fs.existsSync(previousDir)) {
+                const entries = await fs.promises.readdir(previousDir)
+                if (entries.length > 0) {
+                    await fsExtra.copy(previousDir, normalizedTarget, { overwrite: true, errorOnExist: false })
+                    await fsExtra.remove(previousDir)
+                    moved = true
+                }
+            }
+
+            pluginStore.set('directory', normalizedTarget)
+
+            const normalizedLegacy = normalizeDirectory(legacyPluginDirectory)
+            const legacyExists =
+                normalizedLegacy && !isSamePath(normalizedTarget, normalizedLegacy) && fs.existsSync(normalizedLegacy)
+            return {
+                success: true,
+                directory: normalizedTarget,
+                defaultDirectory: defaultPluginDirectory,
+                legacyDirectory: legacyExists ? normalizedLegacy : null,
+                moved,
+            }
+        } catch (error) {
+            console.error('更新插件目录失败:', error)
+            return { success: false, message: error.message || '更新插件目录失败' }
+        }
+    })
 
     ipcMain.handle('plugin:import', async (_event, sourcePath) => {
         try {

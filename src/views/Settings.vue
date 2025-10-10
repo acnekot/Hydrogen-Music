@@ -80,9 +80,21 @@ const pluginLoading = ref(false);
 const pluginImporting = ref(false);
 const pluginProcessing = reactive({});
 const pluginApiAvailable = computed(() => typeof windowApi !== 'undefined' && typeof windowApi.listPlugins === 'function');
+const pluginDirectoryApiAvailable = computed(
+    () =>
+        typeof windowApi !== 'undefined' &&
+        typeof windowApi.getPluginDirectory === 'function' &&
+        typeof windowApi.setPluginDirectory === 'function' &&
+        typeof windowApi.choosePluginDirectory === 'function'
+);
 const pluginList = computed(() =>
     [...plugins.value].sort((a, b) => (b.importTime || 0) - (a.importTime || 0))
 );
+const pluginDirectory = ref('');
+const pluginDirectoryDefault = ref('');
+const pluginLegacyDirectory = ref('');
+const pluginDirectoryLoading = ref(false);
+const pluginDirectoryDisplay = computed(() => pluginDirectory.value || pluginDirectoryDefault.value || '未配置');
 
 if (isLogin()) {
     getVipInfo().then(result => {
@@ -119,6 +131,12 @@ onActivated(() => {
         loadPlugins();
     } else {
         plugins.value = [];
+    }
+    if (pluginDirectoryApiAvailable.value) {
+        loadPluginDirectory();
+    } else {
+        pluginDirectory.value = '';
+        pluginLegacyDirectory.value = '';
     }
 });
 
@@ -163,6 +181,73 @@ const loadPlugins = async (showError = true) => {
         if (showError) noticeOpen('加载插件列表失败', 2);
     } finally {
         pluginLoading.value = false;
+    }
+};
+
+const loadPluginDirectory = async (showError = false) => {
+    if (!pluginDirectoryApiAvailable.value) {
+        pluginDirectory.value = '';
+        pluginDirectoryDefault.value = '';
+        pluginLegacyDirectory.value = '';
+        pluginDirectoryLoading.value = false;
+        return;
+    }
+    pluginDirectoryLoading.value = true;
+    try {
+        const result = await windowApi.getPluginDirectory();
+        if (result?.success) {
+            pluginDirectory.value = result.directory || '';
+            pluginDirectoryDefault.value = result.defaultDirectory || '';
+            pluginLegacyDirectory.value = result.legacyDirectory || '';
+        } else {
+            pluginDirectory.value = '';
+            if (showError) noticeOpen(result?.message || '加载插件目录失败', 2);
+        }
+    } catch (error) {
+        console.error('加载插件目录失败:', error);
+        pluginDirectory.value = '';
+        if (showError) noticeOpen('加载插件目录失败', 2);
+    } finally {
+        pluginDirectoryLoading.value = false;
+    }
+};
+
+const askMoveExistingPlugins = () =>
+    new Promise((resolve) => {
+        dialogOpen('移动插件', '是否将现有插件移动到新的目录？', (confirm) => {
+            resolve(Boolean(confirm));
+        });
+    });
+
+const changePluginDirectory = async () => {
+    if (!pluginDirectoryApiAvailable.value) {
+        noticeOpen('当前环境不支持修改插件目录', 2);
+        return;
+    }
+    if (pluginDirectoryLoading.value) return;
+    try {
+        const current = pluginDirectory.value || pluginDirectoryDefault.value || '';
+        const targetPath = await windowApi.choosePluginDirectory?.(current);
+        if (!targetPath) return;
+
+        const moveExisting = await askMoveExistingPlugins();
+        pluginDirectoryLoading.value = true;
+        const result = await windowApi.setPluginDirectory(targetPath, moveExisting);
+        if (!result?.success) {
+            noticeOpen(result?.message || '更新插件目录失败', 2);
+            return;
+        }
+        pluginDirectory.value = result.directory || targetPath;
+        pluginDirectoryDefault.value = result.defaultDirectory || pluginDirectoryDefault.value;
+        pluginLegacyDirectory.value = result.legacyDirectory || '';
+        await loadPlugins(false);
+        await reloadPluginSystem();
+        noticeOpen(result.moved ? '已移动现有插件并更新插件目录' : '插件目录已更新', 2);
+    } catch (error) {
+        console.error('更新插件目录失败:', error);
+        noticeOpen('更新插件目录失败', 2);
+    } finally {
+        pluginDirectoryLoading.value = false;
     }
 };
 
@@ -1913,6 +1998,28 @@ const clearFmRecent = () => {
                     <h2 class="item-title">插件</h2>
                     <div class="line"></div>
                     <div class="item-options item-options--plugins">
+                        <div class="plugin-directory" v-if="pluginDirectoryApiAvailable">
+                            <div class="plugin-directory-info">
+                                <div class="plugin-directory-label">插件目录</div>
+                                <div class="plugin-directory-path" :title="pluginDirectoryDisplay">
+                                    {{ pluginDirectoryDisplay }}
+                                </div>
+                                <div
+                                    class="plugin-directory-legacy"
+                                    v-if="pluginLegacyDirectory && pluginLegacyDirectory !== pluginDirectory"
+                                    :title="pluginLegacyDirectory"
+                                >
+                                    旧目录：{{ pluginLegacyDirectory }}
+                                </div>
+                            </div>
+                            <div
+                                class="plugin-button plugin-button--outline"
+                                :class="{ 'plugin-button--disabled': pluginDirectoryLoading }"
+                                @click="changePluginDirectory"
+                            >
+                                {{ pluginDirectoryLoading ? '处理中…' : '更改目录' }}
+                            </div>
+                        </div>
                         <div class="plugin-toolbar">
                             <div class="plugin-toolbar-left">
                                 <div
@@ -2241,6 +2348,36 @@ const clearFmRecent = () => {
                         display: flex;
                         flex-direction: column;
                         gap: 16px;
+                        .plugin-directory {
+                            display: flex;
+                            flex-wrap: wrap;
+                            align-items: center;
+                            justify-content: space-between;
+                            gap: 12px;
+                            padding: 16px;
+                            background-color: rgba(255, 255, 255, 0.3);
+                            border-radius: 10px;
+                            .plugin-directory-info {
+                                display: flex;
+                                flex-direction: column;
+                                gap: 6px;
+                                min-width: 0;
+                                .plugin-directory-label {
+                                    font: 14px SourceHanSansCN-Bold;
+                                    color: rgba(0, 0, 0, 0.8);
+                                }
+                                .plugin-directory-path {
+                                    font: 13px SourceHanSansCN-Regular;
+                                    color: rgba(0, 0, 0, 0.85);
+                                    word-break: break-all;
+                                }
+                                .plugin-directory-legacy {
+                                    font: 12px SourceHanSansCN-Regular;
+                                    color: rgba(0, 0, 0, 0.6);
+                                    word-break: break-all;
+                                }
+                            }
+                        }
                         .plugin-toolbar {
                             display: flex;
                             flex-wrap: wrap;

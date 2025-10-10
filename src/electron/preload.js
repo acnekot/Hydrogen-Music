@@ -169,6 +169,15 @@ function choosePluginSource() {
 function importPlugin(sourcePath) {
     return ipcRenderer.invoke('plugin:import', sourcePath)
 }
+function choosePluginDirectory(currentPath) {
+    return ipcRenderer.invoke('plugin:choose-directory', currentPath)
+}
+function getPluginDirectory() {
+    return ipcRenderer.invoke('plugin:get-directory')
+}
+function setPluginDirectory(targetPath, moveExisting) {
+    return ipcRenderer.invoke('plugin:set-directory', targetPath, moveExisting)
+}
 function listPlugins() {
     return ipcRenderer.invoke('plugin:list')
 }
@@ -246,6 +255,9 @@ contextBridge.exposeInMainWorld('windowApi', {
     updateDockMenu,
     choosePluginSource,
     importPlugin,
+    choosePluginDirectory,
+    getPluginDirectory,
+    setPluginDirectory,
     listPlugins,
     setPluginEnabled,
     deletePlugin,
