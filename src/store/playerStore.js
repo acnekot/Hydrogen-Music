@@ -42,6 +42,7 @@ export const usePlayerStore = defineStore('playerStore', {
             lyricBlur: false,
             isDesktopLyricOpen: false, // 桌面歌词是否打开
             lyricVisualizer: false, // 歌词区域音频可视化开关
+            lyricVisualizerPluginActive: false, // 歌词可视化插件是否已就绪
             lyricVisualizerHeight: 220, // 可视化高度（像素）
             lyricVisualizerFrequencyMin: 20, // 频谱最低采样频率（Hz）
             lyricVisualizerFrequencyMax: 8000, // 频谱最高采样频率（Hz）

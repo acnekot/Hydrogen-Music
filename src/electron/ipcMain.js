@@ -145,6 +145,115 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         return path.join(pluginRoot, sanitized)
     }
 
+    const readPluginManifestFromDir = async (pluginDir) => {
+        if (!pluginDir) return null
+        const manifestPath = path.join(pluginDir, 'manifest.json')
+        if (!fs.existsSync(manifestPath)) return null
+        let manifestRaw
+        try {
+            manifestRaw = await fs.promises.readFile(manifestPath, 'utf-8')
+        } catch (error) {
+            console.warn('读取插件 manifest 失败:', manifestPath, error)
+            return null
+        }
+        let manifest
+        try {
+            manifest = JSON.parse(manifestRaw)
+        } catch (error) {
+            console.warn('解析插件 manifest 失败:', manifestPath, error)
+            return null
+        }
+        const sanitizedId = sanitizePluginId(manifest.id)
+        if (!sanitizedId) return null
+        if (!manifest.name || typeof manifest.name !== 'string') return null
+        if (!manifest.version || typeof manifest.version !== 'string') return null
+        if (!manifest.main || typeof manifest.main !== 'string') return null
+        if (path.isAbsolute(manifest.main)) return null
+        const normalizedMain = manifest.main.replace(/\\/g, '/')
+        if (normalizedMain.includes('..')) return null
+        const entryPath = path.join(pluginDir, normalizedMain)
+        if (!fs.existsSync(entryPath)) return null
+        return {
+            id: sanitizedId,
+            name: manifest.name.trim(),
+            version: manifest.version.trim(),
+            description: typeof manifest.description === 'string' ? manifest.description.trim() : '',
+            author: typeof manifest.author === 'string' ? manifest.author.trim() : '',
+            homepage: typeof manifest.homepage === 'string' ? manifest.homepage.trim() : '',
+            entry: normalizedMain,
+            enabledByDefault: manifest.enabledByDefault !== false,
+        }
+    }
+
+    const syncPluginsFromDisk = async () => {
+        const pluginRoot = ensurePluginDirectory()
+        let entries
+        try {
+            entries = await fs.promises.readdir(pluginRoot, { withFileTypes: true })
+        } catch (error) {
+            console.error('读取插件目录失败:', error)
+            return
+        }
+
+        const diskPlugins = new Map()
+        for (const entry of entries) {
+            if (!entry.isDirectory()) continue
+            const pluginDir = path.join(pluginRoot, entry.name)
+            let manifest
+            try {
+                manifest = await readPluginManifestFromDir(pluginDir)
+            } catch (error) {
+                console.warn('扫描插件目录失败:', pluginDir, error)
+                continue
+            }
+            if (!manifest) continue
+            diskPlugins.set(manifest.id, { ...manifest, dir: pluginDir })
+        }
+
+        const stored = getStoredPlugins()
+        const nextList = []
+        let changed = false
+
+        for (const [id, manifest] of diskPlugins.entries()) {
+            const existing = stored.find(item => item.id === id)
+            const record = {
+                id,
+                name: manifest.name,
+                version: manifest.version,
+                description: manifest.description,
+                author: manifest.author,
+                homepage: manifest.homepage,
+                entry: manifest.entry,
+                enabled: existing ? existing.enabled : manifest.enabledByDefault,
+                importTime: existing ? existing.importTime : Date.now(),
+            }
+            if (!existing) {
+                changed = true
+            } else if (
+                existing.name !== record.name ||
+                existing.version !== record.version ||
+                existing.description !== record.description ||
+                existing.author !== record.author ||
+                existing.homepage !== record.homepage ||
+                existing.entry !== record.entry
+            ) {
+                changed = true
+            }
+            nextList.push(record)
+        }
+
+        for (const plugin of stored) {
+            if (!diskPlugins.has(plugin.id)) {
+                changed = true
+            }
+        }
+
+        if (changed) {
+            nextList.sort((a, b) => (b.importTime || 0) - (a.importTime || 0))
+            saveStoredPlugins(nextList)
+        }
+    }
+
     // 全局存储桌面歌词窗口引用
     let globalLyricWindow = null;
     // win.on('restore', () => {
@@ -1236,6 +1345,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
 
             const previousDir = ensurePluginDirectory()
             if (isSamePath(previousDir, normalizedTarget)) {
+                await syncPluginsFromDisk()
                 return {
                     success: true,
                     directory: previousDir,
@@ -1264,6 +1374,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             }
 
             pluginStore.set('directory', normalizedTarget)
+
+            await syncPluginsFromDisk()
 
             const normalizedLegacy = normalizeDirectory(legacyPluginDirectory)
             const legacyExists =
@@ -1373,6 +1485,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
 
     ipcMain.handle('plugin:list', async () => {
         try {
+            await syncPluginsFromDisk()
             return { success: true, plugins: getStoredPlugins() }
         } catch (error) {
             console.error('读取插件列表失败:', error)
@@ -1417,6 +1530,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
 
     ipcMain.handle('plugin:get-enabled', async () => {
         try {
+            await syncPluginsFromDisk()
             const enabledPlugins = getStoredPlugins().filter((item) => item.enabled)
             const payload = []
             for (const plugin of enabledPlugins) {
@@ -1472,6 +1586,20 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         } catch (error) {
             console.error('读取插件文件失败:', error)
             return { success: false, message: error.message || '读取插件文件失败' }
+        }
+    })
+
+    ipcMain.handle('app:reload', async () => {
+        try {
+            setImmediate(() => {
+                if (!win.isDestroyed()) {
+                    win.reload()
+                }
+            })
+            return { success: true }
+        } catch (error) {
+            console.error('重新加载应用失败:', error)
+            return { success: false, message: error.message || '重新加载应用失败' }
         }
     })
 }

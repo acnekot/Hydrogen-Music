@@ -1,8 +1,0 @@
-{
-  "id": "demo.horizontal-desktop-lyrics",
-  "name": "横向桌面歌词示例",
-  "version": "1.0.0",
-  "author": "Hydrogen Music",
-  "description": "展示 VOCALOID 风格的横向桌面歌词面板，根据当前播放信息同步刷新。",
-  "main": "main.js"
-}

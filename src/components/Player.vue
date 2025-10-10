@@ -5,6 +5,7 @@ import { songTime2 } from '../utils/player';
 import VueSlider from 'vue-slider-component';
 import PlayList from './PlayList.vue';
 import { startMusic, pauseMusic, playLast, playNext, changeProgress, changePlayMode, likeSong } from '../utils/player';
+import { noticeOpen } from '../utils/dialog';
 import { getDjDetail, subDj } from '../api/dj';
 import { useUserStore } from '../store/userStore';
 import { usePlayerStore } from '../store/playerStore';
@@ -57,6 +58,8 @@ const {
     currentLyricIndex, // 添加当前歌词索引
     isDesktopLyricOpen,
     coverBlur,
+    lyricVisualizer,
+    lyricVisualizerPluginActive,
 } = storeToRefs(playerStore);
 
 // 检查是否在FM模式
@@ -66,6 +69,17 @@ const isInFMMode = computed(() => {
 
 // 是否为电台(DJ)模式
 const isDjMode = computed(() => listInfo.value && listInfo.value.type === 'dj');
+
+const lyricVisualizerActive = computed(() => lyricVisualizer.value && lyricVisualizerPluginActive.value);
+const lyricVisualizerToggleLabel = computed(() => (lyricVisualizerActive.value ? '可视化开' : '可视化关'));
+
+const toggleLyricVisualizer = () => {
+    if (!lyricVisualizerPluginActive.value) {
+        noticeOpen('请先启用歌词可视化插件', 2);
+        return;
+    }
+    lyricVisualizer.value = !lyricVisualizer.value;
+};
 
 // 当前电台订阅状态与rid
 const djSubed = ref(false);
@@ -679,6 +693,13 @@ const toggleDjSub = async (isSubscribe) => {
                     ></path>
                 </svg>
 
+                <div
+                    class="visualizer-toggle"
+                    :class="{ active: lyricVisualizerActive, disabled: !lyricVisualizerPluginActive }"
+                    @click="toggleLyricVisualizer"
+                >
+                    <span>{{ lyricVisualizerToggleLabel }}</span>
+                </div>
                 <!-- 歌词/评论切换按钮 -->
                 <svg
                     t="1673520001"
@@ -1032,6 +1053,34 @@ const toggleDjSub = async (isSubscribe) => {
                 flex-direction: row;
                 justify-content: space-evenly;
                 align-items: center;
+                .visualizer-toggle {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin-bottom: 6px;
+                    padding: 0.9vh 1.6vh;
+                    border: 1px solid rgba(96, 128, 186, 0.45);
+                    border-radius: 0;
+                    background: rgba(244, 248, 255, 0.9);
+                    color: rgba(12, 22, 38, 0.72);
+                    font: 1.2vh SourceHanSansCN-Bold;
+                    letter-spacing: 0.08em;
+                    cursor: pointer;
+                    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+                    span {
+                        pointer-events: none;
+                    }
+                    &.active {
+                        background: rgba(70, 108, 196, 0.9);
+                        border-color: rgba(70, 108, 196, 0.95);
+                        color: #ffffff;
+                        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+                    }
+                    &.disabled {
+                        cursor: not-allowed;
+                        opacity: 0.65;
+                    }
+                }
                 svg {
                     width: 5vh;
                     height: 5vh;

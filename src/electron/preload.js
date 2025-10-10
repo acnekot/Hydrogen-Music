@@ -193,6 +193,9 @@ function getEnabledPlugins() {
 function readPluginFile(pluginId, relativePath, encoding) {
     return ipcRenderer.invoke('plugin:read-file', pluginId, relativePath, encoding)
 }
+function reloadApp() {
+    return ipcRenderer.invoke('app:reload')
+}
 contextBridge.exposeInMainWorld('windowApi', {
     windowMin,
     windowMax,
@@ -263,6 +266,7 @@ contextBridge.exposeInMainWorld('windowApi', {
     deletePlugin,
     getEnabledPlugins,
     readPluginFile,
+    reloadApp,
 })
 
 // 新的API用于处理登录功能和桌面歌词
