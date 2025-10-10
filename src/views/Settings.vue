@@ -2356,7 +2356,7 @@ const clearFmRecent = () => {
                             gap: 12px;
                             padding: 16px;
                             background-color: rgba(255, 255, 255, 0.3);
-                            border-radius: 10px;
+                            border-radius: 0;
                             .plugin-directory-info {
                                 display: flex;
                                 flex-direction: column;
@@ -2399,7 +2399,7 @@ const clearFmRecent = () => {
                             font: 14px SourceHanSansCN-Regular;
                             color: rgba(0, 0, 0, 0.65);
                             background-color: rgba(255, 255, 255, 0.3);
-                            border-radius: 10px;
+                            border-radius: 0;
                         }
                         .plugin-list {
                             display: grid;
@@ -2412,7 +2412,7 @@ const clearFmRecent = () => {
                             gap: 12px;
                             padding: 16px;
                             background-color: rgba(255, 255, 255, 0.35);
-                            border-radius: 12px;
+                            border-radius: 0;
                             transition: 0.2s;
                             &:hover {
                                 box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
@@ -2472,7 +2472,7 @@ const clearFmRecent = () => {
                         .plugin-button {
                             min-width: 120px;
                             padding: 6px 16px;
-                            border-radius: 8px;
+                            border-radius: 0;
                             font: 13px SourceHanSansCN-Bold;
                             color: black;
                             background-color: rgba(255, 255, 255, 0.5);
