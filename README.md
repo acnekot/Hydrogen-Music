@@ -64,6 +64,9 @@
 npm run dist
 ```
 
+目前只提供Windows端打包（节省时间）
+需要其他版本可以去下载原项目的package.json来打包
+
 ## :computer: 配置开发环境
 
 运行本项目
