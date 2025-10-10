@@ -377,6 +377,10 @@ const togglePluginState = async (plugin) => {
 
 const requestDeletePlugin = (plugin) => {
     if (!pluginApiAvailable.value || !plugin?.id) return;
+    if (plugin.builtin) {
+        noticeOpen('内置插件无法删除', 2);
+        return;
+    }
     dialogOpen('删除插件', `确定删除插件“${plugin.name}”吗？`, async (confirm) => {
         if (!confirm) return;
         setPluginProcessing(plugin.id, true);
@@ -1797,7 +1801,10 @@ const clearFmRecent = () => {
                             <div class="plugin-card" v-for="plugin in pluginList" :key="plugin.id">
                                 <div class="plugin-card-header">
                                     <div class="plugin-card-title" :title="plugin.name">{{ plugin.name }}</div>
-                                    <div class="plugin-card-version" v-if="plugin.version">v{{ plugin.version }}</div>
+                                    <div class="plugin-card-header-meta">
+                                        <span class="plugin-card-badge" v-if="plugin.builtin">内置</span>
+                                        <div class="plugin-card-version" v-if="plugin.version">v{{ plugin.version }}</div>
+                                    </div>
                                 </div>
                                 <div class="plugin-card-meta">
                                     <span class="plugin-card-author" v-if="plugin.author" :title="plugin.author">
@@ -1829,6 +1836,7 @@ const clearFmRecent = () => {
                                             设置
                                         </div>
                                         <div
+                                            v-if="!plugin.builtin"
                                             class="plugin-button plugin-button--danger"
                                             :class="{ 'plugin-button--disabled': !pluginApiAvailable || isPluginBusy(plugin.id) }"
                                             @click="requestDeletePlugin(plugin)"
@@ -2182,6 +2190,18 @@ const clearFmRecent = () => {
                                     overflow: hidden;
                                     text-overflow: ellipsis;
                                     white-space: nowrap;
+                                }
+                                .plugin-card-header-meta {
+                                    display: flex;
+                                    align-items: center;
+                                    gap: 6px;
+                                }
+                                .plugin-card-badge {
+                                    padding: 2px 6px;
+                                    font: 11px SourceHanSansCN-Bold;
+                                    color: rgba(0, 0, 0, 0.7);
+                                    border: 1px solid rgba(0, 0, 0, 0.2);
+                                    background: rgba(255, 255, 255, 0.6);
                                 }
                                 .plugin-card-version {
                                     font: 12px SourceHanSansCN-Bold;

@@ -92,6 +92,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         defaults: { list: [], directory: defaultPluginDirectory || undefined },
     })
 
+    const builtinPluginIds = new Set()
+
     const getPluginDirectory = () => {
         const stored = pluginStore.get('directory')
         const normalizedStored = normalizeDirectory(stored)
@@ -182,11 +184,89 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             homepage: typeof manifest.homepage === 'string' ? manifest.homepage.trim() : '',
             entry: normalizedMain,
             enabledByDefault: manifest.enabledByDefault !== false,
+            builtin: manifest.builtin === true,
+        }
+    }
+
+    const syncBuiltinPlugins = async () => {
+        builtinPluginIds.clear()
+
+        const pluginRoot = ensurePluginDirectory()
+        const appPath = resolvePathSafe(app?.getAppPath?.())
+        if (!appPath) return
+
+        const builtinRoot = resolvePathSafe(path.join(appPath, 'plugins'))
+        if (!builtinRoot || !fs.existsSync(builtinRoot)) return
+
+        let entries
+        try {
+            entries = await fs.promises.readdir(builtinRoot, { withFileTypes: true })
+        } catch (error) {
+            if (error?.code !== 'ENOENT') {
+                console.warn('读取内置插件目录失败:', error)
+            }
+            return
+        }
+
+        for (const entry of entries) {
+            if (!entry.isDirectory()) continue
+            const sourceDir = path.join(builtinRoot, entry.name)
+            let manifest
+            try {
+                manifest = await readPluginManifestFromDir(sourceDir)
+            } catch (error) {
+                console.warn('解析内置插件失败:', sourceDir, error)
+                continue
+            }
+            if (!manifest) continue
+
+            builtinPluginIds.add(manifest.id)
+
+            const targetDir = path.join(pluginRoot, manifest.id)
+            if (isSamePath(sourceDir, targetDir)) continue
+
+            let shouldCopy = false
+            if (!fs.existsSync(targetDir)) {
+                shouldCopy = true
+            } else {
+                let existingManifest = null
+                try {
+                    existingManifest = await readPluginManifestFromDir(targetDir)
+                } catch (error) {
+                    existingManifest = null
+                }
+                if (!existingManifest) {
+                    shouldCopy = true
+                } else if (
+                    existingManifest.version !== manifest.version ||
+                    existingManifest.entry !== manifest.entry
+                ) {
+                    shouldCopy = true
+                } else {
+                    const entryPath = path.join(targetDir, manifest.entry)
+                    if (!fs.existsSync(entryPath)) {
+                        shouldCopy = true
+                    }
+                }
+            }
+
+            if (!shouldCopy) continue
+
+            try {
+                await fsExtra.remove(targetDir)
+            } catch (_) {}
+
+            try {
+                await fsExtra.copy(sourceDir, targetDir, { overwrite: true })
+            } catch (error) {
+                console.error('复制内置插件失败:', manifest.id, error)
+            }
         }
     }
 
     const syncPluginsFromDisk = async () => {
         const pluginRoot = ensurePluginDirectory()
+        await syncBuiltinPlugins()
         let entries
         try {
             entries = await fs.promises.readdir(pluginRoot, { withFileTypes: true })
@@ -216,6 +296,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
 
         for (const [id, manifest] of diskPlugins.entries()) {
             const existing = stored.find(item => item.id === id)
+            const isBuiltin = builtinPluginIds.has(id) || manifest.builtin === true
             const record = {
                 id,
                 name: manifest.name,
@@ -226,6 +307,7 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                 entry: manifest.entry,
                 enabled: existing ? existing.enabled : manifest.enabledByDefault,
                 importTime: existing ? existing.importTime : Date.now(),
+                builtin: existing ? existing.builtin === true || isBuiltin : isBuiltin,
             }
             if (!existing) {
                 changed = true
@@ -235,7 +317,8 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                 existing.description !== record.description ||
                 existing.author !== record.author ||
                 existing.homepage !== record.homepage ||
-                existing.entry !== record.entry
+                existing.entry !== record.entry ||
+                (existing.builtin === true) !== isBuiltin
             ) {
                 changed = true
             }
@@ -1468,8 +1551,9 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                 author: typeof manifest.author === 'string' ? manifest.author.trim() : '',
                 homepage: typeof manifest.homepage === 'string' ? manifest.homepage.trim() : '',
                 entry: normalizedMain,
-                enabled: previous ? previous.enabled : true,
+                enabled: previous ? previous.enabled : manifest.enabledByDefault !== false,
                 importTime: Date.now(),
+                builtin: false,
             }
 
             const nextPlugins = existingPlugins.filter((item) => item.id !== sanitizedId)
@@ -1486,7 +1570,11 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     ipcMain.handle('plugin:list', async () => {
         try {
             await syncPluginsFromDisk()
-            return { success: true, plugins: getStoredPlugins() }
+            const list = getStoredPlugins().map((item) => ({
+                ...item,
+                builtin: item.builtin === true,
+            }))
+            return { success: true, plugins: list }
         } catch (error) {
             console.error('读取插件列表失败:', error)
             return { success: false, message: error.message || '读取插件列表失败' }
@@ -1519,6 +1607,10 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             const sanitizedId = sanitizePluginId(pluginId)
             if (!sanitizedId) throw new Error('无效的插件 ID')
             const plugins = getStoredPlugins()
+            const target = plugins.find((item) => item.id === sanitizedId)
+            if (target?.builtin) {
+                throw new Error('内置插件无法删除')
+            }
             const nextPlugins = plugins.filter((item) => item.id !== sanitizedId)
             if (nextPlugins.length === plugins.length) throw new Error('插件不存在')
             const pluginDir = resolvePluginDir(sanitizedId)
