@@ -15,38 +15,81 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     const lastPlaylistStore = new Store({ name: 'lastPlaylist' })
     const musicVideoStore = new Store({ name: 'musicVideo' })
 
+    const resolvePathSafe = (targetPath) => {
+        if (!targetPath) return null
+        try {
+            return path.normalize(path.resolve(targetPath))
+        } catch (error) {
+            console.warn('Failed to normalize path', targetPath, error)
+            return null
+        }
+    }
+
     const computeDefaultPluginDirectory = () => {
         try {
-            if (app?.isPackaged) {
-                const exeDir = path.dirname(app.getPath('exe'))
-                if (exeDir) return path.join(exeDir, 'plugins')
+            const exeDir = resolvePathSafe(path.dirname(app.getPath('exe')))
+            if (exeDir) {
+                const candidate = resolvePathSafe(path.join(exeDir, 'plugins'))
+                if (candidate) return candidate
             }
-            const appPath = app?.getAppPath?.()
-            if (appPath) return path.join(appPath, 'plugins')
         } catch (error) {
-            console.warn('Failed to resolve default plugin directory, falling back to userData path', error)
+            console.warn('Failed to resolve default plugin directory from exe path', error)
         }
-        return path.join(app.getPath('userData'), 'plugins')
+
+        try {
+            const appPath = resolvePathSafe(app?.getAppPath?.())
+            if (appPath) {
+                if (appPath.includes('.asar')) {
+                    const resourcesDir = resolvePathSafe(path.dirname(appPath))
+                    if (resourcesDir) {
+                        const unpackedRoot = resolvePathSafe(path.join(resourcesDir, '..'))
+                        if (unpackedRoot) {
+                            const candidate = resolvePathSafe(path.join(unpackedRoot, 'plugins'))
+                            if (candidate) return candidate
+                        }
+                    }
+                }
+                const candidate = resolvePathSafe(path.join(appPath, 'plugins'))
+                if (candidate) return candidate
+            }
+        } catch (error) {
+            console.warn('Failed to resolve default plugin directory from app path', error)
+        }
+
+        try {
+            const candidate = resolvePathSafe(path.join(app.getPath('userData'), 'plugins'))
+            if (candidate) return candidate
+        } catch (error) {
+            console.warn('Failed to resolve default plugin directory from userData path', error)
+        }
+
+        return null
     }
 
     const defaultPluginDirectory = computeDefaultPluginDirectory()
-    const legacyPluginDirectory = path.join(app.getPath('userData'), 'plugins')
+    let legacyPluginDirectory = null
+    try {
+        legacyPluginDirectory = resolvePathSafe(path.join(app.getPath('userData'), 'plugins'))
+    } catch (error) {
+        console.warn('Failed to resolve legacy plugin directory', error)
+    }
 
     const normalizeDirectory = (dirPath) => {
         if (!dirPath || typeof dirPath !== 'string') return null
         const trimmed = dirPath.trim()
         if (!trimmed) return null
-        try {
-            return path.normalize(path.resolve(trimmed))
-        } catch (error) {
-            console.warn('Failed to normalize plugin directory path', dirPath, error)
+        const normalised = resolvePathSafe(trimmed)
+        if (!normalised) return null
+        if (normalised.includes('.asar')) {
+            console.warn('Rejecting plugin directory inside asar archive', normalised)
             return null
         }
+        return normalised
     }
 
     const pluginStore = new Store({
         name: 'plugins',
-        defaults: { list: [], directory: defaultPluginDirectory },
+        defaults: { list: [], directory: defaultPluginDirectory || undefined },
     })
 
     const getPluginDirectory = () => {
@@ -56,8 +99,11 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             pluginStore.set('directory', normalizedStored)
             return normalizedStored
         }
-        pluginStore.set('directory', defaultPluginDirectory)
-        return defaultPluginDirectory
+        if (defaultPluginDirectory) {
+            pluginStore.set('directory', defaultPluginDirectory)
+            return defaultPluginDirectory
+        }
+        throw new Error('无法确定插件目录，请在设置中手动选择目录')
     }
 
     const ensurePluginDirectory = () => {
