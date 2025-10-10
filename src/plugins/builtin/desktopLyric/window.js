@@ -1,9 +1,9 @@
 import { createApp } from 'vue'
-import DesktopLyric from './components/DesktopLyric.vue'
-import './assets/css/common.css'
-import './assets/css/fonts.css'
-import './assets/css/theme.css'
-import { initTheme, setTheme } from './utils/theme'
+import DesktopLyric from './DesktopLyricWindow.vue'
+import '../../../assets/css/common.css'
+import '../../../assets/css/fonts.css'
+import '../../../assets/css/theme.css'
+import { initTheme, setTheme } from '../../../utils/theme'
 
 const app = createApp(DesktopLyric)
 app.mount('#desktop-lyric-app')
