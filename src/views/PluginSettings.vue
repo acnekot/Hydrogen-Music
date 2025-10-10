@@ -1,5 +1,5 @@
 <template>
-    <div class="plugin-settings-view">
+    <div class="plugin-settings-view" :class="{ 'is-ready': isReady }">
         <div class="plugin-settings-header">
             <button class="back-button" type="button" @click="goBack">返回插件列表</button>
             <div class="plugin-settings-title">
@@ -18,7 +18,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { getPluginSettingsPage, pluginSettingsVersionSignal } from '../plugins/pluginManager'
@@ -31,6 +31,7 @@ const activePage = ref(null)
 const mountedPage = ref(null)
 const isMissing = ref(false)
 const cleanupRef = ref(null)
+const isReady = ref(false)
 
 const pluginId = computed(() => {
     const id = route.params.pluginId
@@ -120,6 +121,12 @@ watch([pluginId, () => pluginSettingsVersionSignal.value], () => {
     syncActivePage()
 }, { immediate: true })
 
+onMounted(() => {
+    requestAnimationFrame(() => {
+        isReady.value = true
+    })
+})
+
 onBeforeUnmount(() => {
     unmountPage()
 })
@@ -138,6 +145,14 @@ const goBack = () => {
     color: var(--text-color, #1a1f2b);
     background: linear-gradient(180deg, rgba(242, 246, 255, 0.65), rgba(224, 232, 246, 0.9));
     overflow: auto;
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.plugin-settings-view.is-ready {
+    opacity: 1;
+    transform: translateY(0);
 }
 
 .plugin-settings-header {
@@ -149,7 +164,7 @@ const goBack = () => {
 
 .back-button {
     padding: 8px 16px;
-    border-radius: 8px;
+    border-radius: 0;
     border: 1px solid rgba(92, 122, 170, 0.35);
     background: rgba(255, 255, 255, 0.85);
     color: rgba(28, 36, 50, 0.85);
@@ -183,7 +198,7 @@ const goBack = () => {
 
 .plugin-settings-container {
     flex: 1;
-    border-radius: 12px;
+    border-radius: 0;
     background: rgba(255, 255, 255, 0.86);
     border: 1px solid rgba(92, 122, 170, 0.28);
     box-shadow: 0 22px 48px rgba(20, 32, 58, 0.18);
@@ -194,7 +209,7 @@ const goBack = () => {
     margin: auto;
     text-align: center;
     padding: 48px 32px;
-    border-radius: 12px;
+    border-radius: 0;
     background: rgba(255, 255, 255, 0.78);
     border: 1px dashed rgba(92, 122, 170, 0.4);
     box-shadow: 0 18px 42px rgba(20, 32, 58, 0.12);
@@ -208,7 +223,7 @@ const goBack = () => {
 
 .back-link {
     padding: 8px 20px;
-    border-radius: 6px;
+    border-radius: 0;
     border: 1px solid rgba(92, 122, 170, 0.35);
     background: rgba(255, 255, 255, 0.92);
     color: rgba(28, 36, 50, 0.82);
