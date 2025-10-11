@@ -77,12 +77,16 @@ const showLyricVisualizerToggle = computed(
 );
 const lyricVisualizerToggleLabel = computed(() => (lyricVisualizerActive.value ? '关闭歌词可视化' : '开启歌词可视化'));
 
-const toggleLyricVisualizer = () => {
+const toggleLyricVisualizer = event => {
     if (!lyricVisualizerPluginActive.value) {
         noticeOpen('请先启用歌词可视化插件', 2);
         return;
     }
     lyricVisualizer.value = !lyricVisualizer.value;
+    const target = event?.currentTarget;
+    if (target instanceof HTMLElement) {
+        target.blur();
+    }
 };
 
 // 当前电台订阅状态与rid
@@ -705,7 +709,7 @@ const toggleDjSub = async (isSubscribe) => {
                         :aria-label="lyricVisualizerToggleLabel"
                         :class="{ active: lyricVisualizerActive, disabled: !lyricVisualizerPluginActive }"
                         :disabled="!lyricVisualizerPluginActive"
-                        @click="toggleLyricVisualizer"
+                        @click="toggleLyricVisualizer($event)"
                     >
                         <svg viewBox="0 0 24 24" aria-hidden="true">
                             <rect x="3" y="7" width="3" height="10" rx="1" fill="currentColor" />
@@ -1068,6 +1072,7 @@ const toggleDjSub = async (isSubscribe) => {
                 flex-direction: row;
                 justify-content: space-evenly;
                 align-items: center;
+
                 .comment-toggle-group {
                     display: flex;
                     flex-direction: column;
@@ -1088,6 +1093,8 @@ const toggleDjSub = async (isSubscribe) => {
                         cursor: pointer;
                         transition: color 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
                         outline: none;
+                        box-shadow: none;
+                        -webkit-tap-highlight-color: transparent;
 
                         svg {
                             width: 18px;
@@ -1109,8 +1116,20 @@ const toggleDjSub = async (isSubscribe) => {
                             opacity: 0.4;
                         }
 
+                        &:focus {
+                            outline: none;
+                            box-shadow: none;
+                        }
+
                         &:focus-visible {
                             outline: none;
+                            box-shadow: none;
+                        }
+
+                        &:active {
+                            background: transparent;
+                            transform: translateY(0);
+                            box-shadow: none;
                         }
                     }
                 }
