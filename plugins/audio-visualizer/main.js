@@ -27,6 +27,10 @@ const normalizeStoreValues = store => {
     store.lyricVisualizerRadialOffsetX = Math.round(clampNumber(store.lyricVisualizerRadialOffsetX, -100, 100, 0));
     store.lyricVisualizerRadialOffsetY = Math.round(clampNumber(store.lyricVisualizerRadialOffsetY, -100, 100, 0));
     store.lyricVisualizerRadialCoreSize = Math.round(clampNumber(store.lyricVisualizerRadialCoreSize, 10, 95, 62));
+    store.lyricVisualizerSlowRelease = !!store.lyricVisualizerSlowRelease;
+    store.lyricVisualizerSlowReleaseDuration = Math.round(
+        clampNumber(store.lyricVisualizerSlowReleaseDuration, 200, 5000, 900)
+    );
     if (store.lyricVisualizerColor !== 'white') {
         store.lyricVisualizerColor = 'black';
     }
@@ -144,6 +148,28 @@ const mountSettings = (container, store) => {
     font-size: 13px;
     opacity: 0.7;
 }
+.hm-av-toggle {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.hm-av-toggle label {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    font-weight: 500;
+}
+.hm-av-toggle input[type='checkbox'] {
+    width: 18px;
+    height: 18px;
+}
+.hm-av-settings[data-slow-release='false'] [data-field-group='slow-release-duration'] {
+    opacity: 0.55;
+}
+.hm-av-settings[data-slow-release='false'] [data-field-group='slow-release-duration'] input {
+    pointer-events: none;
+}
 .hm-av-card[data-section='radial'] {
     display: none;
 }
@@ -195,6 +221,17 @@ const mountSettings = (container, store) => {
                 <label>过渡延迟<span data-display="transition"></span></label>
                 <input type="range" min="0" max="0.95" step="0.01" data-field="transition" />
                 <div class="hm-av-note">用于控制频谱响应的平滑度，值越大变化越柔和。</div>
+            </div>
+            <div class="hm-av-toggle">
+                <label>
+                    <input type="checkbox" data-field="slow-release" />
+                    结束时缓慢下落
+                </label>
+                <div class="hm-av-note">停止播放后保留频谱并在设定时长内缓慢落下。</div>
+            </div>
+            <div class="hm-av-field" data-field-group="slow-release-duration">
+                <label>下落时长<span data-display="slowReleaseDuration"></span></label>
+                <input type="range" min="200" max="5000" step="50" data-field="slow-release-duration" />
             </div>
         </div>
         <div class="hm-av-card">
@@ -254,6 +291,8 @@ const mountSettings = (container, store) => {
         setText('height', `${state.height}px`);
         setText('opacity', `${state.opacity}%`);
         setText('transition', formatNumber(state.transition, { precision: 2 }));
+        const slowSeconds = Math.max(0, state.slowReleaseDuration) / 1000;
+        setText('slowReleaseDuration', `${formatNumber(slowSeconds, { precision: 2 })} 秒`);
         setText('freqMin', `${state.frequencyMin} Hz`);
         setText('freqMax', `${state.frequencyMax} Hz`);
         setText('barCount', `${state.barCount} 条`);
@@ -272,6 +311,8 @@ const mountSettings = (container, store) => {
                 height: 220,
                 opacity: 100,
                 transition: 0.75,
+                slowRelease: false,
+                slowReleaseDuration: 900,
                 frequencyMin: 20,
                 frequencyMax: 8000,
                 barCount: 48,
@@ -288,6 +329,10 @@ const mountSettings = (container, store) => {
             height: Math.round(clampNumber(store.lyricVisualizerHeight, 80, 640, 220)),
             opacity: Math.round(clampNumber(store.lyricVisualizerOpacity, 0, 100, 100)),
             transition: clampNumber(store.lyricVisualizerTransitionDelay, 0, 0.95, 0.75),
+            slowRelease: !!store.lyricVisualizerSlowRelease,
+            slowReleaseDuration: Math.round(
+                clampNumber(store.lyricVisualizerSlowReleaseDuration, 200, 5000, 900)
+            ),
             frequencyMin: Math.round(clampNumber(store.lyricVisualizerFrequencyMin, 20, 20000, 20)),
             frequencyMax: Math.round(clampNumber(store.lyricVisualizerFrequencyMax, 20, 20000, 8000)),
             barCount: Math.round(clampNumber(store.lyricVisualizerBarCount, 4, 256, 48)),
@@ -307,6 +352,10 @@ const mountSettings = (container, store) => {
         const setValue = (selector, value) => {
             const element = q(selector);
             if (!element) return;
+            if (element.type === 'checkbox') {
+                element.checked = Boolean(value);
+                return;
+            }
             if (element.type === 'range' || element.type === 'number') {
                 if (String(element.value) !== String(value)) element.value = String(value);
             } else {
@@ -318,6 +367,8 @@ const mountSettings = (container, store) => {
         setValue('[data-field="height"]', state.height);
         setValue('[data-field="opacity"]', state.opacity);
         setValue('[data-field="transition"]', state.transition);
+        setValue('[data-field="slow-release"]', state.slowRelease);
+        setValue('[data-field="slow-release-duration"]', state.slowReleaseDuration);
         setValue('[data-field="frequency-min"]', state.frequencyMin);
         setValue('[data-field="frequency-max"]', state.frequencyMax);
         setValue('[data-field="bar-count"]', state.barCount);
@@ -327,6 +378,12 @@ const mountSettings = (container, store) => {
         setValue('[data-field="radial-offset-y"]', state.radialOffsetY);
         setValue('[data-field="radial-core"]', state.radialCore);
         root.dataset.style = state.style;
+        root.dataset.slowRelease = state.slowRelease ? 'true' : 'false';
+        const slowDurationInput = q('[data-field="slow-release-duration"]');
+        if (slowDurationInput) slowDurationInput.disabled = !state.slowRelease;
+        const slowDurationField = q('[data-field-group="slow-release-duration"]');
+        if (slowDurationField)
+            slowDurationField.setAttribute('data-disabled', state.slowRelease ? 'false' : 'true');
         updateDisplays(state);
     };
 
@@ -360,6 +417,15 @@ const mountSettings = (container, store) => {
         syncFromStore();
     });
 
+    bind('[data-field="slow-release"]', 'change', event => {
+        if (!store) return;
+        const value = Boolean(event.target.checked);
+        if (!!store.lyricVisualizerSlowRelease !== value) {
+            store.lyricVisualizerSlowRelease = value;
+        }
+        syncFromStore();
+    });
+
     const bindRange = (selector, apply) => {
         bind(selector, 'input', event => {
             if (!store) return;
@@ -383,6 +449,14 @@ const mountSettings = (container, store) => {
         if (!store) return;
         const next = Math.round(clampNumber(value, 0, 100, 100));
         if (store.lyricVisualizerOpacity !== next) store.lyricVisualizerOpacity = next;
+    });
+
+    bindRange('[data-field="slow-release-duration"]', value => {
+        if (!store) return;
+        const next = Math.round(clampNumber(value, 200, 5000, 900));
+        if (store.lyricVisualizerSlowReleaseDuration !== next) {
+            store.lyricVisualizerSlowReleaseDuration = next;
+        }
     });
 
     bindRange('[data-field="transition"]', value => {
@@ -483,6 +557,8 @@ const mountSettings = (container, store) => {
         'lyricVisualizerColor',
         'lyricVisualizerHeight',
         'lyricVisualizerOpacity',
+        'lyricVisualizerSlowRelease',
+        'lyricVisualizerSlowReleaseDuration',
         'lyricVisualizerTransitionDelay',
         'lyricVisualizerFrequencyMin',
         'lyricVisualizerFrequencyMax',
