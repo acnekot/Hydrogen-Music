@@ -478,12 +478,62 @@ const mountSettings = (container, store) => {
         });
     }
 
+    const trackedStoreKeys = [
+        'lyricVisualizerStyle',
+        'lyricVisualizerColor',
+        'lyricVisualizerHeight',
+        'lyricVisualizerOpacity',
+        'lyricVisualizerTransitionDelay',
+        'lyricVisualizerFrequencyMin',
+        'lyricVisualizerFrequencyMax',
+        'lyricVisualizerBarCount',
+        'lyricVisualizerBarWidth',
+        'lyricVisualizerRadialSize',
+        'lyricVisualizerRadialOffsetX',
+        'lyricVisualizerRadialOffsetY',
+        'lyricVisualizerRadialCoreSize',
+    ];
+
+    const takeStoreSnapshot = source => {
+        const reference = source && typeof source === 'object' ? source : store;
+        const snapshot = {};
+        trackedStoreKeys.forEach(key => {
+            snapshot[key] = reference ? reference[key] : undefined;
+        });
+        return snapshot;
+    };
+
+    const hasTrackedChanges = (prev, next) => {
+        if (!prev) return true;
+        for (const key of trackedStoreKeys) {
+            if (!Object.is(prev[key], next[key])) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    let lastStoreSnapshot = takeStoreSnapshot(store);
+
     let unsubscribe = null;
     if (store?.$subscribe) {
-        unsubscribe = store.$subscribe(() => syncFromStore());
+        unsubscribe = store.$subscribe(
+            (_mutation, state) => {
+                const nextSnapshot = takeStoreSnapshot(state);
+                if (hasTrackedChanges(lastStoreSnapshot, nextSnapshot)) {
+                    lastStoreSnapshot = nextSnapshot;
+                    syncFromStore();
+                    lastStoreSnapshot = takeStoreSnapshot(store);
+                } else {
+                    lastStoreSnapshot = nextSnapshot;
+                }
+            },
+            { detached: true }
+        );
     }
 
     syncFromStore();
+    lastStoreSnapshot = takeStoreSnapshot(store);
 
     return () => {
         cleanups.forEach(dispose => {

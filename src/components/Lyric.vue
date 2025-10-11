@@ -1229,8 +1229,15 @@ watch(
         renderVisualizerPreview();
         if (!shouldShowVisualizer.value) return;
         await setupVisualizer({ forceRebind: true, resumeContext: playing.value });
-        visualizerPauseState = !playing.value;
-        startVisualizerLoop({ force: true });
+        if (!shouldShowVisualizer.value) return;
+        if (playing.value) {
+            visualizerPauseState = false;
+            startVisualizerLoop({ force: true });
+        } else {
+            stopVisualizerLoop({ clear: true });
+            visualizerPauseState = true;
+            renderVisualizerPreview();
+        }
     }
 );
 
@@ -1238,8 +1245,15 @@ watch(shouldShowVisualizer, active => {
     if (active) {
         nextTick(async () => {
             await setupVisualizer({ forceRebind: true, resumeContext: playing.value });
-            visualizerPauseState = !playing.value;
-            startVisualizerLoop({ force: true });
+            if (!shouldShowVisualizer.value) return;
+            if (playing.value) {
+                visualizerPauseState = false;
+                startVisualizerLoop({ force: true });
+            } else {
+                stopVisualizerLoop({ clear: true });
+                visualizerPauseState = true;
+                renderVisualizerPreview();
+            }
         });
     } else {
         stopVisualizerLoop({ clear: true, teardown: true });
@@ -1253,9 +1267,15 @@ watch(
         if (!shouldShowVisualizer.value) return;
         nextTick(async () => {
             await setupVisualizer({ forceRebind: true, resumeContext: playing.value });
-            visualizerPauseState = !playing.value;
-            if (playing.value) startVisualizerLoop({ force: true });
-            else startVisualizerLoop();
+            if (!shouldShowVisualizer.value) return;
+            if (playing.value) {
+                visualizerPauseState = false;
+                startVisualizerLoop({ force: true });
+            } else {
+                stopVisualizerLoop({ clear: true });
+                visualizerPauseState = true;
+                renderVisualizerPreview();
+            }
         });
     }
 );
@@ -1266,10 +1286,14 @@ watch(playing, isPlaying => {
     if (isPlaying) {
         nextTick(async () => {
             await setupVisualizer({ resumeContext: true });
+            if (!shouldShowVisualizer.value) return;
+            visualizerPauseState = false;
             startVisualizerLoop({ force: true });
         });
     } else {
-        startVisualizerLoop();
+        stopVisualizerLoop({ clear: true });
+        visualizerPauseState = true;
+        renderVisualizerPreview();
     }
 });
 
