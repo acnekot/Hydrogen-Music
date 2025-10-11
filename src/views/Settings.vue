@@ -1636,30 +1636,26 @@ const clearFmRecent = () => {
                         <div class="option">
                             <div class="option-name">开启歌词模糊</div>
                             <div class="option-operation">
-                                <div
-                                    class="toggle"
-                                    role="switch"
-                                    aria-label="歌词模糊"
-                                    :aria-checked="playerStore.lyricBlur"
-                                    :class="{ 'is-on': playerStore.lyricBlur }"
-                                    @click="setLyricBlur()"
-                                >
-                                    <span class="toggle-handle"></span>
+                                <div class="toggle" @click="setLyricBlur()">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.lyricBlur }">
+                                        {{ playerStore.lyricBlur ? '已开启' : '已关闭' }}
+                                    </div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="playerStore.lyricBlur"></div>
+                                    </Transition>
                                 </div>
                             </div>
                         </div>
                         <div class="option">
                             <div class="option-name">开启自定义背景</div>
                             <div class="option-operation">
-                                <div
-                                    class="toggle"
-                                    role="switch"
-                                    aria-label="自定义背景"
-                                    :aria-checked="playerStore.customBackgroundEnabled"
-                                    :class="{ 'is-on': playerStore.customBackgroundEnabled }"
-                                    @click="toggleCustomBackground()"
-                                >
-                                    <span class="toggle-handle"></span>
+                                <div class="toggle" @click="toggleCustomBackground()">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.customBackgroundEnabled }">
+                                        {{ playerStore.customBackgroundEnabled ? '已开启' : '已关闭' }}
+                                    </div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="playerStore.customBackgroundEnabled"></div>
+                                    </Transition>
                                 </div>
                             </div>
                         </div>
@@ -1759,15 +1755,13 @@ const clearFmRecent = () => {
                         <div class="option">
                             <div class="option-name">开启音乐视频功能</div>
                             <div class="option-operation">
-                                <div
-                                    class="toggle"
-                                    role="switch"
-                                    aria-label="歌词背景视频"
-                                    :aria-checked="playerStore.musicVideo"
-                                    :class="{ 'is-on': playerStore.musicVideo }"
-                                    @click="setMusicVideo()"
-                                >
-                                    <span class="toggle-handle"></span>
+                                <div class="toggle" @click="setMusicVideo()">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.musicVideo }">
+                                        {{ playerStore.musicVideo ? '已开启' : '已关闭' }}
+                                    </div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="playerStore.musicVideo"></div>
+                                    </Transition>
                                 </div>
                             </div>
                         </div>
@@ -1930,15 +1924,13 @@ const clearFmRecent = () => {
                         <div class="option">
                             <div class="option-name">开启全局快捷键</div>
                             <div class="option-operation">
-                                <div
-                                    class="toggle"
-                                    role="switch"
-                                    aria-label="全局快捷键"
-                                    :aria-checked="globalShortcuts"
-                                    :class="{ 'is-on': globalShortcuts }"
-                                    @click="globalShortcuts = !globalShortcuts"
-                                >
-                                    <span class="toggle-handle"></span>
+                                <div class="toggle" @click="globalShortcuts = !globalShortcuts">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': globalShortcuts }">
+                                        {{ globalShortcuts ? '已开启' : '已关闭' }}
+                                    </div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="globalShortcuts"></div>
+                                    </Transition>
                                 </div>
                             </div>
                         </div>
@@ -1980,45 +1972,39 @@ const clearFmRecent = () => {
                         <div class="option">
                             <div class="option-name">开启首页页面</div>
                             <div class="option-operation">
-                                <div
-                                    class="toggle"
-                                    role="switch"
-                                    aria-label="首页入口"
-                                    :aria-checked="userStore.homePage"
-                                    :class="{ 'is-on': userStore.homePage }"
-                                    @click="userStore.homePage = !userStore.homePage"
-                                >
-                                    <span class="toggle-handle"></span>
+                                <div class="toggle" @click="userStore.homePage = !userStore.homePage">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': userStore.homePage }">
+                                        {{ userStore.homePage ? '已开启' : '已关闭' }}
+                                    </div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="userStore.homePage"></div>
+                                    </Transition>
                                 </div>
                             </div>
                         </div>
                         <div class="option">
                             <div class="option-name">开启云盘页面</div>
                             <div class="option-operation">
-                                <div
-                                    class="toggle"
-                                    role="switch"
-                                    aria-label="云盘入口"
-                                    :aria-checked="userStore.cloudDiskPage"
-                                    :class="{ 'is-on': userStore.cloudDiskPage }"
-                                    @click="userStore.cloudDiskPage = !userStore.cloudDiskPage"
-                                >
-                                    <span class="toggle-handle"></span>
+                                <div class="toggle" @click="userStore.cloudDiskPage = !userStore.cloudDiskPage">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': userStore.cloudDiskPage }">
+                                        {{ userStore.cloudDiskPage ? '已开启' : '已关闭' }}
+                                    </div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="userStore.cloudDiskPage"></div>
+                                    </Transition>
                                 </div>
                             </div>
                         </div>
                         <div class="option">
                             <div class="option-name">开启私人漫游页面</div>
                             <div class="option-operation">
-                                <div
-                                    class="toggle"
-                                    role="switch"
-                                    aria-label="私人漫游入口"
-                                    :aria-checked="userStore.personalFMPage"
-                                    :class="{ 'is-on': userStore.personalFMPage }"
-                                    @click="userStore.personalFMPage = !userStore.personalFMPage"
-                                >
-                                    <span class="toggle-handle"></span>
+                                <div class="toggle" @click="userStore.personalFMPage = !userStore.personalFMPage">
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': userStore.personalFMPage }">
+                                        {{ userStore.personalFMPage ? '已开启' : '已关闭' }}
+                                    </div>
+                                    <Transition name="toggle">
+                                        <div class="toggle-on" v-show="userStore.personalFMPage"></div>
+                                    </Transition>
                                 </div>
                             </div>
                         </div>
@@ -2404,58 +2390,36 @@ const clearFmRecent = () => {
                         }
                         .toggle {
                             margin-right: 1px;
-                            width: 52px;
-                            height: 28px;
-                            border-radius: 999px;
-                            background: rgba(0, 0, 0, 0.18);
-                            display: inline-flex;
-                            align-items: center;
-                            justify-content: flex-start;
-                            padding: 4px;
+                            height: 34px;
+                            width: 200px;
                             position: relative;
-                            cursor: pointer;
-                            user-select: none;
-                            transition: background 0.2s ease, box-shadow 0.2s ease;
-                        }
-
-                        .toggle:focus-visible {
-                            outline: 2px solid rgba(76, 110, 219, 0.6);
-                            outline-offset: 2px;
-                        }
-
-                        .toggle .toggle-handle {
-                            width: 20px;
-                            height: 20px;
-                            border-radius: 50%;
-                            background: #ffffff;
-                            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
-                            transition: transform 0.2s ease;
-                        }
-
-                        .toggle.is-on {
-                            background: #4c6edb;
-                            box-shadow: 0 6px 16px rgba(76, 110, 219, 0.35);
-                        }
-
-                        .toggle.is-on .toggle-handle {
-                            transform: translateX(24px);
-                        }
-
-                        :global(.dark) .toggle {
-                            background: rgba(255, 255, 255, 0.28);
-                        }
-
-                        :global(.dark) .toggle .toggle-handle {
-                            background: #161922;
-                            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
-                        }
-
-                        :global(.dark) .toggle.is-on {
-                            box-shadow: 0 6px 18px rgba(76, 110, 219, 0.45);
-                        }
-
-                        :global(.dark) .toggle.is-on .toggle-handle {
-                            background: #e9ecff;
+                            overflow: hidden;
+                            &:hover {
+                                cursor: pointer;
+                            }
+                            .toggle-on,
+                            .toggle-off {
+                                padding: 5px 10px;
+                                width: 100%;
+                                height: 100%;
+                                font: 13px SourceHanSansCN-Bold;
+                                transition: 0.2s;
+                                line-height: 24px;
+                            }
+                            .toggle-off {
+                                background-color: rgba(255, 255, 255, 0.35);
+                            }
+                            .toggle-on {
+                                background-color: black;
+                                position: absolute;
+                                top: 0;
+                                left: 0;
+                                z-index: -1;
+                            }
+                            .toggle-on-in {
+                                color: white;
+                                background-color: transparent;
+                            }
                         }
                         .option-operation {
                             display: flex;
@@ -2790,5 +2754,13 @@ const clearFmRecent = () => {
             }
         }
     }
+}
+.toggle-enter-active,
+.toggle-leave-active {
+    transition: 0.1s;
+}
+.toggle-enter-from,
+.toggle-leave-to {
+    transform: translateX(-100%);
 }
 </style>
