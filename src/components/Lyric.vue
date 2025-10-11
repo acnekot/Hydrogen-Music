@@ -643,7 +643,20 @@ const renderVisualizerFrame = () => {
     const levels = ensureVisualizerLevels(barCount);
     if (!levels) return false;
 
-    const isPaused = !playing.value || visualizerPauseState;
+    const audioElement = currentMusic.value?._sounds?.[0]?._node || null;
+    let nodePaused = false;
+    if (audioElement) {
+        if (typeof audioElement.paused === 'boolean') {
+            nodePaused = audioElement.paused;
+        } else if (typeof audioElement.readyState === 'number' && audioElement.readyState < 3) {
+            nodePaused = true;
+        }
+    }
+    if (!nodePaused && audioEnv.audioContext && typeof audioEnv.audioContext.state === 'string') {
+        nodePaused = audioEnv.audioContext.state === 'suspended';
+    }
+
+    const isPaused = !playing.value || visualizerPauseState || nodePaused;
     const analyserReady = analyser && analyserDataArray && binCount > 0;
     let peakLevel = 0;
 
