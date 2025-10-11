@@ -15,7 +15,8 @@
     "kugou:mock": "node mock/kugouApiServer.js",
     "start": "nodemon --exec electron . --watch ./ --ext .html",
     "_dist": "如果想要发布到github中去：vite build && electron-builder -p always",
-    "dist": "vite build && node scripts/build.js"
+    "dist": "vite build && node scripts/build.js",
+    "plugin-installer": "node plugin-installer/install-plugin-system.js"
   },
   "dependencies": {
     "@neteaseapireborn/api": "^4.28.25",

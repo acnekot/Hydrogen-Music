@@ -1,0 +1,9 @@
+{
+  "id": "core.audio-visualizer",
+  "name": "歌词音频可视化",
+  "version": "1.0.0",
+  "author": "Hydrogen Labs",
+  "description": "为歌词区域提供可自定义的频谱动画，包括柱状与辐射两种样式。",
+  "main": "main.js",
+  "builtin": true
+}
