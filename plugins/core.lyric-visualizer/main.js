@@ -6,7 +6,7 @@
     transitionDelay: 0.75,
     barCount: 48,
     barWidth: 55,
-    color: 'black',
+    color: 'auto',
     opacity: 100,
     style: 'bars',
     radialSize: 100,
@@ -101,22 +101,32 @@ const sanitizeRadialCoreSize = value => {
     return clampNumber(Math.round(numeric), 10, 95, DEFAULTS.radialCoreSize);
 };
 
-const sanitizeColor = value => {
-    if (value === 'black' || value === 'white') return value;
+const sanitizeColor = (value, fallback = DEFAULTS.color) => {
+    if (value === 'auto' || value === 'black' || value === 'white') return value;
     if (typeof value === 'string') {
-        const trimmed = value.trim();
-        if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed)) {
+        const trimmed = value.trim().toLowerCase();
+        if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/.test(trimmed)) {
             if (trimmed.length === 4) {
                 const expanded = trimmed
                     .split('')
                     .map((ch, index) => (index === 0 ? ch : ch + ch))
                     .join('');
-                return expanded.toLowerCase();
+                return expanded;
             }
-            return trimmed.toLowerCase();
+            return trimmed;
+        }
+        const hexCandidate = trimmed.replace(/^#/, '');
+        if (/^([0-9a-f]{3}|[0-9a-f]{6})$/.test(hexCandidate)) {
+            if (hexCandidate.length === 3) {
+                return `#${hexCandidate
+                    .split('')
+                    .map(ch => ch + ch)
+                    .join('')}`;
+            }
+            return `#${hexCandidate}`;
         }
     }
-    return DEFAULTS.color;
+    return fallback;
 };
 
 const formatNumber = (value, fractionDigits = 0) => {
@@ -180,63 +190,93 @@ const mountSettingsPage = (container, store, context) => {
     const style = document.createElement('style');
     style.textContent = `
 .hm-visualizer-settings {
-    --hm-visualizer-text: var(--settings-text, var(--text, #121826));
-    --hm-visualizer-muted: var(--settings-muted, var(--muted-text, rgba(18, 24, 38, 0.6)));
-    --hm-visualizer-background: var(--settings-background, var(--bg, #eef1f9));
-    --hm-visualizer-surface: var(--settings-surface, var(--panel, rgba(255, 255, 255, 0.94)));
-    --hm-visualizer-input-surface: var(--settings-input-bg, var(--layer, rgba(255, 255, 255, 0.92)));
-    --hm-visualizer-border: var(--settings-border, var(--border, rgba(92, 122, 170, 0.35)));
-    --hm-visualizer-shadow: var(--settings-shadow, var(--shadow, 0 16px 38px rgba(26, 40, 68, 0.12)));
-    --hm-visualizer-accent: var(--settings-accent, #4c6edb);
-    --hm-visualizer-button-bg: var(--settings-button-bg, rgba(242, 245, 255, 0.92));
-    --hm-visualizer-button-hover: var(--settings-button-hover-bg, rgba(255, 255, 255, 1));
-    font-family: "Source Han Sans", "Microsoft Yahei", sans-serif;
-    color: var(--hm-visualizer-text);
-    background: var(--hm-visualizer-background);
+    position: relative;
+    isolation: isolate;
+    font-family: "Source Han Sans", "Microsoft Yahei", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: var(--plugin-settings-text, var(--text, #111213));
+    background: transparent;
     min-height: 100%;
-    padding: 28px 32px 40px;
+    padding: 32px 36px 44px;
     box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    line-height: 1.6;
+    color-scheme: var(--plugin-settings-color-scheme, light);
+}
+.hm-visualizer-settings::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 28px;
+    background: var(--plugin-settings-bg, var(--settings-shell-bg, #f4f6f8));
+    opacity: 0.94;
+    filter: saturate(1.05);
+    z-index: -1;
+    pointer-events: none;
+}
+.dark .hm-visualizer-settings {
+    color-scheme: dark;
+}
+.dark .hm-visualizer-settings::before {
+    background: var(--plugin-settings-bg, var(--settings-shell-bg, #181c23));
+    opacity: 0.9;
+    filter: saturate(1.12) brightness(0.92);
 }
 .hm-visualizer-settings *,
 .hm-visualizer-settings *::before,
 .hm-visualizer-settings *::after {
     box-sizing: border-box;
 }
-.hm-visualizer-settings h2 {
-    margin: 24px 0 12px;
-    font-size: 18px;
-    font-weight: 600;
-    color: inherit;
+.hm-visualizer-banner {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
-.hm-visualizer-settings h2:first-of-type {
-    margin-top: 0;
+.hm-visualizer-banner h1 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 600;
+}
+.hm-visualizer-banner p {
+    margin: 0;
+    font-size: 14px;
+    opacity: 0.78;
 }
 .hm-visualizer-card {
-    border: 1px solid var(--hm-visualizer-border);
-    background: var(--hm-visualizer-surface);
-    box-shadow: var(--hm-visualizer-shadow);
-    padding: 20px 24px 24px;
-    margin-bottom: 24px;
-    border-radius: 16px;
+    background: var(--plugin-settings-surface, var(--panel, rgba(255, 255, 255, 0.92)));
+    border: 1px solid var(--plugin-settings-border, var(--border, rgba(0, 0, 0, 0.18)));
+    box-shadow: var(--plugin-settings-shadow, 0 22px 48px rgba(20, 32, 58, 0.18));
+    border-radius: 20px;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
     color: inherit;
+    backdrop-filter: blur(18px);
+}
+.hm-visualizer-card h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
 }
 .hm-visualizer-row {
     display: flex;
     flex-wrap: wrap;
     gap: 16px;
     align-items: center;
-    margin-bottom: 18px;
 }
-.hm-visualizer-row:last-child {
-    margin-bottom: 0;
+.hm-visualizer-row--stack {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
 }
-.hm-visualizer-label {
+.hm-visualizer-field-label {
     min-width: 160px;
     font-size: 14px;
     font-weight: 600;
-    color: inherit;
 }
-.hm-visualizer-inputs {
+.hm-visualizer-controls {
     flex: 1;
     display: flex;
     flex-wrap: wrap;
@@ -244,32 +284,56 @@ const mountSettingsPage = (container, store, context) => {
     align-items: center;
     color: inherit;
 }
-.hm-visualizer-inputs span {
-    color: var(--hm-visualizer-muted);
+.hm-visualizer-controls span {
+    opacity: 0.72;
 }
-.hm-visualizer-inputs input[type="range"] {
+.hm-visualizer-controls input[type="range"] {
     flex: 1 1 220px;
     min-width: 200px;
-    accent-color: var(--hm-visualizer-accent);
+    accent-color: var(--plugin-settings-accent, var(--settings-shell-accent, #4c6edb));
 }
-.hm-visualizer-inputs input[type="number"],
-.hm-visualizer-inputs input[type="text"],
-.hm-visualizer-inputs select {
+.hm-visualizer-controls input[type="number"],
+.hm-visualizer-controls input[type="text"],
+.hm-visualizer-controls select {
     width: 120px;
     padding: 6px 10px;
-    border: 1px solid var(--hm-visualizer-border);
-    background: var(--hm-visualizer-input-surface);
+    border: 1px solid var(--plugin-settings-border, var(--border, rgba(0, 0, 0, 0.18)));
+    background: var(--plugin-settings-input-surface, var(--settings-shell-input-bg, var(--layer, rgba(255, 255, 255, 0.92))));
+    border-radius: 10px;
     color: inherit;
     outline: none;
-    border-radius: 10px;
 }
-.hm-visualizer-inputs input[type="color"] {
+.hm-visualizer-controls input[type="number"],
+.hm-visualizer-controls input[type="text"] {
+    font-variant-numeric: tabular-nums;
+}
+.hm-visualizer-color-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 18px;
+}
+.hm-visualizer-color-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    color: inherit;
+    font-size: 14px;
+}
+.hm-visualizer-color-option input[type="radio"] {
+    accent-color: var(--plugin-settings-accent, var(--settings-shell-accent, #4c6edb));
+}
+.hm-visualizer-color-option--custom input[type="color"] {
     width: 48px;
     height: 28px;
     padding: 0;
-    border: 1px solid var(--hm-visualizer-border);
-    background: var(--hm-visualizer-input-surface);
+    border: 1px solid var(--plugin-settings-border, var(--border, rgba(0, 0, 0, 0.18)));
+    background: var(--plugin-settings-input-surface, var(--settings-shell-input-bg, var(--layer, rgba(255, 255, 255, 0.92))));
     border-radius: 8px;
+}
+.hm-visualizer-color-option--custom input[type="text"] {
+    width: 96px;
+    text-transform: uppercase;
 }
 .hm-visualizer-toggle {
     display: inline-flex;
@@ -278,57 +342,85 @@ const mountSettingsPage = (container, store, context) => {
     font-size: 15px;
     cursor: pointer;
     color: inherit;
+    user-select: none;
 }
 .hm-visualizer-toggle input[type="checkbox"] {
     width: 18px;
     height: 18px;
     cursor: pointer;
-    accent-color: var(--hm-visualizer-accent);
+    accent-color: var(--plugin-settings-accent, var(--settings-shell-accent, #4c6edb));
 }
 .hm-visualizer-hint {
-    margin: 6px 0 0;
+    margin: 0;
     font-size: 13px;
-    color: var(--hm-visualizer-muted);
+    opacity: 0.72;
+    color: inherit;
+}
+.hm-visualizer-note {
+    margin: -4px 0 0;
+    font-size: 12px;
+    opacity: 0.66;
+}
+.hm-visualizer-input-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
 }
 .hm-visualizer-radial {
     display: none;
 }
 .hm-visualizer-radial.hm-visible {
-    display: block;
-}
-.hm-visualizer-color-options {
     display: flex;
-    gap: 16px;
-    flex-wrap: wrap;
-}
-.hm-visualizer-color-option {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-    color: inherit;
-}
-.hm-visualizer-color-option input[type="radio"] {
-    accent-color: var(--hm-visualizer-accent);
+    flex-direction: column;
+    gap: 18px;
 }
 .hm-visualizer-footer {
     display: flex;
     justify-content: flex-end;
-    margin-top: 16px;
 }
 .hm-visualizer-button {
     padding: 8px 18px;
-    border: 1px solid var(--hm-visualizer-border);
-    background: var(--hm-visualizer-button-bg);
+    border-radius: 12px;
+    border: 1px solid var(--plugin-settings-border, var(--border, rgba(0, 0, 0, 0.18)));
+    background: var(--plugin-settings-button-bg, rgba(255, 255, 255, 0.88));
     color: inherit;
     cursor: pointer;
-    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
-    border-radius: 12px;
+    transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 .hm-visualizer-button:hover,
 .hm-visualizer-button:focus-visible {
-    background: var(--hm-visualizer-button-hover);
-    border-color: var(--hm-visualizer-accent);
+    background: var(--plugin-settings-button-hover-bg, rgba(255, 255, 255, 1));
+    border-color: var(--plugin-settings-accent, #4c6edb);
+    transform: translateY(-1px);
+}
+@media (max-width: 720px) {
+    .hm-visualizer-settings {
+        padding: 24px 24px 32px;
+    }
+    .hm-visualizer-field-label {
+        min-width: auto;
+        width: 100%;
+    }
+    .hm-visualizer-row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .hm-visualizer-controls input[type="range"] {
+        min-width: 100%;
+        flex: 1 1 100%;
+    }
+}
+.dark .hm-visualizer-card {
+    background: var(--plugin-settings-surface, var(--panel, rgba(52, 58, 68, 0.92)));
+    border-color: var(--plugin-settings-border, var(--border, rgba(255, 255, 255, 0.22)));
+    box-shadow: var(--plugin-settings-shadow, 0 18px 42px rgba(0, 0, 0, 0.55));
+}
+.dark .hm-visualizer-button {
+    background: var(--plugin-settings-button-bg, rgba(255, 255, 255, 0.12));
+}
+.dark .hm-visualizer-button:hover,
+.dark .hm-visualizer-button:focus-visible {
+    background: var(--plugin-settings-button-hover-bg, rgba(255, 255, 255, 0.18));
 }
 `;
     container.appendChild(style);
@@ -337,122 +429,133 @@ const mountSettingsPage = (container, store, context) => {
     const root = document.createElement('div');
     root.className = 'hm-visualizer-settings';
     root.innerHTML = `
-        <div class="hm-visualizer-card">
-            <div class="hm-visualizer-row">
-                <label class="hm-visualizer-toggle">
-                    <input type="checkbox" data-field="enabled" />
-                    <span>Enable lyric visualizer</span>
-                </label>
-            </div>
-            <p class="hm-visualizer-hint">When enabled, the lyric view renders a live spectrum or radial visualizer powered by your current song.</p>
+        <div class="hm-visualizer-banner">
+            <h1>歌词可视化插件</h1>
+            <p>根据当前歌曲生成动态频谱或辐射特效，并支持主题自适应的配色方案。</p>
         </div>
         <div class="hm-visualizer-card">
-            <h2>Appearance</h2>
+            <div class="hm-visualizer-row hm-visualizer-row--stack">
+                <label class="hm-visualizer-toggle">
+                    <input type="checkbox" data-field="enabled" />
+                    <span>在歌词页面启用可视化效果</span>
+                </label>
+                <p class="hm-visualizer-hint">开启后，歌词面板底部会实时渲染频谱或辐射动画，可通过下方选项调整表现。</p>
+            </div>
+        </div>
+        <div class="hm-visualizer-card">
+            <h2>基础外观</h2>
             <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Visualizer style</div>
-                <div class="hm-visualizer-inputs">
+                <div class="hm-visualizer-field-label">可视化样式</div>
+                <div class="hm-visualizer-controls">
                     <select data-field="style">
-                        <option value="bars">Spectrum bars</option>
-                        <option value="radial">Radial nebula</option>
+                        <option value="bars">频谱柱</option>
+                        <option value="radial">辐射星云</option>
                     </select>
                 </div>
             </div>
             <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Canvas height (px)</div>
-                <div class="hm-visualizer-inputs">
+                <div class="hm-visualizer-field-label">画布高度 (px)</div>
+                <div class="hm-visualizer-controls">
                     <input type="range" min="120" max="520" step="10" data-field="height-range" />
                     <input type="number" min="120" max="520" step="10" data-field="height-number" />
                 </div>
             </div>
             <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Bar count</div>
-                <div class="hm-visualizer-inputs">
+                <div class="hm-visualizer-field-label">柱体数量</div>
+                <div class="hm-visualizer-controls">
                     <input type="range" min="16" max="160" step="1" data-field="barcount-range" />
                     <input type="number" min="16" max="160" step="1" data-field="barcount-number" />
                 </div>
             </div>
             <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Bar width (%)</div>
-                <div class="hm-visualizer-inputs">
+                <div class="hm-visualizer-field-label">柱体宽度 (%)</div>
+                <div class="hm-visualizer-controls">
                     <input type="range" min="5" max="100" step="1" data-field="barwidth-range" />
                     <input type="number" min="5" max="100" step="1" data-field="barwidth-number" />
                 </div>
             </div>
             <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Smoothing</div>
-                <div class="hm-visualizer-inputs">
+                <div class="hm-visualizer-field-label">平滑系数</div>
+                <div class="hm-visualizer-controls">
                     <input type="range" min="0" max="95" step="5" data-field="transition-range" />
                     <input type="number" min="0" max="0.95" step="0.05" data-field="transition-number" />
                 </div>
             </div>
             <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Opacity (%)</div>
-                <div class="hm-visualizer-inputs">
+                <div class="hm-visualizer-field-label">不透明度 (%)</div>
+                <div class="hm-visualizer-controls">
                     <input type="range" min="0" max="100" step="5" data-field="opacity-range" />
                     <input type="number" min="0" max="100" step="1" data-field="opacity-number" />
                 </div>
             </div>
             <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Frequency range (Hz)</div>
-                <div class="hm-visualizer-inputs">
+                <div class="hm-visualizer-field-label">频率范围 (Hz)</div>
+                <div class="hm-visualizer-controls">
                     <input type="number" min="20" max="19990" step="10" data-field="freqmin-number" />
-                    <span>to</span>
+                    <span>至</span>
                     <input type="number" min="30" max="20000" step="10" data-field="freqmax-number" />
                 </div>
             </div>
-            <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Visualizer colour</div>
-                <div class="hm-visualizer-inputs hm-visualizer-color-options">
+            <div class="hm-visualizer-row hm-visualizer-row--stack">
+                <div class="hm-visualizer-field-label">颜色</div>
+                <div class="hm-visualizer-controls hm-visualizer-color-options">
+                    <label class="hm-visualizer-color-option">
+                        <input type="radio" name="visualizer-color" value="auto" />
+                        <span>自动（跟随主题）</span>
+                    </label>
                     <label class="hm-visualizer-color-option">
                         <input type="radio" name="visualizer-color" value="black" />
-                        <span>Dark</span>
+                        <span>深色</span>
                     </label>
                     <label class="hm-visualizer-color-option">
                         <input type="radio" name="visualizer-color" value="white" />
-                        <span>Light</span>
+                        <span>浅色</span>
                     </label>
-                    <label class="hm-visualizer-color-option">
+                    <label class="hm-visualizer-color-option hm-visualizer-color-option--custom">
                         <input type="radio" name="visualizer-color" value="custom" />
-                        <span>Custom</span>
-                        <input type="color" data-field="color-picker" value="#000000" />
-                        <input type="text" data-field="color-text" maxlength="7" placeholder="#000000" />
+                        <span>自定义</span>
+                        <span class="hm-visualizer-input-inline">
+                            <input type="color" data-field="color-picker" value="#4c6edb" />
+                            <input type="text" data-field="color-text" maxlength="7" placeholder="#4C6EDB" />
+                        </span>
                     </label>
                 </div>
+                <p class="hm-visualizer-note">“自动” 模式会根据当前主题自动切换浅色或深色，适合快速获得对比度。</p>
             </div>
         </div>
         <div class="hm-visualizer-card hm-visualizer-radial" data-section="radial">
-            <h2>Radial style</h2>
+            <h2>辐射样式参数</h2>
             <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Radial radius (%)</div>
-                <div class="hm-visualizer-inputs">
+                <div class="hm-visualizer-field-label">半径比例 (%)</div>
+                <div class="hm-visualizer-controls">
                     <input type="range" min="20" max="240" step="5" data-field="radialsize-range" />
                     <input type="number" min="20" max="240" step="5" data-field="radialsize-number" />
                 </div>
             </div>
             <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Center offset X (%)</div>
-                <div class="hm-visualizer-inputs">
+                <div class="hm-visualizer-field-label">中心偏移 X (%)</div>
+                <div class="hm-visualizer-controls">
                     <input type="range" min="-100" max="100" step="5" data-field="offsetx-range" />
                     <input type="number" min="-100" max="100" step="5" data-field="offsetx-number" />
                 </div>
             </div>
             <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Center offset Y (%)</div>
-                <div class="hm-visualizer-inputs">
+                <div class="hm-visualizer-field-label">中心偏移 Y (%)</div>
+                <div class="hm-visualizer-controls">
                     <input type="range" min="-100" max="100" step="5" data-field="offsety-range" />
                     <input type="number" min="-100" max="100" step="5" data-field="offsety-number" />
                 </div>
             </div>
             <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Core radius (%)</div>
-                <div class="hm-visualizer-inputs">
+                <div class="hm-visualizer-field-label">核心区域 (%)</div>
+                <div class="hm-visualizer-controls">
                     <input type="range" min="20" max="90" step="1" data-field="core-range" />
                     <input type="number" min="20" max="90" step="1" data-field="core-number" />
                 </div>
             </div>
         </div>
         <div class="hm-visualizer-footer">
-            <button type="button" class="hm-visualizer-button" data-action="reset">Restore defaults</button>
+            <button type="button" class="hm-visualizer-button" data-action="reset">恢复默认值</button>
         </div>
     `;
     container.appendChild(root);
@@ -582,38 +685,121 @@ const mountSettingsPage = (container, store, context) => {
     setupRangeControl(store, 'lyricVisualizerRadialOffsetY', controls.offsetYRange, controls.offsetYNumber, sanitizeRadialOffset, subscriptions);
     setupRangeControl(store, 'lyricVisualizerRadialCoreSize', controls.coreRange, controls.coreNumber, sanitizeRadialCoreSize, subscriptions);
 
+    let syncColorState = () => {};
+
     if (controls.colorRadios && controls.colorPicker && controls.colorText) {
-        const syncColorState = () => {
-            const current = store.lyricVisualizerColor;
-            if (current === 'black' || current === 'white') {
-                controls.colorRadios.forEach(radio => {
-                    radio.checked = radio.value === current;
-                });
-                const baseHex = current === 'white' ? '#ffffff' : '#000000';
-                controls.colorPicker.value = baseHex;
-                controls.colorText.value = baseHex;
-                controls.colorPicker.disabled = true;
-                controls.colorText.disabled = true;
+        let lastCustomColor = '#4c6edb';
+
+        const isDarkTheme = () => {
+            if (typeof document === 'undefined') return false;
+            return document.documentElement.classList.contains('dark');
+        };
+
+        const getAutoColorHex = () => (isDarkTheme() ? '#f5f7ff' : '#101622');
+
+        const toHex = value => {
+            const safe = sanitizeColor(value, lastCustomColor);
+            if (safe === 'auto' || safe === 'black' || safe === 'white') return safe;
+            const normalized = safe.startsWith('#') ? safe : `#${safe.replace(/^#/, '')}`;
+            return normalized.toLowerCase();
+        };
+
+        const setColorInputs = hex => {
+            const normalized = hex.startsWith('#') ? hex.toLowerCase() : `#${hex.replace(/^#/, '').toLowerCase()}`;
+            controls.colorPicker.value = normalized;
+            controls.colorText.value = normalized.toUpperCase();
+        };
+
+        const enableCustomInputs = enabled => {
+            controls.colorPicker.disabled = !enabled;
+            controls.colorText.disabled = !enabled;
+        };
+
+        const selectRadio = mode => {
+            controls.colorRadios.forEach(radio => {
+                radio.checked = radio.value === mode;
+            });
+        };
+
+        const updateUIForAuto = () => {
+            selectRadio('auto');
+            enableCustomInputs(false);
+            setColorInputs(getAutoColorHex());
+        };
+
+        const updateUIForPreset = mode => {
+            selectRadio(mode);
+            enableCustomInputs(false);
+            const hex = mode === 'white' ? '#ffffff' : '#000000';
+            setColorInputs(hex);
+        };
+
+        const updateUIForCustom = hex => {
+            selectRadio('custom');
+            enableCustomInputs(true);
+            setColorInputs(hex);
+        };
+
+        const syncColorStateImpl = () => {
+            const current = sanitizeColor(store.lyricVisualizerColor, lastCustomColor);
+            if (current === 'auto') {
+                updateUIForAuto();
+            } else if (current === 'black' || current === 'white') {
+                updateUIForPreset(current);
             } else {
-                const hex = sanitizeColor(current);
-                controls.colorRadios.forEach(radio => {
-                    radio.checked = radio.value === 'custom';
-                });
-                const hexValue = hex.startsWith('#') ? hex : `#${hex.replace(/^#/, '')}`;
-                controls.colorPicker.value = hexValue;
-                controls.colorText.value = hexValue;
-                controls.colorPicker.disabled = false;
-                controls.colorText.disabled = false;
+                const normalized = toHex(current);
+                if (typeof normalized === 'string' && normalized.startsWith('#')) {
+                    lastCustomColor = normalized;
+                    updateUIForCustom(normalized);
+                } else {
+                    lastCustomColor = '#4c6edb';
+                    updateUIForCustom(lastCustomColor);
+                }
             }
         };
 
-        const applyColorValue = next => {
-            const safe = sanitizeColor(next);
-            if (store.lyricVisualizerColor !== safe) {
-                store.lyricVisualizerColor = safe;
+        syncColorState = syncColorStateImpl;
+
+        const applyAuto = () => {
+            if (store.lyricVisualizerColor !== 'auto') {
+                store.lyricVisualizerColor = 'auto';
             }
-            syncColorState();
+            updateUIForAuto();
         };
+
+        const applyPreset = mode => {
+            if (store.lyricVisualizerColor !== mode) {
+                store.lyricVisualizerColor = mode;
+            }
+            updateUIForPreset(mode);
+        };
+
+        const applyCustom = raw => {
+            const normalized = toHex(raw);
+            if (normalized === 'auto') {
+                applyAuto();
+                return;
+            }
+            if (normalized === 'black' || normalized === 'white') {
+                applyPreset(normalized);
+                return;
+            }
+            if (typeof normalized === 'string' && normalized.startsWith('#')) {
+                lastCustomColor = normalized;
+            }
+            if (store.lyricVisualizerColor !== lastCustomColor) {
+                store.lyricVisualizerColor = lastCustomColor;
+            }
+            updateUIForCustom(lastCustomColor);
+        };
+
+        const initialColor = sanitizeColor(store.lyricVisualizerColor, DEFAULTS.color);
+        if (initialColor !== 'auto' && initialColor !== 'black' && initialColor !== 'white') {
+            const normalized = toHex(initialColor);
+            if (typeof normalized === 'string' && normalized.startsWith('#')) {
+                lastCustomColor = normalized;
+            }
+        }
 
         controls.colorRadios.forEach(radio => {
             attachListener(
@@ -622,11 +808,9 @@ const mountSettingsPage = (container, store, context) => {
                 event => {
                     if (!event.target.checked) return;
                     const mode = event.target.value;
-                    if (mode === 'black' || mode === 'white') {
-                        applyColorValue(mode);
-                    } else {
-                        applyColorValue(controls.colorPicker.value || '#000000');
-                    }
+                    if (mode === 'auto') applyAuto();
+                    else if (mode === 'black' || mode === 'white') applyPreset(mode);
+                    else applyCustom(controls.colorPicker.value || controls.colorText.value || lastCustomColor);
                 },
                 subscriptions,
             );
@@ -636,9 +820,16 @@ const mountSettingsPage = (container, store, context) => {
             controls.colorPicker,
             'input',
             event => {
-                const value = event.target.value;
-                controls.colorText.value = value;
-                applyColorValue(value);
+                applyCustom(event.target.value);
+            },
+            subscriptions,
+        );
+
+        attachListener(
+            controls.colorText,
+            'input',
+            event => {
+                event.target.value = String(event.target.value || '').toUpperCase();
             },
             subscriptions,
         );
@@ -647,15 +838,31 @@ const mountSettingsPage = (container, store, context) => {
             controls.colorText,
             'change',
             event => {
-                const raw = event.target.value;
-                const safe = sanitizeColor(raw);
-                const normalized = safe.startsWith('#') ? safe : `#${safe.replace(/^#/, '')}`;
-                controls.colorPicker.value = normalized;
-                controls.colorText.value = normalized;
-                applyColorValue(normalized);
+                applyCustom(event.target.value);
             },
             subscriptions,
         );
+
+        attachListener(
+            controls.colorText,
+            'blur',
+            event => {
+                applyCustom(event.target.value);
+            },
+            subscriptions,
+        );
+
+        if (typeof MutationObserver !== 'undefined' && typeof document !== 'undefined') {
+            try {
+                const observer = new MutationObserver(() => {
+                    if (store.lyricVisualizerColor === 'auto') {
+                        updateUIForAuto();
+                    }
+                });
+                observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+                subscriptions.push(() => observer.disconnect());
+            } catch (_) {}
+        }
 
         syncColorState();
     }
@@ -678,12 +885,7 @@ const mountSettingsPage = (container, store, context) => {
                 store.lyricVisualizerRadialOffsetX = DEFAULTS.radialOffsetX;
                 store.lyricVisualizerRadialOffsetY = DEFAULTS.radialOffsetY;
                 store.lyricVisualizerRadialCoreSize = DEFAULTS.radialCoreSize;
-                controls.colorRadios?.forEach(radio => {
-                    radio.checked = radio.value === DEFAULTS.color;
-                });
-                controls.colorPicker.value = '#000000';
-                controls.colorText.value = '#000000';
-                context.utils.notice?.('Visualizer defaults restored', 2);
+                context.utils.notice?.('已恢复可视化默认设置', 2);
                 syncFromStore();
             },
             subscriptions,
@@ -729,29 +931,7 @@ const mountSettingsPage = (container, store, context) => {
         if (controls.coreRange) controls.coreRange.value = sanitizeRadialCoreSize(store.lyricVisualizerRadialCoreSize);
         if (controls.coreNumber) controls.coreNumber.value = sanitizeRadialCoreSize(store.lyricVisualizerRadialCoreSize);
         syncRadialVisibility();
-        if (controls.colorRadios && controls.colorPicker && controls.colorText) {
-            const current = store.lyricVisualizerColor;
-            if (current === 'black' || current === 'white') {
-                controls.colorRadios.forEach(radio => {
-                    radio.checked = radio.value === current;
-                });
-                const baseHex = current === 'white' ? '#ffffff' : '#000000';
-                controls.colorPicker.value = baseHex;
-                controls.colorText.value = baseHex;
-                controls.colorPicker.disabled = true;
-                controls.colorText.disabled = true;
-            } else {
-                controls.colorRadios.forEach(radio => {
-                    radio.checked = radio.value === 'custom';
-                });
-                const hex = sanitizeColor(current);
-                const hexValue = hex.startsWith('#') ? hex : `#${hex.replace(/^#/, '')}`;
-                controls.colorPicker.value = hexValue;
-                controls.colorText.value = hexValue;
-                controls.colorPicker.disabled = false;
-                controls.colorText.disabled = false;
-            }
-        }
+        if (controls.colorRadios && controls.colorPicker && controls.colorText) syncColorState();
     };
 
     syncFromStore();
@@ -788,8 +968,8 @@ const registerSettingsPage = (context, store) => {
     if (!context?.settings || typeof context.settings.register !== 'function') return null;
     return context.settings.register({
         id: 'core.lyric-visualizer.settings',
-        title: 'Lyric Visualizer',
-        subtitle: 'Tune how the lyric visualizer looks and behaves',
+        title: '歌词可视化',
+        subtitle: '调整频谱与辐射动画的样式与表现',
         mount(container) {
             return mountSettingsPage(container, store, context);
         },
@@ -806,7 +986,18 @@ module.exports = {
 
         store.lyricVisualizerPluginActive = true;
         store.lyricVisualizerToggleAvailable = true;
-        if (store.lyricVisualizer) {
+        const sanitizedColor = sanitizeColor(store.lyricVisualizerColor, DEFAULTS.color);
+        if (sanitizedColor === 'black') {
+            store.lyricVisualizerColor = DEFAULTS.color;
+        } else if (sanitizedColor !== 'auto' && sanitizedColor !== 'white') {
+            const normalized = sanitizedColor.startsWith('#') ? sanitizedColor : `#${sanitizedColor.replace(/^#/, '')}`;
+            store.lyricVisualizerColor = normalized.toLowerCase();
+        }
+
+        if (!store.lyricVisualizerHasAutoEnabled && !store.lyricVisualizer) {
+            store.lyricVisualizer = true;
+            store.lyricVisualizerHasAutoEnabled = true;
+        } else if (store.lyricVisualizer) {
             store.lyricVisualizerHasAutoEnabled = true;
         }
 
@@ -826,6 +1017,6 @@ module.exports = {
             }
         });
 
-        context.utils?.notice?.('Lyric visualizer plugin is active', 2.5);
+        context.utils?.notice?.('歌词可视化插件已启用', 2.5);
     },
 };

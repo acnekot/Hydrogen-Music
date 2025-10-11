@@ -81,6 +81,30 @@ const syncingLayout = ref(false);
 const lyricVisualizerCanvas = ref(null);
 const visualizerContainerSize = reactive({ width: 0, height: 0 });
 const lyricVisualizerEnabled = computed(() => lyricVisualizerPluginActive.value && lyricVisualizer.value);
+const themeIsDark = ref(false);
+let themeObserver = null;
+let themeMediaQuery = null;
+let themeMediaCleanup = null;
+
+const computeIsDarkTheme = () => {
+    if (typeof document !== 'undefined') {
+        const root = document.documentElement;
+        if (root.classList.contains('dark')) return true;
+        if (root.classList.contains('light')) return false;
+    }
+    if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+        try {
+            return window.matchMedia('(prefers-color-scheme: dark)').matches;
+        } catch (_) {
+            return false;
+        }
+    }
+    return false;
+};
+
+const syncThemeFlag = () => {
+    themeIsDark.value = computeIsDarkTheme();
+};
 
 const clampNumber = (value, min, max, fallback = min) => {
     const numeric = Number(value);
@@ -188,9 +212,17 @@ const visualizerBarWidthRatio = computed(() => {
     return Math.min(value, 100) / 100;
 });
 const visualizerColorRGB = computed(() => {
-    if (lyricVisualizerColor.value === 'white') return { r: 255, g: 255, b: 255 };
-    if (lyricVisualizerColor.value === 'black') return { r: 0, g: 0, b: 0 };
-    return parseColorToRGB(lyricVisualizerColor.value);
+    const value = lyricVisualizerColor.value;
+    if (value === 'auto') {
+        return themeIsDark.value ? { r: 245, g: 248, b: 255 } : { r: 16, g: 20, b: 31 };
+    }
+    if (value === 'white') return { r: 255, g: 255, b: 255 };
+    if (value === 'black') return { r: 0, g: 0, b: 0 };
+    const parsed = parseColorToRGB(value);
+    if (!parsed || !Number.isFinite(parsed.r) || !Number.isFinite(parsed.g) || !Number.isFinite(parsed.b)) {
+        return themeIsDark.value ? { r: 245, g: 248, b: 255 } : { r: 0, g: 0, b: 0 };
+    }
+    return parsed;
 });
 
 const visualizerOpacityValue = computed(() => {
@@ -258,9 +290,26 @@ const lyricContainerClasses = computed(() => ({
 }));
 
 const visualizerCanvasStyle = computed(() => {
-       const isRadial = visualizerStyleValue.value === 'radial';
+    const isRadial = visualizerStyleValue.value === 'radial';
+    const blendMode = themeIsDark.value ? 'screen' : 'multiply';
+    const ratio = visualizerOpacityRatio.value;
+    const baseOpacity = Number.isFinite(ratio)
+        ? ratio * (themeIsDark.value ? 0.7 : 0.65) + (themeIsDark.value ? 0.34 : 0.28)
+        : themeIsDark.value
+        ? 0.78
+        : 0.64;
+    const clampedOpacity = themeIsDark.value
+        ? Math.min(0.92, Math.max(0.58, baseOpacity))
+        : Math.min(0.85, Math.max(0.48, baseOpacity));
+    const shared = {
+        mixBlendMode: blendMode,
+        opacity: clampedOpacity,
+        filter: themeIsDark.value ? 'saturate(1.08) contrast(1.02)' : 'saturate(1.04)',
+    };
+
     if (isRadial) {
         return {
+            ...shared,
             width: 'calc(100% - 3vh)',
             height: 'calc(100% - 3vh)',
             top: '50%',
@@ -273,6 +322,7 @@ const visualizerCanvasStyle = computed(() => {
 
     const height = visualizerCanvasHeightPx.value + 'px';
     const base = {
+        ...shared,
         height,
         top: 'auto',
     };
@@ -312,6 +362,10 @@ let resizeHandler = null;
 let resizeTarget = null;
 let visualizerBarLevels = null;
 let visualizerPauseState = false;
+let idlePhase = 0;
+const IDLE_WAVE_SPEED = 0.0125;
+const IDLE_BASE_LEVEL = 0.08;
+const IDLE_LEVEL_RANGE = 0.42;
 
 const syncAnalyserConfig = () => {
     const analyser = audioEnv.analyser;
@@ -590,18 +644,48 @@ const renderVisualizerFrame = () => {
     if (!levels) return false;
 
     const paused = !playing.value || visualizerPauseState;
-    const peakLevel = updateVisualizerLevels(
-        barCount,
-        index => {
-            if (!analyserDataArray || !binCount) return 0;
-            const samplePosition = minIndex + (index + 0.5) * step;
-            const dataIndex = Math.min(binCount - 1, Math.max(0, Math.floor(samplePosition)));
-            return analyserDataArray[dataIndex] / 255;
-        },
-        { paused }
-    );
+    const analyserReady = analyser && analyserDataArray && binCount > 0;
+    let peakLevel = 0;
+
+    if (analyserReady && !paused) {
+        peakLevel = updateVisualizerLevels(
+            barCount,
+            index => {
+                const samplePosition = minIndex + (index + 0.5) * step;
+                const dataIndex = Math.min(binCount - 1, Math.max(0, Math.floor(samplePosition)));
+                return analyserDataArray[dataIndex] / 255;
+            },
+            { paused: false }
+        );
+    } else {
+        // Soft decay existing levels when audio is paused or unavailable.
+        for (let i = 0; i < barCount; i++) {
+            const previous = levels[i] ?? 0;
+            levels[i] = Math.max(previous * 0.86 - 0.015, 0);
+            if (levels[i] > peakLevel) peakLevel = levels[i];
+        }
+    }
+
+    const idleActive = !analyserReady || paused || peakLevel < 0.015;
+    if (idleActive) {
+        idlePhase = (idlePhase + IDLE_WAVE_SPEED) % 1;
+        let idlePeak = 0;
+        for (let i = 0; i < barCount; i++) {
+            const progress = (i / barCount + idlePhase) % 1;
+            const wave = Math.sin(progress * Math.PI);
+            const idleValue = IDLE_BASE_LEVEL + Math.pow(Math.max(wave, 0), 2) * IDLE_LEVEL_RANGE;
+            levels[i] = Math.max(levels[i], idleValue);
+            if (levels[i] > idlePeak) idlePeak = levels[i];
+        }
+        peakLevel = Math.max(peakLevel, idlePeak);
+    }
 
     canvasCtx.clearRect(0, 0, width, height);
+    const backgroundAlpha = Math.min(Math.max(opacityRatio * 0.22, 0.05), themeIsDark.value ? 0.32 : 0.24);
+    if (backgroundAlpha > 0) {
+        canvasCtx.fillStyle = `rgba(${r}, ${g}, ${b}, ${backgroundAlpha})`;
+        canvasCtx.fillRect(0, 0, width, height);
+    }
 
     if (styleMode === 'radial') {
         const maxBaseRadius = Math.min(width, height) / 2;
@@ -674,10 +758,8 @@ const renderVisualizerFrame = () => {
         }
     }
 
-    if (!playing.value && peakLevel < 0.002) {
-        return false;
-    }
-    return true;
+    const continueLoop = idleActive || playing.value;
+    return continueLoop;
 };
 
 const startVisualizerLoop = ({ force = false } = {}) => {
@@ -712,6 +794,7 @@ const stopVisualizerLoop = ({ clear = false, teardown = false } = {}) => {
     if (clear || teardown) {
         resetVisualizerLevels();
         visualizerPauseState = false;
+        idlePhase = 0;
     }
     if (teardown) {
         detachVisualizerSizeTracking();
@@ -981,6 +1064,10 @@ watch(
     }
 );
 
+watch(themeIsDark, () => {
+    renderVisualizerPreview();
+});
+
 watch(
     () => lyricVisualizerOpacity.value,
     value => {
@@ -1209,6 +1296,35 @@ watch(
 );
 
 onMounted(() => {
+    syncThemeFlag();
+    if (typeof document !== 'undefined') {
+        const root = document.documentElement;
+        if (root) {
+            try {
+                themeObserver = new MutationObserver(() => syncThemeFlag());
+                themeObserver.observe(root, { attributes: true, attributeFilter: ['class'] });
+            } catch (_) {
+                themeObserver = null;
+            }
+        }
+    }
+    if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+        try {
+            themeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+            const handleChange = () => syncThemeFlag();
+            if (typeof themeMediaQuery.addEventListener === 'function') {
+                themeMediaQuery.addEventListener('change', handleChange);
+                themeMediaCleanup = () => themeMediaQuery.removeEventListener('change', handleChange);
+            } else if (typeof themeMediaQuery.addListener === 'function') {
+                themeMediaQuery.addListener(handleChange);
+                themeMediaCleanup = () => themeMediaQuery.removeListener(handleChange);
+            }
+        } catch (_) {
+            themeMediaQuery = null;
+            themeMediaCleanup = null;
+        }
+    }
+
     visualizerPauseState = !playing.value;
     if (shouldShowVisualizer.value) {
         nextTick(async () => {
@@ -1263,6 +1379,19 @@ onUnmounted(() => {
     } else {
         window.removeEventListener('resize', scheduleLayout);
     }
+    if (themeObserver) {
+        themeObserver.disconnect();
+        themeObserver = null;
+    }
+    if (typeof themeMediaCleanup === 'function') {
+        try {
+            themeMediaCleanup();
+        } catch (_) {
+            // ignore
+        }
+    }
+    themeMediaCleanup = null;
+    themeMediaQuery = null;
     stopVisualizerLoop({ clear: true, teardown: true });
     canvasCtx = null;
     analyserDataArray = null;
@@ -1456,9 +1585,8 @@ onUnmounted(() => {
         position: absolute;
         pointer-events: none;
         z-index: 0;
-        opacity: 0.75;
-        mix-blend-mode: multiply;
         transition: opacity 0.35s cubic-bezier(0.3, 0, 0.12, 1);
+        will-change: transform, opacity;
     }
     &.lyric-container--custom {
         background: transparent;

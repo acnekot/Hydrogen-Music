@@ -1,0 +1,9 @@
+{
+  "id": "core.feature-showcase",
+  "name": "功能展示插件",
+  "version": "1.0.0",
+  "author": "Hydrogen Labs",
+  "description": "演示插件系统的常用能力，如通知、Pinia store 交互与设置页面渲染。",
+  "main": "main.js",
+  "builtin": true
+}

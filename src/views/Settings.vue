@@ -499,7 +499,7 @@ const lyricVisualizerDefaults = Object.freeze({
     transitionDelay: 0.75,
     barCount: 48,
     barWidth: 55,
-    color: 'black',
+    color: 'auto',
     opacity: 100,
     style: 'bars',
     radialSize: 100,
@@ -641,6 +641,34 @@ const sanitizeRadialCoreSize = value => {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return lyricVisualizerDefaults.radialCoreSize;
     return clampNumber(Math.round(numeric), 10, 95, lyricVisualizerDefaults.radialCoreSize);
+};
+
+const sanitizeVisualizerColor = (value, fallback = lyricVisualizerDefaults.color) => {
+    if (value === 'auto' || value === 'black' || value === 'white') return value;
+    if (typeof value === 'string') {
+        const trimmed = value.trim().toLowerCase();
+        if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/.test(trimmed)) {
+            if (trimmed.length === 4) {
+                const expanded = trimmed
+                    .split('')
+                    .map((ch, index) => (index === 0 ? ch : ch + ch))
+                    .join('');
+                return expanded;
+            }
+            return trimmed;
+        }
+        const hexCandidate = trimmed.replace(/^#/, '');
+        if (/^([0-9a-f]{3}|[0-9a-f]{6})$/.test(hexCandidate)) {
+            if (hexCandidate.length === 3) {
+                return `#${hexCandidate
+                    .split('')
+                    .map(ch => ch + ch)
+                    .join('')}`;
+            }
+            return `#${hexCandidate}`;
+        }
+    }
+    return fallback;
 };
 
 const sanitizeBackgroundBlur = value => {
@@ -1193,9 +1221,8 @@ watch(
 watch(
     () => playerStore.lyricVisualizerColor,
     value => {
-        if (value !== 'black' && value !== 'white') {
-            playerStore.lyricVisualizerColor = lyricVisualizerDefaults.color;
-        }
+        const safe = sanitizeVisualizerColor(value);
+        if (value !== safe) playerStore.lyricVisualizerColor = safe;
     },
     { immediate: true }
 );
@@ -1307,8 +1334,9 @@ const resetCustomBackgroundApplyToChrome = () => {
 };
 
 const lyricVisualizerColorOptions = [
-    { label: '黑色（默认）', value: 'black' },
-    { label: '白色', value: 'white' },
+    { label: '自动（跟随主题）', value: 'auto' },
+    { label: '深色', value: 'black' },
+    { label: '浅色', value: 'white' },
 ];
 
 // apply theme immediately when user changes
