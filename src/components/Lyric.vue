@@ -81,6 +81,30 @@ const syncingLayout = ref(false);
 const lyricVisualizerCanvas = ref(null);
 const visualizerContainerSize = reactive({ width: 0, height: 0 });
 const lyricVisualizerEnabled = computed(() => lyricVisualizerPluginActive.value && lyricVisualizer.value);
+const themeIsDark = ref(false);
+let themeObserver = null;
+let themeMediaQuery = null;
+let themeMediaCleanup = null;
+
+const computeIsDarkTheme = () => {
+    if (typeof document !== 'undefined') {
+        const root = document.documentElement;
+        if (root.classList.contains('dark')) return true;
+        if (root.classList.contains('light')) return false;
+    }
+    if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+        try {
+            return window.matchMedia('(prefers-color-scheme: dark)').matches;
+        } catch (_) {
+            return false;
+        }
+    }
+    return false;
+};
+
+const syncThemeFlag = () => {
+    themeIsDark.value = computeIsDarkTheme();
+};
 
 const clampNumber = (value, min, max, fallback = min) => {
     const numeric = Number(value);
@@ -188,9 +212,17 @@ const visualizerBarWidthRatio = computed(() => {
     return Math.min(value, 100) / 100;
 });
 const visualizerColorRGB = computed(() => {
-    if (lyricVisualizerColor.value === 'white') return { r: 255, g: 255, b: 255 };
-    if (lyricVisualizerColor.value === 'black') return { r: 0, g: 0, b: 0 };
-    return parseColorToRGB(lyricVisualizerColor.value);
+    const value = lyricVisualizerColor.value;
+    if (value === 'auto') {
+        return themeIsDark.value ? { r: 245, g: 248, b: 255 } : { r: 16, g: 20, b: 31 };
+    }
+    if (value === 'white') return { r: 255, g: 255, b: 255 };
+    if (value === 'black') return { r: 0, g: 0, b: 0 };
+    const parsed = parseColorToRGB(value);
+    if (!parsed || !Number.isFinite(parsed.r) || !Number.isFinite(parsed.g) || !Number.isFinite(parsed.b)) {
+        return themeIsDark.value ? { r: 245, g: 248, b: 255 } : { r: 0, g: 0, b: 0 };
+    }
+    return parsed;
 });
 
 const visualizerOpacityValue = computed(() => {
@@ -258,9 +290,26 @@ const lyricContainerClasses = computed(() => ({
 }));
 
 const visualizerCanvasStyle = computed(() => {
-       const isRadial = visualizerStyleValue.value === 'radial';
+    const isRadial = visualizerStyleValue.value === 'radial';
+    const blendMode = themeIsDark.value ? 'screen' : 'multiply';
+    const ratio = visualizerOpacityRatio.value;
+    const baseOpacity = Number.isFinite(ratio)
+        ? ratio * (themeIsDark.value ? 0.7 : 0.65) + (themeIsDark.value ? 0.34 : 0.28)
+        : themeIsDark.value
+        ? 0.78
+        : 0.64;
+    const clampedOpacity = themeIsDark.value
+        ? Math.min(0.92, Math.max(0.58, baseOpacity))
+        : Math.min(0.85, Math.max(0.48, baseOpacity));
+    const shared = {
+        mixBlendMode: blendMode,
+        opacity: clampedOpacity,
+        filter: themeIsDark.value ? 'saturate(1.08) contrast(1.02)' : 'saturate(1.04)',
+    };
+
     if (isRadial) {
         return {
+            ...shared,
             width: 'calc(100% - 3vh)',
             height: 'calc(100% - 3vh)',
             top: '50%',
@@ -273,6 +322,7 @@ const visualizerCanvasStyle = computed(() => {
 
     const height = visualizerCanvasHeightPx.value + 'px';
     const base = {
+        ...shared,
         height,
         top: 'auto',
     };
@@ -310,8 +360,20 @@ let animationFrameId = null;
 let resizeObserver = null;
 let resizeHandler = null;
 let resizeTarget = null;
+let boundAudioNode = null;
 let visualizerBarLevels = null;
+let visualizerFrameTargets = null;
 let visualizerPauseState = false;
+let idlePhase = 0;
+let visualizerSampleFrequencies = new Float32Array(0);
+let visualizerSampleIndices = new Uint16Array(0);
+let visualizerSampleBinCount = 0;
+let visualizerSampleNyquist = 22050;
+let radialUnitVectors = new Float32Array(0);
+let radialVectorCount = 0;
+const IDLE_WAVE_SPEED = 0.0125;
+const IDLE_BASE_LEVEL = 0.08;
+const IDLE_LEVEL_RANGE = 0.42;
 
 const syncAnalyserConfig = () => {
     const analyser = audioEnv.analyser;
@@ -324,6 +386,7 @@ const syncAnalyserConfig = () => {
         analyserDataArray = new Uint8Array(analyser.frequencyBinCount);
     }
     analyser.smoothingTimeConstant = visualizerSmoothing.value;
+    rebuildFrequencySamples({ binCount: analyser.frequencyBinCount });
 };
 
 const ensureVisualizerLevels = size => {
@@ -339,7 +402,81 @@ const ensureVisualizerLevels = size => {
 
 const resetVisualizerLevels = () => {
     visualizerBarLevels = null;
+    visualizerFrameTargets = null;
 };
+
+const ensureVisualizerFrameTargets = size => {
+    if (size <= 0) {
+        visualizerFrameTargets = null;
+        return visualizerFrameTargets;
+    }
+    if (!visualizerFrameTargets || visualizerFrameTargets.length !== size) {
+        visualizerFrameTargets = new Float32Array(size);
+    }
+    return visualizerFrameTargets;
+};
+
+const rebuildRadialUnitVectors = () => {
+    const barCount = Math.max(1, visualizerBarCountValue.value);
+    if (radialVectorCount === barCount && radialUnitVectors.length === barCount * 2) return;
+    const vectors = new Float32Array(barCount * 2);
+    const step = (Math.PI * 2) / barCount;
+    let angle = 0;
+    for (let index = 0; index < barCount; index++, angle += step) {
+        vectors[index * 2] = Math.cos(angle);
+        vectors[index * 2 + 1] = Math.sin(angle);
+    }
+    radialUnitVectors = vectors;
+    radialVectorCount = barCount;
+};
+
+const rebuildFrequencySamples = ({ binCount: overrideBinCount } = {}) => {
+    const barCount = Math.max(1, visualizerBarCountValue.value);
+    const { min, max } = visualizerFrequencyRange.value;
+    const minHz = Math.max(0, Number(min) || 0);
+    const maxHz = Math.max(minHz + 10, Number(max) || minHz + 10);
+    const range = Math.max(10, maxHz - minHz);
+    const step = range / barCount;
+    const frequencies = new Float32Array(barCount);
+    let cursor = minHz + step * 0.5;
+    for (let index = 0; index < barCount; index++, cursor += step) {
+        frequencies[index] = cursor;
+    }
+    visualizerSampleFrequencies = frequencies;
+
+    const analyser = audioEnv.analyser;
+    const audioContext = audioEnv.audioContext;
+    const nyquistCandidate =
+        audioContext && typeof audioContext.sampleRate === 'number' && audioContext.sampleRate > 0
+            ? audioContext.sampleRate / 2
+            : visualizerSampleNyquist || 22050;
+    visualizerSampleNyquist = Math.max(1, nyquistCandidate);
+
+    const resolvedBinCount =
+        overrideBinCount ?? analyser?.frequencyBinCount ?? analyserDataArray?.length ?? visualizerSampleBinCount;
+    const binCount = Math.max(0, Number(resolvedBinCount) || 0);
+    visualizerSampleBinCount = binCount;
+
+    if (!binCount) {
+        visualizerSampleIndices = new Uint16Array(0);
+        return;
+    }
+
+    if (!visualizerSampleIndices || visualizerSampleIndices.length !== barCount) {
+        visualizerSampleIndices = new Uint16Array(barCount);
+    }
+
+    const invNyquist = 1 / visualizerSampleNyquist;
+    const indexLimit = binCount - 1;
+    for (let index = 0; index < barCount; index++) {
+        const freq = Math.min(Math.max(frequencies[index], 0), visualizerSampleNyquist);
+        const ratio = Math.min(Math.max(freq * invNyquist, 0), 0.999999);
+        visualizerSampleIndices[index] = Math.min(indexLimit, Math.max(0, Math.floor(ratio * binCount)));
+    }
+};
+
+rebuildRadialUnitVectors();
+rebuildFrequencySamples();
 
 const updateVisualizerLevels = (size, resolveTarget, { paused = false } = {}) => {
     const levels = ensureVisualizerLevels(size);
@@ -492,7 +629,7 @@ const detachVisualizerSizeTracking = () => {
     resetVisualizerContainerMetrics();
 };
 
-const setupVisualizer = async () => {
+const setupVisualizer = async ({ forceRebind = false, resumeContext = false } = {}) => {
     if (!shouldShowVisualizer.value || !lyricVisualizerCanvas.value) return;
     if (!currentMusic.value || !currentMusic.value._sounds || !currentMusic.value._sounds.length) return;
     const audioNode = currentMusic.value._sounds[0]?._node;
@@ -512,7 +649,14 @@ const setupVisualizer = async () => {
 
     const audioContext = audioEnv.audioContext;
 
-    if (audioContext.state === 'suspended') {
+    if (!audioEnv.analyser) {
+        audioEnv.analyser = audioContext.createAnalyser();
+    }
+    syncAnalyserConfig();
+
+    const sameNode = boundAudioNode && audioNode && boundAudioNode === audioNode;
+
+    if (resumeContext && audioContext.state === 'suspended') {
         try {
             await audioContext.resume();
         } catch (error) {
@@ -520,10 +664,10 @@ const setupVisualizer = async () => {
         }
     }
 
-    if (!audioEnv.analyser) {
-        audioEnv.analyser = audioContext.createAnalyser();
+    if (!forceRebind && sameNode && audioEnv.analyserConnected && canvasCtx && lyricVisualizerCanvas.value) {
+        ensureVisualizerSizeTracking();
+        return;
     }
-    syncAnalyserConfig();
 
     const analyser = audioEnv.analyser;
 
@@ -551,6 +695,7 @@ const setupVisualizer = async () => {
     canvasCtx = lyricVisualizerCanvas.value.getContext('2d');
     if (!canvasCtx) return;
 
+    boundAudioNode = audioNode;
     ensureVisualizerSizeTracking();
 };
 
@@ -572,37 +717,99 @@ const renderVisualizerFrame = () => {
     const opacityRatio = visualizerOpacityRatio.value;
     const styleMode = visualizerStyleValue.value;
 
-    const nyquist = audioEnv.audioContext ? audioEnv.audioContext.sampleRate / 2 : 22050;
     const binCount = analyserDataArray ? analyserDataArray.length : 0;
-    const frequencyMin = Math.max(0, Math.min(visualizerFrequencyMinValue.value, nyquist));
-    const frequencyMax = Math.max(frequencyMin + 10, Math.min(visualizerFrequencyMaxValue.value, nyquist));
-    const minIndex = binCount
-        ? Math.min(binCount - 1, Math.max(0, Math.floor((frequencyMin / nyquist) * binCount)))
-        : 0;
-    const maxIndex = binCount
-        ? Math.max(minIndex + 1, Math.min(binCount, Math.floor((frequencyMax / nyquist) * binCount)))
-        : 1;
-    const rangeSize = Math.max(1, maxIndex - minIndex);
     const barCount = Math.max(1, visualizerBarCountValue.value);
-    const step = rangeSize / barCount;
 
     const levels = ensureVisualizerLevels(barCount);
     if (!levels) return false;
 
-    const paused = !playing.value || visualizerPauseState;
-    const peakLevel = updateVisualizerLevels(
-        barCount,
-        index => {
-            if (!analyserDataArray || !binCount) return 0;
-            const samplePosition = minIndex + (index + 0.5) * step;
-            const dataIndex = Math.min(binCount - 1, Math.max(0, Math.floor(samplePosition)));
-            return analyserDataArray[dataIndex] / 255;
-        },
-        { paused }
-    );
+    const audioElement = currentMusic.value?._sounds?.[0]?._node || null;
+    let nodePaused = false;
+    if (audioElement) {
+        if (typeof audioElement.paused === 'boolean') {
+            nodePaused = audioElement.paused;
+        } else if (typeof audioElement.readyState === 'number' && audioElement.readyState < 3) {
+            nodePaused = true;
+        }
+    }
+    if (!nodePaused && audioEnv.audioContext && typeof audioEnv.audioContext.state === 'string') {
+        nodePaused = audioEnv.audioContext.state === 'suspended';
+    }
+
+    const isPaused = !playing.value || visualizerPauseState || nodePaused;
+    const analyserReady = analyser && analyserDataArray && binCount > 0;
+    let peakLevel = 0;
+
+    if (analyserReady && !isPaused) {
+        if (
+            visualizerSampleFrequencies.length !== barCount ||
+            (binCount > 0 && visualizerSampleIndices.length !== barCount) ||
+            visualizerSampleBinCount !== binCount
+        ) {
+            rebuildFrequencySamples({ binCount });
+        }
+
+        const freqIndices =
+            visualizerSampleIndices.length === barCount && visualizerSampleBinCount === binCount
+                ? visualizerSampleIndices
+                : null;
+        const freqTable = visualizerSampleFrequencies.length === barCount ? visualizerSampleFrequencies : null;
+        const invNyquist = visualizerSampleNyquist > 0 ? 1 / visualizerSampleNyquist : 0;
+        const indexLimit = binCount - 1;
+        const targets = ensureVisualizerFrameTargets(barCount);
+
+        if (targets) {
+            if (freqIndices) {
+                for (let i = 0; i < barCount; i++) {
+                    targets[i] = analyserDataArray[freqIndices[i]] / 255;
+                }
+            } else if (freqTable) {
+                for (let i = 0; i < barCount; i++) {
+                    const freq = freqTable[i] ?? visualizerFrequencyMinValue.value;
+                    const normalized = Math.min(Math.max(freq * invNyquist, 0), 0.999999);
+                    const dataIndex = Math.min(indexLimit, Math.max(0, Math.floor(normalized * binCount)));
+                    targets[i] = analyserDataArray[dataIndex] / 255;
+                }
+            } else {
+                const sampleStep = binCount / barCount;
+                for (let i = 0; i < barCount; i++) {
+                    const dataIndex = Math.min(indexLimit, Math.max(0, Math.floor((i + 0.5) * sampleStep)));
+                    targets[i] = analyserDataArray[dataIndex] / 255;
+                }
+            }
+
+            peakLevel = updateVisualizerLevels(barCount, index => targets[index], { paused: false });
+        }
+    } else if (!isPaused) {
+        // Soft decay existing levels when audio data is unavailable but playback should continue.
+        for (let i = 0; i < barCount; i++) {
+            const previous = levels[i] ?? 0;
+            levels[i] = Math.max(previous * 0.86 - 0.015, 0);
+            if (levels[i] > peakLevel) peakLevel = levels[i];
+        }
+    } else {
+        peakLevel = updateVisualizerLevels(
+            barCount,
+            () => 0,
+            { paused: true }
+        );
+    }
+
+    const idleActive = !isPaused && (!analyserReady || peakLevel < 0.015);
+    if (idleActive) {
+        idlePhase = (idlePhase + IDLE_WAVE_SPEED) % 1;
+        let idlePeak = 0;
+        for (let i = 0; i < barCount; i++) {
+            const progress = (i / barCount + idlePhase) % 1;
+            const wave = Math.sin(progress * Math.PI);
+            const idleValue = IDLE_BASE_LEVEL + Math.pow(Math.max(wave, 0), 2) * IDLE_LEVEL_RANGE;
+            levels[i] = Math.max(levels[i], idleValue);
+            if (levels[i] > idlePeak) idlePeak = levels[i];
+        }
+        peakLevel = Math.max(peakLevel, idlePeak);
+    }
 
     canvasCtx.clearRect(0, 0, width, height);
-
     if (styleMode === 'radial') {
         const maxBaseRadius = Math.min(width, height) / 2;
         if (maxBaseRadius <= 0) return true;
@@ -624,16 +831,20 @@ const renderVisualizerFrame = () => {
         const widthRatio = Math.min(Math.max(visualizerBarWidthRatio.value, 0.05), 1);
         const lineWidth = Math.max(1.2, (circumference / barCount) * widthRatio);
 
+        if (radialUnitVectors.length !== barCount * 2) {
+            rebuildRadialUnitVectors();
+        }
+        const vectors = radialUnitVectors.length === barCount * 2 ? radialUnitVectors : null;
+
         canvasCtx.save();
         canvasCtx.lineCap = 'round';
         canvasCtx.lineWidth = lineWidth;
 
-        for (let i = 0; i < barCount; i++) {
+        for (let i = 0, vectorIndex = 0; i < barCount; i++, vectorIndex += 2) {
             const value = levels[i] ?? 0;
             const endRadius = startRadius + value * radialExtent;
-            const angle = (i / barCount) * Math.PI * 2;
-            const cos = Math.cos(angle);
-            const sin = Math.sin(angle);
+            const cos = vectors ? vectors[vectorIndex] : Math.cos((i / barCount) * Math.PI * 2);
+            const sin = vectors ? vectors[vectorIndex + 1] : Math.sin((i / barCount) * Math.PI * 2);
             const x1 = centerX + startRadius * cos;
             const y1 = centerY + startRadius * sin;
             const x2 = centerX + endRadius * cos;
@@ -674,10 +885,8 @@ const renderVisualizerFrame = () => {
         }
     }
 
-    if (!playing.value && peakLevel < 0.002) {
-        return false;
-    }
-    return true;
+    const continueLoop = !isPaused || peakLevel > 0.003;
+    return continueLoop;
 };
 
 const startVisualizerLoop = ({ force = false } = {}) => {
@@ -711,11 +920,14 @@ const stopVisualizerLoop = ({ clear = false, teardown = false } = {}) => {
     }
     if (clear || teardown) {
         resetVisualizerLevels();
+        visualizerFrameTargets = null;
         visualizerPauseState = false;
+        idlePhase = 0;
     }
     if (teardown) {
         detachVisualizerSizeTracking();
         canvasCtx = null;
+        boundAudioNode = null;
     }
 };
 
@@ -863,6 +1075,7 @@ watch(
 );
 
 watch([visualizerFrequencyMinValue, visualizerFrequencyMaxValue], () => {
+    rebuildFrequencySamples();
     renderVisualizerPreview();
 });
 
@@ -901,10 +1114,16 @@ watch(visualizerHeightPx, () => {
     });
 });
 
-watch(visualizerBarCountValue, () => {
-    resetVisualizerLevels();
-    renderVisualizerPreview();
-});
+watch(
+    visualizerBarCountValue,
+    () => {
+        rebuildFrequencySamples();
+        rebuildRadialUnitVectors();
+        resetVisualizerLevels();
+        renderVisualizerPreview();
+    },
+    { immediate: true }
+);
 
 watch(visualizerBarWidthRatio, () => {
     renderVisualizerPreview();
@@ -927,6 +1146,7 @@ watch(
 );
 
 watch(visualizerStyleValue, () => {
+    rebuildRadialUnitVectors();
     resetVisualizerLevels();
     nextTick(() => {
         updateVisualizerCanvasSize();
@@ -981,6 +1201,10 @@ watch(
     }
 );
 
+watch(themeIsDark, () => {
+    renderVisualizerPreview();
+});
+
 watch(
     () => lyricVisualizerOpacity.value,
     value => {
@@ -997,13 +1221,14 @@ watch(
         if (!canvas) {
             stopVisualizerLoop({ clear: true, teardown: true });
             canvasCtx = null;
+            boundAudioNode = null;
             return;
         }
         await nextTick();
         updateVisualizerCanvasSize();
         renderVisualizerPreview();
         if (!shouldShowVisualizer.value) return;
-        await setupVisualizer();
+        await setupVisualizer({ forceRebind: true, resumeContext: playing.value });
         visualizerPauseState = !playing.value;
         startVisualizerLoop({ force: true });
     }
@@ -1012,12 +1237,13 @@ watch(
 watch(shouldShowVisualizer, active => {
     if (active) {
         nextTick(async () => {
-            await setupVisualizer();
+            await setupVisualizer({ forceRebind: true, resumeContext: playing.value });
             visualizerPauseState = !playing.value;
             startVisualizerLoop({ force: true });
         });
     } else {
         stopVisualizerLoop({ clear: true, teardown: true });
+        boundAudioNode = null;
     }
 });
 
@@ -1026,7 +1252,7 @@ watch(
     () => {
         if (!shouldShowVisualizer.value) return;
         nextTick(async () => {
-            await setupVisualizer();
+            await setupVisualizer({ forceRebind: true, resumeContext: playing.value });
             visualizerPauseState = !playing.value;
             if (playing.value) startVisualizerLoop({ force: true });
             else startVisualizerLoop();
@@ -1037,11 +1263,14 @@ watch(
 watch(playing, isPlaying => {
     visualizerPauseState = !isPlaying;
     if (!shouldShowVisualizer.value) return;
-    nextTick(async () => {
-        await setupVisualizer();
-        if (isPlaying) startVisualizerLoop({ force: true });
-        else startVisualizerLoop();
-    });
+    if (isPlaying) {
+        nextTick(async () => {
+            await setupVisualizer({ resumeContext: true });
+            startVisualizerLoop({ force: true });
+        });
+    } else {
+        startVisualizerLoop();
+    }
 });
 
 // 根据显示配置（翻译/原文/罗马音、字号）动态调整高度与位置
@@ -1209,10 +1438,39 @@ watch(
 );
 
 onMounted(() => {
+    syncThemeFlag();
+    if (typeof document !== 'undefined') {
+        const root = document.documentElement;
+        if (root) {
+            try {
+                themeObserver = new MutationObserver(() => syncThemeFlag());
+                themeObserver.observe(root, { attributes: true, attributeFilter: ['class'] });
+            } catch (_) {
+                themeObserver = null;
+            }
+        }
+    }
+    if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+        try {
+            themeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+            const handleChange = () => syncThemeFlag();
+            if (typeof themeMediaQuery.addEventListener === 'function') {
+                themeMediaQuery.addEventListener('change', handleChange);
+                themeMediaCleanup = () => themeMediaQuery.removeEventListener('change', handleChange);
+            } else if (typeof themeMediaQuery.addListener === 'function') {
+                themeMediaQuery.addListener(handleChange);
+                themeMediaCleanup = () => themeMediaQuery.removeListener(handleChange);
+            }
+        } catch (_) {
+            themeMediaQuery = null;
+            themeMediaCleanup = null;
+        }
+    }
+
     visualizerPauseState = !playing.value;
     if (shouldShowVisualizer.value) {
         nextTick(async () => {
-            await setupVisualizer();
+            await setupVisualizer({ forceRebind: true, resumeContext: playing.value });
             visualizerPauseState = !playing.value;
             startVisualizerLoop({ force: true });
         });
@@ -1263,6 +1521,19 @@ onUnmounted(() => {
     } else {
         window.removeEventListener('resize', scheduleLayout);
     }
+    if (themeObserver) {
+        themeObserver.disconnect();
+        themeObserver = null;
+    }
+    if (typeof themeMediaCleanup === 'function') {
+        try {
+            themeMediaCleanup();
+        } catch (_) {
+            // ignore
+        }
+    }
+    themeMediaCleanup = null;
+    themeMediaQuery = null;
     stopVisualizerLoop({ clear: true, teardown: true });
     canvasCtx = null;
     analyserDataArray = null;
@@ -1456,9 +1727,8 @@ onUnmounted(() => {
         position: absolute;
         pointer-events: none;
         z-index: 0;
-        opacity: 0.75;
-        mix-blend-mode: multiply;
         transition: opacity 0.35s cubic-bezier(0.3, 0, 0.12, 1);
+        will-change: transform, opacity;
     }
     &.lyric-container--custom {
         background: transparent;

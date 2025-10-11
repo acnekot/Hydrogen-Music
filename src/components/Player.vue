@@ -75,7 +75,7 @@ const lyricVisualizerActive = computed(() => lyricVisualizer.value && lyricVisua
 const showLyricVisualizerToggle = computed(
     () => lyricVisualizerToggleAvailable.value && lyricVisualizerPluginActive.value,
 );
-const lyricVisualizerToggleTitle = computed(() => (lyricVisualizerActive.value ? '关闭歌词可视化' : '开启歌词可视化'));
+const lyricVisualizerToggleLabel = computed(() => (lyricVisualizerActive.value ? '关闭歌词可视化' : '开启歌词可视化'));
 
 const toggleLyricVisualizer = () => {
     if (!lyricVisualizerPluginActive.value) {
@@ -702,7 +702,7 @@ const toggleDjSub = async (isSubscribe) => {
                         v-if="showLyricVisualizerToggle"
                         class="visualizer-toggle-button"
                         type="button"
-                        :title="lyricVisualizerToggleTitle"
+                        :aria-label="lyricVisualizerToggleLabel"
                         :class="{ active: lyricVisualizerActive, disabled: !lyricVisualizerPluginActive }"
                         :disabled="!lyricVisualizerPluginActive"
                         @click="toggleLyricVisualizer"
@@ -1081,12 +1081,12 @@ const toggleDjSub = async (isSubscribe) => {
                         width: 38px;
                         height: 38px;
                         padding: 0;
-                        border: 1px solid rgba(96, 128, 186, 0.45);
+                        border: none;
                         border-radius: 0;
-                        background: rgba(244, 248, 255, 0.9);
+                        background: transparent;
                         color: rgba(12, 22, 38, 0.72);
                         cursor: pointer;
-                        transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
+                        transition: color 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
                         outline: none;
 
                         svg {
@@ -1096,19 +1096,21 @@ const toggleDjSub = async (isSubscribe) => {
 
                         &:hover:not(:disabled) {
                             transform: translateY(-1px);
+                            color: rgba(70, 108, 196, 0.85);
                         }
 
                         &.active {
-                            background: rgba(70, 108, 196, 0.9);
-                            border-color: rgba(70, 108, 196, 0.95);
-                            color: #ffffff;
-                            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+                            color: rgba(70, 108, 196, 0.98);
                         }
 
                         &.disabled,
                         &:disabled {
                             cursor: not-allowed;
                             opacity: 0.4;
+                        }
+
+                        &:focus-visible {
+                            outline: none;
                         }
                     }
                 }
