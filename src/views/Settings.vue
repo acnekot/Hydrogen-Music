@@ -119,32 +119,6 @@ const pluginSettingsAvailability = computed(() => {
     return availability;
 });
 
-const LYRIC_VISUALIZER_PLUGIN_ID = 'core.lyric-visualizer';
-const lyricVisualizerPlugin = computed(() =>
-    (plugins.value || []).find(plugin => plugin && plugin.id === LYRIC_VISUALIZER_PLUGIN_ID) || null
-);
-const lyricVisualizerPluginEnabled = computed(() => Boolean(lyricVisualizerPlugin.value?.enabled));
-const lyricVisualizerSettingsAvailable = computed(
-    () => lyricVisualizerPluginEnabled.value && pluginHasSettings(LYRIC_VISUALIZER_PLUGIN_ID)
-);
-const lyricVisualizerStatusText = computed(() => {
-    if (!pluginApiAvailable.value) return '插件系统不可用';
-    if (!lyricVisualizerPlugin.value) return '插件未导入';
-    return lyricVisualizerPluginEnabled.value ? '插件已启用' : '插件未启用';
-});
-const openLyricVisualizerPluginSettings = () => {
-    const plugin = lyricVisualizerPlugin.value;
-    if (!plugin) {
-        noticeOpen('请先导入歌词音频可视化插件', 2);
-        return;
-    }
-    if (!plugin.enabled) {
-        noticeOpen('请先启用歌词音频可视化插件', 2);
-        return;
-    }
-    openPluginSettings(plugin);
-};
-
 if (isLogin()) {
     getVipInfo().then(result => {
         vipInfo.value = result.data;
@@ -412,11 +386,12 @@ const togglePluginState = async (plugin) => {
 
 const requestDeletePlugin = (plugin) => {
     if (!pluginApiAvailable.value || !plugin?.id) return;
-    if (plugin.builtin) {
-        noticeOpen('内置插件无法删除', 2);
-        return;
-    }
-    dialogOpen('删除插件', `确定删除插件“${plugin.name}”吗？`, async (confirm) => {
+    const builtin = plugin.builtin === true;
+    const title = builtin ? '删除内置插件' : '删除插件';
+    const message = builtin
+        ? `确定要删除内置插件“${plugin.name}”吗？删除后内置版本将不会自动恢复。`
+        : `确定删除插件“${plugin.name}”吗？`;
+    dialogOpen(title, message, async (confirm) => {
         if (!confirm) return;
         setPluginProcessing(plugin.id, true);
         try {
@@ -429,7 +404,7 @@ const requestDeletePlugin = (plugin) => {
                 noticeOpen(result?.message || '删除插件失败', 2);
                 return;
             }
-            noticeOpen(`已删除插件 ${plugin.name}`, 2);
+            noticeOpen(`${builtin ? '已移除内置插件' : '已删除插件'} ${plugin.name}`, 2);
             await loadPlugins(false);
             await reloadPluginSystem();
         } catch (error) {
@@ -499,7 +474,7 @@ const lyricVisualizerDefaults = Object.freeze({
     transitionDelay: 0.75,
     barCount: 48,
     barWidth: 55,
-    color: 'black',
+    color: 'auto',
     opacity: 100,
     style: 'bars',
     radialSize: 100,
@@ -641,6 +616,34 @@ const sanitizeRadialCoreSize = value => {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return lyricVisualizerDefaults.radialCoreSize;
     return clampNumber(Math.round(numeric), 10, 95, lyricVisualizerDefaults.radialCoreSize);
+};
+
+const sanitizeVisualizerColor = (value, fallback = lyricVisualizerDefaults.color) => {
+    if (value === 'auto' || value === 'black' || value === 'white') return value;
+    if (typeof value === 'string') {
+        const trimmed = value.trim().toLowerCase();
+        if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/.test(trimmed)) {
+            if (trimmed.length === 4) {
+                const expanded = trimmed
+                    .split('')
+                    .map((ch, index) => (index === 0 ? ch : ch + ch))
+                    .join('');
+                return expanded;
+            }
+            return trimmed;
+        }
+        const hexCandidate = trimmed.replace(/^#/, '');
+        if (/^([0-9a-f]{3}|[0-9a-f]{6})$/.test(hexCandidate)) {
+            if (hexCandidate.length === 3) {
+                return `#${hexCandidate
+                    .split('')
+                    .map(ch => ch + ch)
+                    .join('')}`;
+            }
+            return `#${hexCandidate}`;
+        }
+    }
+    return fallback;
 };
 
 const sanitizeBackgroundBlur = value => {
@@ -1193,9 +1196,8 @@ watch(
 watch(
     () => playerStore.lyricVisualizerColor,
     value => {
-        if (value !== 'black' && value !== 'white') {
-            playerStore.lyricVisualizerColor = lyricVisualizerDefaults.color;
-        }
+        const safe = sanitizeVisualizerColor(value);
+        if (value !== safe) playerStore.lyricVisualizerColor = safe;
     },
     { immediate: true }
 );
@@ -1307,8 +1309,9 @@ const resetCustomBackgroundApplyToChrome = () => {
 };
 
 const lyricVisualizerColorOptions = [
-    { label: '黑色（默认）', value: 'black' },
-    { label: '白色', value: 'white' },
+    { label: '自动（跟随主题）', value: 'auto' },
+    { label: '深色', value: 'black' },
+    { label: '浅色', value: 'white' },
 ];
 
 // apply theme immediately when user changes
@@ -1608,7 +1611,9 @@ const clearFmRecent = () => {
                             <div class="option-name">开启歌词模糊</div>
                             <div class="option-operation">
                                 <div class="toggle" @click="setLyricBlur()">
-                                    <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.lyricBlur }">{{ playerStore.lyricBlur ? '已开启' : '已关闭' }}</div>
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.lyricBlur }">
+                                        {{ playerStore.lyricBlur ? '已开启' : '已关闭' }}
+                                    </div>
                                     <Transition name="toggle">
                                         <div class="toggle-on" v-show="playerStore.lyricBlur"></div>
                                     </Transition>
@@ -1725,7 +1730,9 @@ const clearFmRecent = () => {
                             <div class="option-name">开启音乐视频功能</div>
                             <div class="option-operation">
                                 <div class="toggle" @click="setMusicVideo()">
-                                    <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.musicVideo }">{{ playerStore.musicVideo ? '已开启' : '已关闭' }}</div>
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': playerStore.musicVideo }">
+                                        {{ playerStore.musicVideo ? '已开启' : '已关闭' }}
+                                    </div>
                                     <Transition name="toggle">
                                         <div class="toggle-on" v-show="playerStore.musicVideo"></div>
                                     </Transition>
@@ -1872,7 +1879,6 @@ const clearFmRecent = () => {
                                             设置
                                         </div>
                                         <div
-                                            v-if="!plugin.builtin"
                                             class="plugin-button plugin-button--danger"
                                             :class="{ 'plugin-button--disabled': !pluginApiAvailable || isPluginBusy(plugin.id) }"
                                             @click="requestDeletePlugin(plugin)"
@@ -1893,7 +1899,9 @@ const clearFmRecent = () => {
                             <div class="option-name">开启全局快捷键</div>
                             <div class="option-operation">
                                 <div class="toggle" @click="globalShortcuts = !globalShortcuts">
-                                    <div class="toggle-off" :class="{ 'toggle-on-in': globalShortcuts }">{{ globalShortcuts ? '已开启' : '已关闭' }}</div>
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': globalShortcuts }">
+                                        {{ globalShortcuts ? '已开启' : '已关闭' }}
+                                    </div>
                                     <Transition name="toggle">
                                         <div class="toggle-on" v-show="globalShortcuts"></div>
                                     </Transition>
@@ -1939,7 +1947,9 @@ const clearFmRecent = () => {
                             <div class="option-name">开启首页页面</div>
                             <div class="option-operation">
                                 <div class="toggle" @click="userStore.homePage = !userStore.homePage">
-                                    <div class="toggle-off" :class="{ 'toggle-on-in': userStore.homePage }">{{ userStore.homePage ? '已开启' : '已关闭' }}</div>
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': userStore.homePage }">
+                                        {{ userStore.homePage ? '已开启' : '已关闭' }}
+                                    </div>
                                     <Transition name="toggle">
                                         <div class="toggle-on" v-show="userStore.homePage"></div>
                                     </Transition>
@@ -1950,7 +1960,9 @@ const clearFmRecent = () => {
                             <div class="option-name">开启云盘页面</div>
                             <div class="option-operation">
                                 <div class="toggle" @click="userStore.cloudDiskPage = !userStore.cloudDiskPage">
-                                    <div class="toggle-off" :class="{ 'toggle-on-in': userStore.cloudDiskPage }">{{ userStore.cloudDiskPage ? '已开启' : '已关闭' }}</div>
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': userStore.cloudDiskPage }">
+                                        {{ userStore.cloudDiskPage ? '已开启' : '已关闭' }}
+                                    </div>
                                     <Transition name="toggle">
                                         <div class="toggle-on" v-show="userStore.cloudDiskPage"></div>
                                     </Transition>
@@ -1961,7 +1973,9 @@ const clearFmRecent = () => {
                             <div class="option-name">开启私人漫游页面</div>
                             <div class="option-operation">
                                 <div class="toggle" @click="userStore.personalFMPage = !userStore.personalFMPage">
-                                    <div class="toggle-off" :class="{ 'toggle-on-in': userStore.personalFMPage }">{{ userStore.personalFMPage ? '已开启' : '已关闭' }}</div>
+                                    <div class="toggle-off" :class="{ 'toggle-on-in': userStore.personalFMPage }">
+                                        {{ userStore.personalFMPage ? '已开启' : '已关闭' }}
+                                    </div>
                                     <Transition name="toggle">
                                         <div class="toggle-on" v-show="userStore.personalFMPage"></div>
                                     </Transition>
