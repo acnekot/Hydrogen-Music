@@ -439,9 +439,28 @@ let slowReleaseStartTime = 0;
 let slowReleaseDurationMs = 0;
 let visualizerWasPausedLastFrame = false;
 let visualizerSetupGeneration = 0;
+let visualizerSetupRetryHandle = 0;
 const IDLE_WAVE_SPEED = 0.0125;
 const IDLE_BASE_LEVEL = 0.08;
 const IDLE_LEVEL_RANGE = 0.42;
+
+const clearVisualizerSetupRetry = () => {
+    if (visualizerSetupRetryHandle) {
+        clearTimeout(visualizerSetupRetryHandle);
+        visualizerSetupRetryHandle = 0;
+    }
+};
+
+const scheduleVisualizerSetupRetry = (delay = 600) => {
+    clearVisualizerSetupRetry();
+    if (!shouldShowVisualizer.value) return;
+    if (typeof window === 'undefined' || typeof window.setTimeout !== 'function') return;
+    visualizerSetupRetryHandle = window.setTimeout(() => {
+        visualizerSetupRetryHandle = 0;
+        if (!shouldShowVisualizer.value) return;
+        setupVisualizer({ forceRebind: true, resumeContext: playing.value }).catch(() => {});
+    }, Math.max(0, delay));
+};
 
 const syncAnalyserConfig = () => {
     const analyser = audioEnv.analyser;
@@ -703,6 +722,8 @@ const setupVisualizer = async ({ forceRebind = false, resumeContext = false } = 
 
     const setupId = ++visualizerSetupGeneration;
 
+    clearVisualizerSetupRetry();
+
     let audioNode = getCurrentAudioNode();
     if (!audioNode) {
         audioNode = await waitForAudioNodeAvailability({ timeout: 1600, generation: setupId });
@@ -710,7 +731,10 @@ const setupVisualizer = async ({ forceRebind = false, resumeContext = false } = 
 
     if (setupId !== visualizerSetupGeneration) return;
     if (!shouldShowVisualizer.value || !lyricVisualizerCanvas.value) return;
-    if (!audioNode) return;
+    if (!audioNode) {
+        scheduleVisualizerSetupRetry(800);
+        return;
+    }
 
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) return;
@@ -756,6 +780,7 @@ const setupVisualizer = async ({ forceRebind = false, resumeContext = false } = 
         }
     } catch (error) {
         console.warn('创建音频源失败:', error);
+        scheduleVisualizerSetupRetry(800);
         return;
     }
 
@@ -777,7 +802,10 @@ const setupVisualizer = async ({ forceRebind = false, resumeContext = false } = 
     if (!shouldShowVisualizer.value || !lyricVisualizerCanvas.value) return;
 
     canvasCtx = lyricVisualizerCanvas.value.getContext('2d');
-    if (!canvasCtx) return;
+    if (!canvasCtx) {
+        scheduleVisualizerSetupRetry(600);
+        return;
+    }
 
     boundAudioNode = audioNode;
     ensureVisualizerSizeTracking();
@@ -815,6 +843,11 @@ const renderVisualizerFrame = () => {
         } else if (typeof audioElement.readyState === 'number' && audioElement.readyState < 3) {
             nodePaused = true;
         }
+    }
+    const howlerState =
+        typeof currentMusic.value?.state === 'function' ? currentMusic.value.state() : null;
+    if (howlerState && howlerState !== 'loaded') {
+        nodePaused = true;
     }
     if (!nodePaused && audioEnv.audioContext && typeof audioEnv.audioContext.state === 'string') {
         nodePaused = audioEnv.audioContext.state === 'suspended';
@@ -876,6 +909,7 @@ const renderVisualizerFrame = () => {
             }
         }
         visualizerWasPausedLastFrame = true;
+        idlePhase = 0;
     }
 
     if (analyserReady && !isPaused) {
@@ -1090,6 +1124,7 @@ const stopVisualizerLoop = ({ clear = false, teardown = false } = {}) => {
         detachVisualizerSizeTracking();
         canvasCtx = null;
         boundAudioNode = null;
+        clearVisualizerSetupRetry();
     }
 };
 
@@ -1413,6 +1448,7 @@ watch(
             stopVisualizerLoop({ clear: true, teardown: true });
             canvasCtx = null;
             boundAudioNode = null;
+            clearVisualizerSetupRetry();
             return;
         }
         await nextTick();
@@ -1445,12 +1481,18 @@ watch(shouldShowVisualizer, active => {
     } else {
         stopVisualizerLoop({ clear: true, teardown: true });
         boundAudioNode = null;
+        clearVisualizerSetupRetry();
     }
 });
 
 watch(
     () => currentMusic.value,
     () => {
+        stopVisualizerLoop({ clear: true });
+        resetVisualizerLevels();
+        idlePhase = 0;
+        slowReleaseActive = false;
+        clearVisualizerSetupRetry();
         if (!shouldShowVisualizer.value) return;
         nextTick(async () => {
             await setupVisualizer({ forceRebind: true, resumeContext: playing.value });
