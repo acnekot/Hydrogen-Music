@@ -89,11 +89,11 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
 
     const pluginStore = new Store({
         name: 'plugins',
-        defaults: { list: [], directory: defaultPluginDirectory || undefined },
+        defaults: { list: [], directory: defaultPluginDirectory || undefined, removedBuiltinIds: [] },
     })
 
     const builtinPluginIds = new Set()
-    const legacyBuiltinPluginIds = new Set(['core.lyric-visualizer'])
+    const legacyBuiltinPluginIds = new Set()
 
     const getPluginDirectory = () => {
         const stored = pluginStore.get('directory')
@@ -130,15 +130,61 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
         return []
     }
 
-    const saveStoredPlugins = (plugins) => {
-        pluginStore.set('list', plugins)
-    }
-
     const sanitizePluginId = (pluginId) => {
         if (typeof pluginId !== 'string') return null
         const trimmed = pluginId.trim()
         if (!/^[a-zA-Z0-9_.-]+$/.test(trimmed)) return null
         return trimmed
+    }
+
+    const sanitizePluginIdList = (candidates = []) => {
+        const result = []
+        const seen = new Set()
+        if (!Array.isArray(candidates)) return result
+        for (const candidate of candidates) {
+            const sanitized = sanitizePluginId(candidate)
+            if (!sanitized || seen.has(sanitized)) continue
+            seen.add(sanitized)
+            result.push(sanitized)
+        }
+        return result
+    }
+
+    const getRemovedBuiltinPluginIds = () => {
+        const raw = pluginStore.get('removedBuiltinIds')
+        const sanitized = sanitizePluginIdList(raw)
+        if (Array.isArray(raw) && raw.length !== sanitized.length) {
+            pluginStore.set('removedBuiltinIds', sanitized)
+        }
+        return sanitized
+    }
+
+    const saveRemovedBuiltinPluginIds = (ids) => {
+        const sanitized = sanitizePluginIdList(ids)
+        pluginStore.set('removedBuiltinIds', sanitized)
+    }
+
+    const rememberRemovedBuiltinPluginId = (pluginId) => {
+        const sanitized = sanitizePluginId(pluginId)
+        if (!sanitized) return
+        const current = new Set(getRemovedBuiltinPluginIds())
+        if (current.has(sanitized)) return
+        current.add(sanitized)
+        saveRemovedBuiltinPluginIds(Array.from(current))
+    }
+
+    const clearRemovedBuiltinPluginId = (pluginId) => {
+        const sanitized = sanitizePluginId(pluginId)
+        if (!sanitized) return
+        const current = getRemovedBuiltinPluginIds()
+        if (!current.length) return
+        const next = current.filter(id => id !== sanitized)
+        if (next.length === current.length) return
+        saveRemovedBuiltinPluginIds(next)
+    }
+
+    const saveStoredPlugins = (plugins) => {
+        pluginStore.set('list', plugins)
     }
 
     const resolvePluginDir = (pluginId) => {
@@ -286,6 +332,9 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
     const syncBuiltinPlugins = async () => {
         builtinPluginIds.clear()
 
+        const removedBuiltinIds = new Set(getRemovedBuiltinPluginIds())
+        const availableBuiltinIds = new Set()
+
         const pluginRoot = ensurePluginDirectory()
         const appPath = resolvePathSafe(app?.getAppPath?.())
         if (!appPath) return
@@ -317,6 +366,13 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             const isBuiltinManifest = manifest.builtin === true
             if (isBuiltinManifest) {
                 builtinPluginIds.add(manifest.id)
+            }
+
+            if (isBuiltinManifest) {
+                availableBuiltinIds.add(manifest.id)
+                if (removedBuiltinIds.has(manifest.id)) {
+                    continue
+                }
             }
 
             const targetDir = path.join(pluginRoot, manifest.id)
@@ -370,6 +426,10 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             } catch (error) {
                 console.error('复制内置插件失败:', manifest.id, error)
             }
+        }
+        const filteredRemoved = Array.from(removedBuiltinIds).filter(id => availableBuiltinIds.has(id))
+        if (filteredRemoved.length !== removedBuiltinIds.size) {
+            saveRemovedBuiltinPluginIds(filteredRemoved)
         }
     }
 
@@ -1737,9 +1797,6 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
             if (!sanitizedId) throw new Error('无效的插件 ID')
             const plugins = getStoredPlugins()
             const target = plugins.find((item) => item.id === sanitizedId)
-            if (target?.builtin) {
-                throw new Error('内置插件无法删除')
-            }
             const nextPlugins = plugins.filter((item) => item.id !== sanitizedId)
             if (nextPlugins.length === plugins.length) throw new Error('插件不存在')
             const pluginDir = resolvePluginDir(sanitizedId)
@@ -1747,6 +1804,11 @@ module.exports = IpcMainEvent = (win, app, lyricFunctions = {}) => {
                 await fsExtra.remove(pluginDir)
             }
             saveStoredPlugins(nextPlugins)
+            if (target?.builtin) {
+                rememberRemovedBuiltinPluginId(sanitizedId)
+            } else {
+                clearRemovedBuiltinPluginId(sanitizedId)
+            }
             await syncPluginsFromDisk()
             return { success: true }
         } catch (error) {

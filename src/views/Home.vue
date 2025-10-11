@@ -116,10 +116,41 @@
       <div class="home-header">
         <div class="header-router" :class="{'router-closed': !userStore.homePage && !userStore.cloudDiskPage}" ref="routerContainer">
           <!-- <div class="logout" @click="userLogout()">退出登录</div> -->
-          <router-link ref="homeLink" class="button-home" :style="{color: router.currentRoute.value.name == 'homepage' ? 'black' : '#353535'}" to="/" v-if="userStore.homePage">首页</router-link>
-          <router-link ref="cloudLink" class="button-cloud" :style="{color: router.currentRoute.value.name == 'clouddisk' ? 'black' : '#353535'}" to="/cloud" v-if="userStore.cloudDiskPage">云盘</router-link>
-          <router-link ref="fmLink" class="button-fm" :style="{color: router.currentRoute.value.name == 'personalfm' ? 'black' : '#353535'}" to="/personalfm" v-if="userStore.personalFMPage">私人漫游</router-link>
-          <router-link ref="musicLink" class="button-music" :style="{color: (router.currentRoute.value.name === 'mymusic' || router.currentRoute.value.fullPath.startsWith('/mymusic')) ? 'black' : '#353535'}" to="/mymusic">我的音乐</router-link>
+          <router-link
+            ref="homeLink"
+            class="button-home"
+            :style="{color: router.currentRoute.value.name == 'homepage' ? 'black' : '#353535'}"
+            to="/"
+            draggable="false"
+            @dragstart.prevent
+            v-if="userStore.homePage"
+          >首页</router-link>
+          <router-link
+            ref="cloudLink"
+            class="button-cloud"
+            :style="{color: router.currentRoute.value.name == 'clouddisk' ? 'black' : '#353535'}"
+            to="/cloud"
+            draggable="false"
+            @dragstart.prevent
+            v-if="userStore.cloudDiskPage"
+          >云盘</router-link>
+          <router-link
+            ref="fmLink"
+            class="button-fm"
+            :style="{color: router.currentRoute.value.name == 'personalfm' ? 'black' : '#353535'}"
+            to="/personalfm"
+            draggable="false"
+            @dragstart.prevent
+            v-if="userStore.personalFMPage"
+          >私人漫游</router-link>
+          <router-link
+            ref="musicLink"
+            class="button-music"
+            :style="{color: (router.currentRoute.value.name === 'mymusic' || router.currentRoute.value.fullPath.startsWith('/mymusic')) ? 'black' : '#353535'}"
+            to="/mymusic"
+            draggable="false"
+            @dragstart.prevent
+          >我的音乐</router-link>
           <div class="user">
             <div class="user-container">
               <div class="user-head" @click="userStore.appOptionShow = true">
