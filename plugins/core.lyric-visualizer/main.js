@@ -1,12 +1,12 @@
-﻿const DEFAULTS = Object.freeze({
-    lyricVisualizer: false,
+const DEFAULTS = Object.freeze({
+    enabled: true,
     height: 220,
     frequencyMin: 20,
     frequencyMax: 8000,
     transitionDelay: 0.75,
     barCount: 48,
     barWidth: 55,
-    color: 'black',
+    color: 'auto',
     opacity: 100,
     style: 'bars',
     radialSize: 100,
@@ -15,743 +15,914 @@
     radialCoreSize: 62,
 });
 
-const clampNumber = (value, min, max, fallback = min) => {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) return fallback;
-    if (numeric < min) return min;
-    if (numeric > max) return max;
-    return numeric;
-};
-
-const sanitizeHeight = value => {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) return DEFAULTS.height;
-    return clampNumber(Math.round(numeric), 80, 600, DEFAULTS.height);
-};
-
-const sanitizeFrequency = value => {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) return DEFAULTS.frequencyMin;
-    return clampNumber(Math.round(numeric), 20, 20000, DEFAULTS.frequencyMin);
-};
-
-const sanitizeFrequencyRange = (minValue, maxValue) => {
-    let min = sanitizeFrequency(minValue);
-    let max = sanitizeFrequency(maxValue);
-    if (min >= max) {
-        if (min >= 19990) {
-            min = 19990;
-            max = 20000;
-        } else {
-            max = Math.min(20000, min + 10);
-        }
-    }
-    if (max - min < 10) {
-        if (min >= 19990) {
-            min = 19990;
-            max = 20000;
-        } else {
-            max = Math.min(20000, min + 10);
-        }
-    }
-    return { min, max };
-};
-
-const sanitizeBarCount = value => {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) return DEFAULTS.barCount;
-    return Math.max(1, Math.round(numeric));
-};
-
-const sanitizeBarWidth = value => {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) return DEFAULTS.barWidth;
-    return clampNumber(Math.round(numeric), 5, 100, DEFAULTS.barWidth);
-};
-
-const sanitizeTransitionDelay = value => {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) return DEFAULTS.transitionDelay;
-    return Math.round(clampNumber(numeric, 0, 0.95, DEFAULTS.transitionDelay) * 100) / 100;
-};
-
-const sanitizeOpacity = value => {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) return DEFAULTS.opacity;
-    return clampNumber(Math.round(numeric), 0, 100, DEFAULTS.opacity);
-};
+const PRESETS = Object.freeze({
+    height: [160, 180, 200, 220, 260, 320],
+    frequencyMin: [20, 40, 80, 120, 200],
+    frequencyMax: [4000, 6000, 8000, 12000, 16000],
+    transitionDelay: [0, 0.25, 0.5, 0.75, 0.9],
+    barCount: [24, 32, 48, 64, 96],
+    barWidth: [35, 45, 55, 65, 75],
+    opacity: [20, 40, 60, 80, 100],
+    radialSize: [60, 80, 100, 120, 160],
+    radialOffset: [-50, -25, 0, 25, 50],
+    radialCoreSize: [40, 52, 62, 72, 84],
+});
 
 const sanitizeStyle = value => (value === 'radial' ? 'radial' : 'bars');
 
-const sanitizeRadialSize = value => {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) return DEFAULTS.radialSize;
-    return clampNumber(Math.round(numeric), 10, 400, DEFAULTS.radialSize);
-};
-
-const sanitizeRadialOffset = value => {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) return 0;
-    return clampNumber(Math.round(numeric), -100, 100, 0);
-};
-
-const sanitizeRadialCoreSize = value => {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) return DEFAULTS.radialCoreSize;
-    return clampNumber(Math.round(numeric), 10, 95, DEFAULTS.radialCoreSize);
-};
-
-const sanitizeColor = value => {
-    if (value === 'black' || value === 'white') return value;
-    if (typeof value === 'string') {
-        const trimmed = value.trim();
-        if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed)) {
-            if (trimmed.length === 4) {
-                const expanded = trimmed
-                    .split('')
-                    .map((ch, index) => (index === 0 ? ch : ch + ch))
-                    .join('');
-                return expanded.toLowerCase();
-            }
-            return trimmed.toLowerCase();
-        }
+const sanitizeColor = (value, fallback = DEFAULTS.color) => {
+    if (value === 'auto' || value === 'white' || value === 'black') return value;
+    if (typeof value !== 'string') return fallback;
+    const trimmed = value.trim().toLowerCase();
+    if (/^#([0-9a-f]{6})$/.test(trimmed)) return trimmed;
+    if (/^#([0-9a-f]{3})$/.test(trimmed)) {
+        return `#${trimmed
+            .slice(1)
+            .split('')
+            .map(ch => ch + ch)
+            .join('')}`;
     }
-    return DEFAULTS.color;
+    if (/^([0-9a-f]{6})$/.test(trimmed)) return `#${trimmed}`;
+    if (/^([0-9a-f]{3})$/.test(trimmed)) {
+        return `#${trimmed
+            .split('')
+            .map(ch => ch + ch)
+            .join('')}`;
+    }
+    return fallback;
 };
 
-const formatNumber = (value, fractionDigits = 0) => {
-    if (!Number.isFinite(value)) return '';
-    if (fractionDigits <= 0) return String(Math.round(value));
-    return Number(value)
-        .toFixed(fractionDigits)
-        .replace(/\.0+$/, '')
-        .replace(/(\.\d*?)0+$/, '$1');
+const sanitizeNumber = (value, { min, max, fallback, allowFloat = false }) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return fallback;
+    if (numeric < min || numeric > max) return fallback;
+    return allowFloat ? Math.round(numeric * 100) / 100 : Math.round(numeric);
 };
 
-const attachListener = (element, event, handler, subscriptions) => {
-    element.addEventListener(event, handler);
-    subscriptions.push(() => element.removeEventListener(event, handler));
+const parseNumberInput = (raw, { min, max, allowFloat = false }) => {
+    if (raw == null) return null;
+    const trimmed = String(raw).trim();
+    if (!trimmed.length) return null;
+    const numeric = Number(trimmed);
+    if (!Number.isFinite(numeric)) return null;
+    if (numeric < min || numeric > max) return null;
+    return allowFloat ? Math.round(numeric * 100) / 100 : Math.round(numeric);
 };
 
-const setupRangeControl = (store, field, rangeInput, numberInput, sanitize, subscriptions) => {
-    if (!rangeInput && !numberInput) return;
-    const applyValue = raw => {
-        const safe = sanitize(raw);
-        if (store[field] !== safe) store[field] = safe;
-        if (rangeInput && rangeInput.value !== String(safe)) rangeInput.value = safe;
-        if (numberInput && numberInput.value !== String(safe)) numberInput.value = safe;
+const sanitizeState = state => {
+    const sanitized = { ...state };
+    sanitized.lyricVisualizer = Boolean(state.lyricVisualizer ?? DEFAULTS.enabled);
+    sanitized.lyricVisualizerHeight = sanitizeNumber(state.lyricVisualizerHeight ?? DEFAULTS.height, {
+        min: 80,
+        max: 600,
+        fallback: DEFAULTS.height,
+    });
+    sanitized.lyricVisualizerFrequencyMin = sanitizeNumber(state.lyricVisualizerFrequencyMin ?? DEFAULTS.frequencyMin, {
+        min: 20,
+        max: 19990,
+        fallback: DEFAULTS.frequencyMin,
+    });
+    sanitized.lyricVisualizerFrequencyMax = sanitizeNumber(state.lyricVisualizerFrequencyMax ?? DEFAULTS.frequencyMax, {
+        min: 30,
+        max: 20000,
+        fallback: DEFAULTS.frequencyMax,
+    });
+    if (sanitized.lyricVisualizerFrequencyMin >= sanitized.lyricVisualizerFrequencyMax) {
+        sanitized.lyricVisualizerFrequencyMin = Math.max(20, sanitized.lyricVisualizerFrequencyMax - 10);
+        sanitized.lyricVisualizerFrequencyMax = Math.min(20000, sanitized.lyricVisualizerFrequencyMin + 10);
+    }
+    sanitized.lyricVisualizerTransitionDelay = sanitizeNumber(state.lyricVisualizerTransitionDelay ?? DEFAULTS.transitionDelay, {
+        min: 0,
+        max: 0.95,
+        fallback: DEFAULTS.transitionDelay,
+        allowFloat: true,
+    });
+    sanitized.lyricVisualizerBarCount = sanitizeNumber(state.lyricVisualizerBarCount ?? DEFAULTS.barCount, {
+        min: 1,
+        max: 256,
+        fallback: DEFAULTS.barCount,
+    });
+    sanitized.lyricVisualizerBarWidth = sanitizeNumber(state.lyricVisualizerBarWidth ?? DEFAULTS.barWidth, {
+        min: 5,
+        max: 100,
+        fallback: DEFAULTS.barWidth,
+    });
+    sanitized.lyricVisualizerOpacity = sanitizeNumber(state.lyricVisualizerOpacity ?? DEFAULTS.opacity, {
+        min: 0,
+        max: 100,
+        fallback: DEFAULTS.opacity,
+    });
+    sanitized.lyricVisualizerStyle = sanitizeStyle(state.lyricVisualizerStyle ?? DEFAULTS.style);
+    sanitized.lyricVisualizerRadialSize = sanitizeNumber(state.lyricVisualizerRadialSize ?? DEFAULTS.radialSize, {
+        min: 10,
+        max: 400,
+        fallback: DEFAULTS.radialSize,
+    });
+    sanitized.lyricVisualizerRadialOffsetX = sanitizeNumber(state.lyricVisualizerRadialOffsetX ?? DEFAULTS.radialOffsetX, {
+        min: -100,
+        max: 100,
+        fallback: DEFAULTS.radialOffsetX,
+    });
+    sanitized.lyricVisualizerRadialOffsetY = sanitizeNumber(state.lyricVisualizerRadialOffsetY ?? DEFAULTS.radialOffsetY, {
+        min: -100,
+        max: 100,
+        fallback: DEFAULTS.radialOffsetY,
+    });
+    sanitized.lyricVisualizerRadialCoreSize = sanitizeNumber(state.lyricVisualizerRadialCoreSize ?? DEFAULTS.radialCoreSize, {
+        min: 10,
+        max: 95,
+        fallback: DEFAULTS.radialCoreSize,
+    });
+    sanitized.lyricVisualizerColor = sanitizeColor(state.lyricVisualizerColor ?? DEFAULTS.color, DEFAULTS.color);
+    return sanitized;
+};
+
+const createElement = (tag, className, text) => {
+    const el = document.createElement(tag);
+    if (className) el.className = className;
+    if (typeof text === 'string') el.textContent = text;
+    return el;
+};
+
+const attach = (target, event, handler, disposers) => {
+    target.addEventListener(event, handler);
+    disposers.push(() => target.removeEventListener(event, handler));
+};
+
+const numberLabel = (value, suffix, isDefault) => {
+    const label = suffix ? `${value}${suffix}` : `${value}`;
+    return isDefault ? `${label}（默认）` : label;
+};
+
+const floatLabel = (value, isDefault) => {
+    const label = `${Math.round(Number(value) * 100) / 100}`;
+    return isDefault ? `${label}（默认）` : label;
+};
+
+const ensureOptions = (initialValues, defaultValue) => {
+    const set = new Set(initialValues.map(Number).filter(Number.isFinite));
+    if (!set.has(defaultValue)) set.add(defaultValue);
+    return set;
+};
+
+const createChoiceField = ({
+    title,
+    description,
+    presetKey,
+    defaultValue,
+    formatter,
+    parse,
+    getValue,
+    setValue,
+    onReset,
+}) => {
+    const field = createElement('section', 'hm-visualizer-field');
+    const info = createElement('div', 'hm-visualizer-field-info');
+    info.appendChild(createElement('h3', 'hm-visualizer-field-title', title));
+    if (description) info.appendChild(createElement('p', 'hm-visualizer-field-desc', description));
+    field.appendChild(info);
+
+    const controls = createElement('div', 'hm-visualizer-field-controls');
+    const select = createElement('select', 'hm-visualizer-select');
+    controls.appendChild(select);
+
+    const actions = createElement('div', 'hm-visualizer-actions');
+    const input = createElement('input', 'hm-visualizer-input');
+    input.type = 'text';
+    input.placeholder = String(defaultValue);
+    const addButton = createElement('button', 'hm-visualizer-button');
+    addButton.textContent = '添加';
+    const resetButton = createElement('button', 'hm-visualizer-button');
+    resetButton.textContent = '重置';
+    actions.appendChild(input);
+    actions.appendChild(addButton);
+    actions.appendChild(resetButton);
+    controls.appendChild(actions);
+    field.appendChild(controls);
+
+    const optionSet = ensureOptions(presetKey ? PRESETS[presetKey] || [] : [], defaultValue);
+    const disposers = [];
+
+    const rebuildSelect = () => {
+        const values = Array.from(optionSet).sort((a, b) => a - b);
+        select.innerHTML = '';
+        values.forEach(value => {
+            const option = document.createElement('option');
+            option.value = String(value);
+            option.textContent = formatter(value, value === defaultValue);
+            select.appendChild(option);
+        });
     };
-    if (rangeInput) {
-        attachListener(
-            rangeInput,
-            'input',
-            event => {
-                applyValue(event.target.value);
-            },
-            subscriptions,
-        );
-    }
-    if (numberInput) {
-        attachListener(
-            numberInput,
-            'change',
-            event => {
-                applyValue(event.target.value);
-            },
-            subscriptions,
-        );
-        attachListener(
-            numberInput,
-            'blur',
-            event => {
-                applyValue(event.target.value);
-            },
-            subscriptions,
-        );
-    }
+
+    const syncSelectValue = () => {
+        const current = getValue();
+        if (!optionSet.has(current)) {
+            optionSet.add(current);
+            rebuildSelect();
+        }
+        select.value = String(current);
+    };
+
+    const updateButtonState = () => {
+        const parsed = parse(input.value);
+        if (parsed == null) {
+            addButton.disabled = true;
+            addButton.textContent = '添加';
+            return;
+        }
+        addButton.disabled = false;
+        addButton.textContent = optionSet.has(parsed) ? '删除' : '添加';
+    };
+
+    rebuildSelect();
+    syncSelectValue();
+    updateButtonState();
+
+    attach(select, 'change', () => {
+        const parsed = parse(select.value);
+        if (parsed != null) {
+            setValue(parsed);
+        }
+        syncSelectValue();
+    }, disposers);
+
+    attach(addButton, 'click', () => {
+        const parsed = parse(input.value);
+        if (parsed == null) return;
+        if (optionSet.has(parsed)) {
+            if (parsed === defaultValue) return;
+            optionSet.delete(parsed);
+            if (getValue() === parsed) {
+                setValue(defaultValue);
+            }
+        } else {
+            optionSet.add(parsed);
+            setValue(parsed);
+        }
+        input.value = '';
+        rebuildSelect();
+        syncSelectValue();
+        updateButtonState();
+    }, disposers);
+
+    attach(resetButton, 'click', () => {
+        onReset();
+        syncSelectValue();
+        updateButtonState();
+    }, disposers);
+
+    attach(input, 'input', updateButtonState, disposers);
+
+    return {
+        element: field,
+        sync() {
+            syncSelectValue();
+            updateButtonState();
+        },
+        dispose() {
+            while (disposers.length) {
+                const fn = disposers.pop();
+                try {
+                    fn();
+                } catch (error) {
+                    console.error('[LyricVisualizerPlugin] failed to remove listener', error);
+                }
+            }
+        },
+    };
 };
 
-const mountSettingsPage = (container, store, context) => {
-    container.innerHTML = '';
+const createToggleField = (label, getValue, setValue) => {
+    const field = createElement('section', 'hm-visualizer-field');
+    const info = createElement('div', 'hm-visualizer-field-info');
+    info.appendChild(createElement('h3', 'hm-visualizer-field-title', label));
+    field.appendChild(info);
+    const controls = createElement('div', 'hm-visualizer-field-controls');
+    const toggle = createElement('label', 'hm-visualizer-switch');
+    const checkbox = createElement('input');
+    checkbox.type = 'checkbox';
+    const indicator = createElement('span', 'hm-visualizer-switch-indicator');
+    toggle.appendChild(checkbox);
+    toggle.appendChild(indicator);
+    controls.appendChild(toggle);
+    field.appendChild(controls);
+    const disposers = [];
 
-    const subscriptions = [];
-    const nodes = [];
+    const sync = () => {
+        checkbox.checked = Boolean(getValue());
+    };
 
-    const style = document.createElement('style');
-    style.textContent = `
+    attach(checkbox, 'change', () => {
+        setValue(Boolean(checkbox.checked));
+        sync();
+    }, disposers);
+
+    sync();
+
+    return {
+        element: field,
+        sync,
+        dispose() {
+            while (disposers.length) {
+                const fn = disposers.pop();
+                fn();
+            }
+        },
+    };
+};
+
+const createStyleField = (getValue, setValue) => {
+    const field = createElement('section', 'hm-visualizer-field');
+    const info = createElement('div', 'hm-visualizer-field-info');
+    info.appendChild(createElement('h3', 'hm-visualizer-field-title', '显示样式'));
+    field.appendChild(info);
+    const controls = createElement('div', 'hm-visualizer-field-controls');
+    const select = createElement('select', 'hm-visualizer-select');
+    [
+        { value: 'bars', label: '柱状频谱' },
+        { value: 'radial', label: '辐射光束' },
+    ].forEach(option => {
+        const node = createElement('option');
+        node.value = option.value;
+        node.textContent = option.label;
+        select.appendChild(node);
+    });
+    controls.appendChild(select);
+    field.appendChild(controls);
+    const disposers = [];
+
+    const sync = () => {
+        select.value = sanitizeStyle(getValue());
+        field.dataset.mode = select.value;
+    };
+
+    attach(select, 'change', () => {
+        setValue(sanitizeStyle(select.value));
+        sync();
+    }, disposers);
+
+    sync();
+
+    return {
+        element: field,
+        sync,
+        dispose() {
+            while (disposers.length) {
+                const fn = disposers.pop();
+                fn();
+            }
+        },
+    };
+};
+
+const createColorField = (getValue, setValue) => {
+    const field = createElement('section', 'hm-visualizer-field');
+    const info = createElement('div', 'hm-visualizer-field-info');
+    info.appendChild(createElement('h3', 'hm-visualizer-field-title', '颜色模式'));
+    info.appendChild(createElement('p', 'hm-visualizer-field-desc', '自动跟随主题或指定自定义颜色'));
+    field.appendChild(info);
+    const controls = createElement('div', 'hm-visualizer-field-controls');
+    const select = createElement('select', 'hm-visualizer-select');
+    [
+        { value: 'auto', label: '自动' },
+        { value: 'white', label: '白色' },
+        { value: 'black', label: '黑色' },
+        { value: 'custom', label: '自定义' },
+    ].forEach(option => {
+        const node = createElement('option');
+        node.value = option.value;
+        node.textContent = option.label;
+        select.appendChild(node);
+    });
+    const actions = createElement('div', 'hm-visualizer-actions');
+    const textInput = createElement('input', 'hm-visualizer-input');
+    textInput.type = 'text';
+    textInput.placeholder = '#66aaff';
+    const colorInput = createElement('input', 'hm-visualizer-color');
+    colorInput.type = 'color';
+    const applyButton = createElement('button', 'hm-visualizer-button');
+    applyButton.textContent = '应用';
+    actions.appendChild(textInput);
+    actions.appendChild(colorInput);
+    actions.appendChild(applyButton);
+    controls.appendChild(select);
+    controls.appendChild(actions);
+    field.appendChild(controls);
+    const disposers = [];
+
+    const sync = () => {
+        const current = getValue();
+        if (current === 'auto' || current === 'white' || current === 'black') {
+            select.value = current;
+            actions.hidden = true;
+        } else {
+            select.value = 'custom';
+            actions.hidden = false;
+            textInput.value = current;
+            if (/^#([0-9a-f]{6})$/i.test(current)) {
+                colorInput.value = current;
+            }
+        }
+    };
+
+    attach(select, 'change', () => {
+        const mode = select.value;
+        if (mode === 'auto' || mode === 'white' || mode === 'black') {
+            actions.hidden = true;
+            setValue(mode);
+        } else {
+            actions.hidden = false;
+        }
+        sync();
+    }, disposers);
+
+    attach(colorInput, 'input', () => {
+        textInput.value = colorInput.value;
+    }, disposers);
+
+    attach(applyButton, 'click', () => {
+        const value = sanitizeColor(textInput.value, getValue());
+        setValue(value);
+        sync();
+    }, disposers);
+
+    sync();
+
+    return {
+        element: field,
+        sync,
+        dispose() {
+            while (disposers.length) {
+                const fn = disposers.pop();
+                fn();
+            }
+        },
+    };
+};
+
+const registerSettings = (context, store) => {
+    if (!context?.settings || typeof context.settings.register !== 'function') return null;
+
+    return context.settings.register({
+        id: 'core.lyric-visualizer.settings',
+        title: '歌词可视化',
+        subtitle: '自定义歌词区域可视化效果',
+        mount(container) {
+            container.innerHTML = '';
+            const disposers = [];
+
+            const style = createElement('style');
+            style.textContent = `
 .hm-visualizer-settings {
-    font-family: "Source Han Sans", "Microsoft Yahei", sans-serif;
-    color: rgba(18, 24, 38, 0.92);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(226, 232, 244, 0.95));
-    min-height: 100%;
-    padding: 28px 32px 40px;
-    box-sizing: border-box;
-}
-.hm-visualizer-settings h2 {
-    margin: 24px 0 12px;
-    font-size: 18px;
-    font-weight: 600;
-}
-.hm-visualizer-settings h2:first-of-type {
-    margin-top: 0;
-}
-.hm-visualizer-card {
-    border: 1px solid rgba(92, 122, 170, 0.28);
-    background: rgba(255, 255, 255, 0.82);
-    box-shadow: 0 16px 38px rgba(26, 40, 68, 0.16);
-    padding: 20px 24px 24px;
-    margin-bottom: 24px;
-}
-.hm-visualizer-row {
+    position: relative;
+    padding: 32px 36px 44px;
     display: flex;
-    flex-wrap: wrap;
-    gap: 16px;
-    align-items: center;
-    margin-bottom: 18px;
+    flex-direction: column;
+    gap: 18px;
+    color: var(--settings-shell-text, var(--text, #111));
 }
-.hm-visualizer-row:last-child {
-    margin-bottom: 0;
+.hm-visualizer-settings::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 24px;
+    background: var(--settings-shell-surface, var(--panel, rgba(255,255,255,0.92)));
+    border: 1px solid var(--settings-shell-border, rgba(0,0,0,0.12));
+    opacity: 0.96;
+    z-index: -1;
 }
-.hm-visualizer-label {
-    min-width: 160px;
-    font-size: 14px;
-    font-weight: 600;
-    color: rgba(18, 24, 38, 0.88);
+.dark .hm-visualizer-settings::before {
+    background: var(--settings-shell-surface, rgba(32,36,46,0.9));
+    border-color: var(--settings-shell-border, rgba(255,255,255,0.18));
 }
-.hm-visualizer-inputs {
-    flex: 1;
+.hm-visualizer-field {
     display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 18px 20px;
+    border-radius: 12px;
+    border: 1px solid var(--settings-shell-border, rgba(0,0,0,0.12));
+    background: var(--settings-shell-surface, rgba(255,255,255,0.85));
     align-items: center;
 }
-.hm-visualizer-inputs input[type="range"] {
-    flex: 1 1 220px;
-    min-width: 200px;
-    accent-color: rgba(70, 108, 196, 0.85);
+.dark .hm-visualizer-field {
+    background: var(--settings-shell-surface, rgba(44,48,58,0.88));
 }
-.hm-visualizer-inputs input[type="number"],
-.hm-visualizer-inputs input[type="text"],
-.hm-visualizer-inputs select {
+.hm-visualizer-field-info {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.hm-visualizer-field-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+.hm-visualizer-field-desc {
+    margin: 0;
+    font-size: 13px;
+    opacity: 0.72;
+}
+.hm-visualizer-field-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 10px;
+    min-width: 240px;
+}
+.hm-visualizer-select {
+    width: 200px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--settings-shell-border, rgba(0,0,0,0.12));
+    background: var(--settings-shell-input-bg, rgba(255,255,255,0.94));
+    color: inherit;
+}
+.hm-visualizer-input {
     width: 120px;
     padding: 6px 10px;
-    border: 1px solid rgba(92, 122, 170, 0.35);
-    background: rgba(255, 255, 255, 0.95);
-    color: rgba(18, 24, 38, 0.92);
-    outline: none;
+    border-radius: 6px;
+    border: 1px solid var(--settings-shell-border, rgba(0,0,0,0.12));
+    background: var(--settings-shell-input-bg, rgba(255,255,255,0.94));
+    color: inherit;
 }
-.hm-visualizer-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 15px;
-    cursor: pointer;
+.hm-visualizer-color {
+    width: 48px;
+    height: 32px;
+    border: none;
+    background: transparent;
 }
-.hm-visualizer-toggle input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
-    cursor: pointer;
-}
-.hm-visualizer-hint {
-    margin: 6px 0 0;
-    font-size: 13px;
-    color: rgba(18, 24, 38, 0.65);
-}
-.hm-visualizer-radial {
-    display: none;
-}
-.hm-visualizer-radial.hm-visible {
-    display: block;
-}
-.hm-visualizer-color-options {
+.hm-visualizer-actions {
     display: flex;
-    gap: 16px;
-    flex-wrap: wrap;
-}
-.hm-visualizer-color-option {
-    display: inline-flex;
     align-items: center;
     gap: 8px;
+}
+.hm-visualizer-button {
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--settings-shell-border, rgba(0,0,0,0.12));
+    background: var(--settings-shell-button-bg, rgba(255,255,255,0.88));
     cursor: pointer;
+}
+.hm-visualizer-button[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.hm-visualizer-switch {
+    position: relative;
+    width: 46px;
+    height: 24px;
+    border-radius: 12px;
+    background: rgba(120,128,140,0.35);
+    display: inline-flex;
+    align-items: center;
+    padding: 2px;
+    cursor: pointer;
+}
+.hm-visualizer-switch input {
+    opacity: 0;
+    position: absolute;
+    inset: 0;
+    cursor: pointer;
+}
+.hm-visualizer-switch-indicator {
+    width: 20px;
+    height: 20px;
+    border-radius: 8px;
+    background: var(--settings-shell-button-bg, #fff);
+    transition: transform 0.2s ease, background 0.2s ease;
+}
+.hm-visualizer-switch input:checked + .hm-visualizer-switch-indicator {
+    transform: translateX(22px);
+    background: var(--settings-shell-accent, #4c6edb);
 }
 .hm-visualizer-footer {
     display: flex;
     justify-content: flex-end;
-    margin-top: 16px;
+    gap: 12px;
 }
-.hm-visualizer-button {
+.hm-visualizer-footer button {
     padding: 8px 18px;
-    border: 1px solid rgba(92, 122, 170, 0.38);
-    background: rgba(242, 245, 255, 0.92);
-    color: rgba(18, 24, 38, 0.86);
+    border-radius: 6px;
+    border: 1px solid var(--settings-shell-border, rgba(0,0,0,0.12));
+    background: var(--settings-shell-button-bg, rgba(255,255,255,0.88));
     cursor: pointer;
-    transition: background 0.2s ease;
-}
-.hm-visualizer-button:hover {
-    background: rgba(255, 255, 255, 1);
 }
 `;
-    container.appendChild(style);
-    nodes.push(style);
+            container.appendChild(style);
 
-    const root = document.createElement('div');
-    root.className = 'hm-visualizer-settings';
-    root.innerHTML = `
-        <div class="hm-visualizer-card">
-            <div class="hm-visualizer-row">
-                <label class="hm-visualizer-toggle">
-                    <input type="checkbox" data-field="enabled" />
-                    <span>Enable lyric visualizer</span>
-                </label>
-            </div>
-            <p class="hm-visualizer-hint">When enabled, the lyric view renders a live spectrum or radial visualizer powered by your current song.</p>
-        </div>
-        <div class="hm-visualizer-card">
-            <h2>Appearance</h2>
-            <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Visualizer style</div>
-                <div class="hm-visualizer-inputs">
-                    <select data-field="style">
-                        <option value="bars">Spectrum bars</option>
-                        <option value="radial">Radial nebula</option>
-                    </select>
-                </div>
-            </div>
-            <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Canvas height (px)</div>
-                <div class="hm-visualizer-inputs">
-                    <input type="range" min="120" max="520" step="10" data-field="height-range" />
-                    <input type="number" min="120" max="520" step="10" data-field="height-number" />
-                </div>
-            </div>
-            <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Bar count</div>
-                <div class="hm-visualizer-inputs">
-                    <input type="range" min="16" max="160" step="1" data-field="barcount-range" />
-                    <input type="number" min="16" max="160" step="1" data-field="barcount-number" />
-                </div>
-            </div>
-            <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Bar width (%)</div>
-                <div class="hm-visualizer-inputs">
-                    <input type="range" min="5" max="100" step="1" data-field="barwidth-range" />
-                    <input type="number" min="5" max="100" step="1" data-field="barwidth-number" />
-                </div>
-            </div>
-            <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Smoothing</div>
-                <div class="hm-visualizer-inputs">
-                    <input type="range" min="0" max="95" step="5" data-field="transition-range" />
-                    <input type="number" min="0" max="0.95" step="0.05" data-field="transition-number" />
-                </div>
-            </div>
-            <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Opacity (%)</div>
-                <div class="hm-visualizer-inputs">
-                    <input type="range" min="0" max="100" step="5" data-field="opacity-range" />
-                    <input type="number" min="0" max="100" step="1" data-field="opacity-number" />
-                </div>
-            </div>
-            <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Frequency range (Hz)</div>
-                <div class="hm-visualizer-inputs">
-                    <input type="number" min="20" max="19990" step="10" data-field="freqmin-number" />
-                    <span>to</span>
-                    <input type="number" min="30" max="20000" step="10" data-field="freqmax-number" />
-                </div>
-            </div>
-            <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Visualizer colour</div>
-                <div class="hm-visualizer-inputs hm-visualizer-color-options">
-                    <label class="hm-visualizer-color-option">
-                        <input type="radio" name="visualizer-color" value="black" />
-                        <span>Dark</span>
-                    </label>
-                    <label class="hm-visualizer-color-option">
-                        <input type="radio" name="visualizer-color" value="white" />
-                        <span>Light</span>
-                    </label>
-                    <label class="hm-visualizer-color-option">
-                        <input type="radio" name="visualizer-color" value="custom" />
-                        <span>Custom</span>
-                        <input type="color" data-field="color-picker" value="#000000" />
-                        <input type="text" data-field="color-text" maxlength="7" placeholder="#000000" />
-                    </label>
-                </div>
-            </div>
-        </div>
-        <div class="hm-visualizer-card hm-visualizer-radial" data-section="radial">
-            <h2>Radial style</h2>
-            <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Radial radius (%)</div>
-                <div class="hm-visualizer-inputs">
-                    <input type="range" min="20" max="240" step="5" data-field="radialsize-range" />
-                    <input type="number" min="20" max="240" step="5" data-field="radialsize-number" />
-                </div>
-            </div>
-            <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Center offset X (%)</div>
-                <div class="hm-visualizer-inputs">
-                    <input type="range" min="-100" max="100" step="5" data-field="offsetx-range" />
-                    <input type="number" min="-100" max="100" step="5" data-field="offsetx-number" />
-                </div>
-            </div>
-            <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Center offset Y (%)</div>
-                <div class="hm-visualizer-inputs">
-                    <input type="range" min="-100" max="100" step="5" data-field="offsety-range" />
-                    <input type="number" min="-100" max="100" step="5" data-field="offsety-number" />
-                </div>
-            </div>
-            <div class="hm-visualizer-row">
-                <div class="hm-visualizer-label">Core radius (%)</div>
-                <div class="hm-visualizer-inputs">
-                    <input type="range" min="20" max="90" step="1" data-field="core-range" />
-                    <input type="number" min="20" max="90" step="1" data-field="core-number" />
-                </div>
-            </div>
-        </div>
-        <div class="hm-visualizer-footer">
-            <button type="button" class="hm-visualizer-button" data-action="reset">Restore defaults</button>
-        </div>
-    `;
-    container.appendChild(root);
-    nodes.push(root);
+            const root = createElement('div', 'hm-visualizer-settings');
+            container.appendChild(root);
 
-    const q = selector => root.querySelector(selector);
-
-    const controls = {
-        enabled: q('[data-field="enabled"]'),
-        style: q('[data-field="style"]'),
-        heightRange: q('[data-field="height-range"]'),
-        heightNumber: q('[data-field="height-number"]'),
-        barCountRange: q('[data-field="barcount-range"]'),
-        barCountNumber: q('[data-field="barcount-number"]'),
-        barWidthRange: q('[data-field="barwidth-range"]'),
-        barWidthNumber: q('[data-field="barwidth-number"]'),
-        transitionRange: q('[data-field="transition-range"]'),
-        transitionNumber: q('[data-field="transition-number"]'),
-        opacityRange: q('[data-field="opacity-range"]'),
-        opacityNumber: q('[data-field="opacity-number"]'),
-        freqMinNumber: q('[data-field="freqmin-number"]'),
-        freqMaxNumber: q('[data-field="freqmax-number"]'),
-        colorRadios: Array.from(root.querySelectorAll('input[name="visualizer-color"]')),
-        colorPicker: q('[data-field="color-picker"]'),
-        colorText: q('[data-field="color-text"]'),
-        radialSection: root.querySelector('[data-section="radial"]'),
-        radialSizeRange: q('[data-field="radialsize-range"]'),
-        radialSizeNumber: q('[data-field="radialsize-number"]'),
-        offsetXRange: q('[data-field="offsetx-range"]'),
-        offsetXNumber: q('[data-field="offsetx-number"]'),
-        offsetYRange: q('[data-field="offsety-range"]'),
-        offsetYNumber: q('[data-field="offsety-number"]'),
-        coreRange: q('[data-field="core-range"]'),
-        coreNumber: q('[data-field="core-number"]'),
-        resetButton: root.querySelector('[data-action="reset"]'),
-    };
-
-    if (controls.enabled) {
-        attachListener(
-            controls.enabled,
-            'change',
-            event => {
-                const enabled = Boolean(event.target.checked);
-                if (store.lyricVisualizer !== enabled) {
-                    store.lyricVisualizer = enabled;
-                }
-                if (enabled) {
-                    store.lyricVisualizerHasAutoEnabled = true;
-                }
-            },
-            subscriptions,
-        );
-    }
-
-    if (controls.style) {
-        attachListener(
-            controls.style,
-            'change',
-            event => {
-                const safe = sanitizeStyle(event.target.value);
-                if (store.lyricVisualizerStyle !== safe) {
-                    store.lyricVisualizerStyle = safe;
-                }
-            },
-            subscriptions,
-        );
-    }
-
-    setupRangeControl(store, 'lyricVisualizerHeight', controls.heightRange, controls.heightNumber, sanitizeHeight, subscriptions);
-    setupRangeControl(store, 'lyricVisualizerBarCount', controls.barCountRange, controls.barCountNumber, sanitizeBarCount, subscriptions);
-    setupRangeControl(store, 'lyricVisualizerBarWidth', controls.barWidthRange, controls.barWidthNumber, sanitizeBarWidth, subscriptions);
-
-    const applyTransition = raw => {
-        const value = sanitizeTransitionDelay(raw);
-        if (store.lyricVisualizerTransitionDelay !== value) {
-            store.lyricVisualizerTransitionDelay = value;
-        }
-        if (controls.transitionRange) controls.transitionRange.value = Math.round(value * 100);
-        if (controls.transitionNumber) controls.transitionNumber.value = formatNumber(value, 2);
-    };
-
-    if (controls.transitionRange) {
-        attachListener(
-            controls.transitionRange,
-            'input',
-            event => {
-                const normalized = Number(event.target.value) / 100;
-                applyTransition(normalized);
-            },
-            subscriptions,
-        );
-    }
-
-    if (controls.transitionNumber) {
-        attachListener(
-            controls.transitionNumber,
-            'change',
-            event => applyTransition(event.target.value),
-            subscriptions,
-        );
-        attachListener(
-            controls.transitionNumber,
-            'blur',
-            event => applyTransition(event.target.value),
-            subscriptions,
-        );
-    }
-
-    setupRangeControl(store, 'lyricVisualizerOpacity', controls.opacityRange, controls.opacityNumber, sanitizeOpacity, subscriptions);
-
-    if (controls.freqMinNumber && controls.freqMaxNumber) {
-        const applyFrequency = () => {
-            const { min, max } = sanitizeFrequencyRange(controls.freqMinNumber.value, controls.freqMaxNumber.value);
-            if (store.lyricVisualizerFrequencyMin !== min) store.lyricVisualizerFrequencyMin = min;
-            if (store.lyricVisualizerFrequencyMax !== max) store.lyricVisualizerFrequencyMax = max;
-            controls.freqMinNumber.value = min;
-            controls.freqMaxNumber.value = max;
-        };
-        attachListener(controls.freqMinNumber, 'change', applyFrequency, subscriptions);
-        attachListener(controls.freqMinNumber, 'blur', applyFrequency, subscriptions);
-        attachListener(controls.freqMaxNumber, 'change', applyFrequency, subscriptions);
-        attachListener(controls.freqMaxNumber, 'blur', applyFrequency, subscriptions);
-    }
-
-    setupRangeControl(store, 'lyricVisualizerRadialSize', controls.radialSizeRange, controls.radialSizeNumber, sanitizeRadialSize, subscriptions);
-    setupRangeControl(store, 'lyricVisualizerRadialOffsetX', controls.offsetXRange, controls.offsetXNumber, sanitizeRadialOffset, subscriptions);
-    setupRangeControl(store, 'lyricVisualizerRadialOffsetY', controls.offsetYRange, controls.offsetYNumber, sanitizeRadialOffset, subscriptions);
-    setupRangeControl(store, 'lyricVisualizerRadialCoreSize', controls.coreRange, controls.coreNumber, sanitizeRadialCoreSize, subscriptions);
-
-    if (controls.colorRadios && controls.colorPicker && controls.colorText) {
-        const syncColorState = () => {
-            const current = store.lyricVisualizerColor;
-            if (current === 'black' || current === 'white') {
-                controls.colorRadios.forEach(radio => {
-                    radio.checked = radio.value === current;
-                });
-                const baseHex = current === 'white' ? '#ffffff' : '#000000';
-                controls.colorPicker.value = baseHex;
-                controls.colorText.value = baseHex;
-                controls.colorPicker.disabled = true;
-                controls.colorText.disabled = true;
-            } else {
-                const hex = sanitizeColor(current);
-                controls.colorRadios.forEach(radio => {
-                    radio.checked = radio.value === 'custom';
-                });
-                const hexValue = hex.startsWith('#') ? hex : `#${hex.replace(/^#/, '')}`;
-                controls.colorPicker.value = hexValue;
-                controls.colorText.value = hexValue;
-                controls.colorPicker.disabled = false;
-                controls.colorText.disabled = false;
-            }
-        };
-
-        const applyColorValue = next => {
-            const safe = sanitizeColor(next);
-            if (store.lyricVisualizerColor !== safe) {
-                store.lyricVisualizerColor = safe;
-            }
-            syncColorState();
-        };
-
-        controls.colorRadios.forEach(radio => {
-            attachListener(
-                radio,
-                'change',
-                event => {
-                    if (!event.target.checked) return;
-                    const mode = event.target.value;
-                    if (mode === 'black' || mode === 'white') {
-                        applyColorValue(mode);
-                    } else {
-                        applyColorValue(controls.colorPicker.value || '#000000');
+            const applySanitized = () => {
+                const sanitized = sanitizeState(store);
+                Object.entries(sanitized).forEach(([key, value]) => {
+                    if (key in store && store[key] !== value) {
+                        store[key] = value;
                     }
-                },
-                subscriptions,
+                });
+            };
+
+            const fields = [];
+
+            const pushField = field => {
+                fields.push(field);
+                root.appendChild(field.element);
+            };
+
+            pushField(
+                createToggleField('启用可视化', () => store.lyricVisualizer, value => {
+                    store.lyricVisualizer = Boolean(value);
+                }),
             );
-        });
 
-        attachListener(
-            controls.colorPicker,
-            'input',
-            event => {
-                const value = event.target.value;
-                controls.colorText.value = value;
-                applyColorValue(value);
-            },
-            subscriptions,
-        );
+            pushField(
+                createStyleField(
+                    () => store.lyricVisualizerStyle,
+                    value => {
+                        store.lyricVisualizerStyle = sanitizeStyle(value);
+                    },
+                ),
+            );
 
-        attachListener(
-            controls.colorText,
-            'change',
-            event => {
-                const raw = event.target.value;
-                const safe = sanitizeColor(raw);
-                const normalized = safe.startsWith('#') ? safe : `#${safe.replace(/^#/, '')}`;
-                controls.colorPicker.value = normalized;
-                controls.colorText.value = normalized;
-                applyColorValue(normalized);
-            },
-            subscriptions,
-        );
+            const numericField = (options) => pushField(createChoiceField(options));
 
-        syncColorState();
-    }
+            numericField({
+                title: '高度',
+                description: '歌词面板中可视化的高度（像素）',
+                presetKey: 'height',
+                defaultValue: DEFAULTS.height,
+                formatter: (value, isDefault) => numberLabel(value, 'px', isDefault),
+                parse: raw => parseNumberInput(raw, { min: 80, max: 600 }),
+                getValue: () => store.lyricVisualizerHeight,
+                setValue: value => {
+                    store.lyricVisualizerHeight = sanitizeNumber(value, { min: 80, max: 600, fallback: DEFAULTS.height });
+                },
+                onReset: () => {
+                    store.lyricVisualizerHeight = DEFAULTS.height;
+                },
+            });
 
-    if (controls.resetButton) {
-        attachListener(
-            controls.resetButton,
-            'click',
-            () => {
+            numericField({
+                title: '频率下限',
+                description: '最小采样频率（Hz）',
+                presetKey: 'frequencyMin',
+                defaultValue: DEFAULTS.frequencyMin,
+                formatter: (value, isDefault) => numberLabel(value, 'Hz', isDefault),
+                parse: raw => parseNumberInput(raw, { min: 20, max: 19990 }),
+                getValue: () => store.lyricVisualizerFrequencyMin,
+                setValue: value => {
+                    const sanitized = sanitizeState({
+                        lyricVisualizerFrequencyMin: value,
+                        lyricVisualizerFrequencyMax: store.lyricVisualizerFrequencyMax,
+                    });
+                    store.lyricVisualizerFrequencyMin = sanitized.lyricVisualizerFrequencyMin;
+                    store.lyricVisualizerFrequencyMax = sanitized.lyricVisualizerFrequencyMax;
+                },
+                onReset: () => {
+                    store.lyricVisualizerFrequencyMin = DEFAULTS.frequencyMin;
+                    store.lyricVisualizerFrequencyMax = DEFAULTS.frequencyMax;
+                },
+            });
+
+            numericField({
+                title: '频率上限',
+                description: '最大采样频率（Hz）',
+                presetKey: 'frequencyMax',
+                defaultValue: DEFAULTS.frequencyMax,
+                formatter: (value, isDefault) => numberLabel(value, 'Hz', isDefault),
+                parse: raw => parseNumberInput(raw, { min: 30, max: 20000 }),
+                getValue: () => store.lyricVisualizerFrequencyMax,
+                setValue: value => {
+                    const sanitized = sanitizeState({
+                        lyricVisualizerFrequencyMin: store.lyricVisualizerFrequencyMin,
+                        lyricVisualizerFrequencyMax: value,
+                    });
+                    store.lyricVisualizerFrequencyMin = sanitized.lyricVisualizerFrequencyMin;
+                    store.lyricVisualizerFrequencyMax = sanitized.lyricVisualizerFrequencyMax;
+                },
+                onReset: () => {
+                    store.lyricVisualizerFrequencyMin = DEFAULTS.frequencyMin;
+                    store.lyricVisualizerFrequencyMax = DEFAULTS.frequencyMax;
+                },
+            });
+
+            numericField({
+                title: '过渡延迟',
+                description: '更高的数值会让动画更平滑',
+                presetKey: 'transitionDelay',
+                defaultValue: DEFAULTS.transitionDelay,
+                formatter: (value, isDefault) => floatLabel(value, isDefault),
+                parse: raw => parseNumberInput(raw, { min: 0, max: 0.95, allowFloat: true }),
+                getValue: () => store.lyricVisualizerTransitionDelay,
+                setValue: value => {
+                    store.lyricVisualizerTransitionDelay = sanitizeNumber(value, {
+                        min: 0,
+                        max: 0.95,
+                        fallback: DEFAULTS.transitionDelay,
+                        allowFloat: true,
+                    });
+                },
+                onReset: () => {
+                    store.lyricVisualizerTransitionDelay = DEFAULTS.transitionDelay;
+                },
+            });
+
+            numericField({
+                title: '柱体数量',
+                description: '频谱柱体的数量',
+                presetKey: 'barCount',
+                defaultValue: DEFAULTS.barCount,
+                formatter: (value, isDefault) => numberLabel(value, '个', isDefault),
+                parse: raw => parseNumberInput(raw, { min: 1, max: 256 }),
+                getValue: () => store.lyricVisualizerBarCount,
+                setValue: value => {
+                    store.lyricVisualizerBarCount = sanitizeNumber(value, {
+                        min: 1,
+                        max: 256,
+                        fallback: DEFAULTS.barCount,
+                    });
+                },
+                onReset: () => {
+                    store.lyricVisualizerBarCount = DEFAULTS.barCount;
+                },
+            });
+
+            numericField({
+                title: '柱体宽度',
+                description: '柱体宽度百分比',
+                presetKey: 'barWidth',
+                defaultValue: DEFAULTS.barWidth,
+                formatter: (value, isDefault) => numberLabel(value, '%', isDefault),
+                parse: raw => parseNumberInput(raw, { min: 5, max: 100 }),
+                getValue: () => store.lyricVisualizerBarWidth,
+                setValue: value => {
+                    store.lyricVisualizerBarWidth = sanitizeNumber(value, {
+                        min: 5,
+                        max: 100,
+                        fallback: DEFAULTS.barWidth,
+                    });
+                },
+                onReset: () => {
+                    store.lyricVisualizerBarWidth = DEFAULTS.barWidth;
+                },
+            });
+
+            numericField({
+                title: '透明度',
+                description: '可视化整体透明度',
+                presetKey: 'opacity',
+                defaultValue: DEFAULTS.opacity,
+                formatter: (value, isDefault) => numberLabel(value, '%', isDefault),
+                parse: raw => parseNumberInput(raw, { min: 0, max: 100 }),
+                getValue: () => store.lyricVisualizerOpacity,
+                setValue: value => {
+                    store.lyricVisualizerOpacity = sanitizeNumber(value, {
+                        min: 0,
+                        max: 100,
+                        fallback: DEFAULTS.opacity,
+                    });
+                },
+                onReset: () => {
+                    store.lyricVisualizerOpacity = DEFAULTS.opacity;
+                },
+            });
+
+            numericField({
+                title: '辐射尺寸',
+                description: '辐射样式的整体尺寸',
+                presetKey: 'radialSize',
+                defaultValue: DEFAULTS.radialSize,
+                formatter: (value, isDefault) => numberLabel(value, '%', isDefault),
+                parse: raw => parseNumberInput(raw, { min: 10, max: 400 }),
+                getValue: () => store.lyricVisualizerRadialSize,
+                setValue: value => {
+                    store.lyricVisualizerRadialSize = sanitizeNumber(value, {
+                        min: 10,
+                        max: 400,
+                        fallback: DEFAULTS.radialSize,
+                    });
+                },
+                onReset: () => {
+                    store.lyricVisualizerRadialSize = DEFAULTS.radialSize;
+                },
+            });
+
+            numericField({
+                title: '水平偏移',
+                description: '辐射中心的水平偏移',
+                presetKey: 'radialOffset',
+                defaultValue: DEFAULTS.radialOffsetX,
+                formatter: (value, isDefault) => numberLabel(value, '%', isDefault),
+                parse: raw => parseNumberInput(raw, { min: -100, max: 100 }),
+                getValue: () => store.lyricVisualizerRadialOffsetX,
+                setValue: value => {
+                    store.lyricVisualizerRadialOffsetX = sanitizeNumber(value, {
+                        min: -100,
+                        max: 100,
+                        fallback: DEFAULTS.radialOffsetX,
+                    });
+                },
+                onReset: () => {
+                    store.lyricVisualizerRadialOffsetX = DEFAULTS.radialOffsetX;
+                },
+            });
+
+            numericField({
+                title: '垂直偏移',
+                description: '辐射中心的垂直偏移',
+                presetKey: 'radialOffset',
+                defaultValue: DEFAULTS.radialOffsetY,
+                formatter: (value, isDefault) => numberLabel(value, '%', isDefault),
+                parse: raw => parseNumberInput(raw, { min: -100, max: 100 }),
+                getValue: () => store.lyricVisualizerRadialOffsetY,
+                setValue: value => {
+                    store.lyricVisualizerRadialOffsetY = sanitizeNumber(value, {
+                        min: -100,
+                        max: 100,
+                        fallback: DEFAULTS.radialOffsetY,
+                    });
+                },
+                onReset: () => {
+                    store.lyricVisualizerRadialOffsetY = DEFAULTS.radialOffsetY;
+                },
+            });
+
+            numericField({
+                title: '中心比例',
+                description: '辐射样式中心圆占比',
+                presetKey: 'radialCoreSize',
+                defaultValue: DEFAULTS.radialCoreSize,
+                formatter: (value, isDefault) => numberLabel(value, '%', isDefault),
+                parse: raw => parseNumberInput(raw, { min: 10, max: 95 }),
+                getValue: () => store.lyricVisualizerRadialCoreSize,
+                setValue: value => {
+                    store.lyricVisualizerRadialCoreSize = sanitizeNumber(value, {
+                        min: 10,
+                        max: 95,
+                        fallback: DEFAULTS.radialCoreSize,
+                    });
+                },
+                onReset: () => {
+                    store.lyricVisualizerRadialCoreSize = DEFAULTS.radialCoreSize;
+                },
+            });
+
+            pushField(
+                createColorField(
+                    () => store.lyricVisualizerColor,
+                    value => {
+                        store.lyricVisualizerColor = sanitizeColor(value, DEFAULTS.color);
+                    },
+                ),
+            );
+
+            const footer = createElement('div', 'hm-visualizer-footer');
+            const resetButton = createElement('button', null, '恢复默认');
+            footer.appendChild(resetButton);
+            root.appendChild(footer);
+
+            attach(resetButton, 'click', () => {
+                store.lyricVisualizer = DEFAULTS.enabled;
                 store.lyricVisualizerHeight = DEFAULTS.height;
-                store.lyricVisualizerBarCount = DEFAULTS.barCount;
-                store.lyricVisualizerBarWidth = DEFAULTS.barWidth;
-                store.lyricVisualizerTransitionDelay = DEFAULTS.transitionDelay;
-                store.lyricVisualizerOpacity = DEFAULTS.opacity;
                 store.lyricVisualizerFrequencyMin = DEFAULTS.frequencyMin;
                 store.lyricVisualizerFrequencyMax = DEFAULTS.frequencyMax;
-                store.lyricVisualizerColor = DEFAULTS.color;
+                store.lyricVisualizerTransitionDelay = DEFAULTS.transitionDelay;
+                store.lyricVisualizerBarCount = DEFAULTS.barCount;
+                store.lyricVisualizerBarWidth = DEFAULTS.barWidth;
+                store.lyricVisualizerOpacity = DEFAULTS.opacity;
                 store.lyricVisualizerStyle = DEFAULTS.style;
                 store.lyricVisualizerRadialSize = DEFAULTS.radialSize;
                 store.lyricVisualizerRadialOffsetX = DEFAULTS.radialOffsetX;
                 store.lyricVisualizerRadialOffsetY = DEFAULTS.radialOffsetY;
                 store.lyricVisualizerRadialCoreSize = DEFAULTS.radialCoreSize;
-                controls.colorRadios?.forEach(radio => {
-                    radio.checked = radio.value === DEFAULTS.color;
-                });
-                controls.colorPicker.value = '#000000';
-                controls.colorText.value = '#000000';
-                context.utils.notice?.('Visualizer defaults restored', 2);
-                syncFromStore();
-            },
-            subscriptions,
-        );
-    }
+                store.lyricVisualizerColor = DEFAULTS.color;
+                applySanitized();
+                fields.forEach(field => field.sync());
+                context.utils?.notice?.('已恢复歌词可视化默认设置', 2);
+            }, disposers);
 
-    const syncRadialVisibility = () => {
-        if (!controls.radialSection) return;
-        const styleValue = sanitizeStyle(store.lyricVisualizerStyle);
-        if (styleValue === 'radial') {
-            controls.radialSection.classList.add('hm-visible');
-        } else {
-            controls.radialSection.classList.remove('hm-visible');
-        }
-    };
+            applySanitized();
+            fields.forEach(field => field.sync());
 
-    const syncFromStore = () => {
-        if (controls.enabled) controls.enabled.checked = Boolean(store.lyricVisualizer);
-        if (controls.style) controls.style.value = sanitizeStyle(store.lyricVisualizerStyle);
-        if (controls.heightRange) controls.heightRange.value = sanitizeHeight(store.lyricVisualizerHeight);
-        if (controls.heightNumber) controls.heightNumber.value = sanitizeHeight(store.lyricVisualizerHeight);
-        if (controls.barCountRange) controls.barCountRange.value = sanitizeBarCount(store.lyricVisualizerBarCount);
-        if (controls.barCountNumber) controls.barCountNumber.value = sanitizeBarCount(store.lyricVisualizerBarCount);
-        if (controls.barWidthRange) controls.barWidthRange.value = sanitizeBarWidth(store.lyricVisualizerBarWidth);
-        if (controls.barWidthNumber) controls.barWidthNumber.value = sanitizeBarWidth(store.lyricVisualizerBarWidth);
-        const transitionValue = sanitizeTransitionDelay(store.lyricVisualizerTransitionDelay);
-        if (controls.transitionRange) controls.transitionRange.value = Math.round(transitionValue * 100);
-        if (controls.transitionNumber) controls.transitionNumber.value = formatNumber(transitionValue, 2);
-        const opacityValue = sanitizeOpacity(store.lyricVisualizerOpacity);
-        if (controls.opacityRange) controls.opacityRange.value = opacityValue;
-        if (controls.opacityNumber) controls.opacityNumber.value = opacityValue;
-        if (controls.freqMinNumber && controls.freqMaxNumber) {
-            const { min, max } = sanitizeFrequencyRange(store.lyricVisualizerFrequencyMin, store.lyricVisualizerFrequencyMax);
-            controls.freqMinNumber.value = min;
-            controls.freqMaxNumber.value = max;
-        }
-        if (controls.radialSizeRange) controls.radialSizeRange.value = sanitizeRadialSize(store.lyricVisualizerRadialSize);
-        if (controls.radialSizeNumber) controls.radialSizeNumber.value = sanitizeRadialSize(store.lyricVisualizerRadialSize);
-        if (controls.offsetXRange) controls.offsetXRange.value = sanitizeRadialOffset(store.lyricVisualizerRadialOffsetX);
-        if (controls.offsetXNumber) controls.offsetXNumber.value = sanitizeRadialOffset(store.lyricVisualizerRadialOffsetX);
-        if (controls.offsetYRange) controls.offsetYRange.value = sanitizeRadialOffset(store.lyricVisualizerRadialOffsetY);
-        if (controls.offsetYNumber) controls.offsetYNumber.value = sanitizeRadialOffset(store.lyricVisualizerRadialOffsetY);
-        if (controls.coreRange) controls.coreRange.value = sanitizeRadialCoreSize(store.lyricVisualizerRadialCoreSize);
-        if (controls.coreNumber) controls.coreNumber.value = sanitizeRadialCoreSize(store.lyricVisualizerRadialCoreSize);
-        syncRadialVisibility();
-        if (controls.colorRadios && controls.colorPicker && controls.colorText) {
-            const current = store.lyricVisualizerColor;
-            if (current === 'black' || current === 'white') {
-                controls.colorRadios.forEach(radio => {
-                    radio.checked = radio.value === current;
-                });
-                const baseHex = current === 'white' ? '#ffffff' : '#000000';
-                controls.colorPicker.value = baseHex;
-                controls.colorText.value = baseHex;
-                controls.colorPicker.disabled = true;
-                controls.colorText.disabled = true;
-            } else {
-                controls.colorRadios.forEach(radio => {
-                    radio.checked = radio.value === 'custom';
-                });
-                const hex = sanitizeColor(current);
-                const hexValue = hex.startsWith('#') ? hex : `#${hex.replace(/^#/, '')}`;
-                controls.colorPicker.value = hexValue;
-                controls.colorText.value = hexValue;
-                controls.colorPicker.disabled = false;
-                controls.colorText.disabled = false;
+            const unsubscribe = typeof store.$subscribe === 'function'
+                ? store.$subscribe(() => {
+                      applySanitized();
+                      fields.forEach(field => field.sync());
+                  })
+                : null;
+            if (unsubscribe) {
+                disposers.push(() => unsubscribe());
             }
-        }
-    };
 
-    syncFromStore();
-
-    const unsubscribe = typeof store.$subscribe === 'function'
-        ? store.$subscribe(() => {
-            syncFromStore();
-        })
-        : null;
-
-    if (unsubscribe) {
-        subscriptions.push(() => unsubscribe());
-    }
-
-    return () => {
-        while (subscriptions.length) {
-            const dispose = subscriptions.pop();
-            try {
-                dispose();
-            } catch (error) {
-                console.error('[LyricVisualizerPlugin] Failed to remove visualizer listeners:', error);
-            }
-        }
-        nodes.forEach(node => {
-            if (node && node.parentNode === container) {
-                container.removeChild(node);
-            }
-        });
-        container.innerHTML = '';
-    };
-};
-
-const registerSettingsPage = (context, store) => {
-    if (!context?.settings || typeof context.settings.register !== 'function') return null;
-    return context.settings.register({
-        id: 'core.lyric-visualizer.settings',
-        title: 'Lyric Visualizer',
-        subtitle: 'Tune how the lyric visualizer looks and behaves',
-        mount(container) {
-            return mountSettingsPage(container, store, context);
+            return () => {
+                fields.forEach(field => field.dispose());
+                while (disposers.length) {
+                    const fn = disposers.pop();
+                    fn();
+                }
+                container.innerHTML = '';
+            };
         },
     });
 };
@@ -760,19 +931,43 @@ module.exports = {
     activate(context) {
         const store = context?.stores?.player;
         if (!store) {
-            console.error('[LyricVisualizerPlugin] Unable to access player store');
+            console.error('[LyricVisualizerPlugin] 无法访问播放器状态');
             return;
+        }
+
+        const applySanitized = () => {
+            const sanitized = sanitizeState(store);
+            Object.entries(sanitized).forEach(([key, value]) => {
+                if (key in store && store[key] !== value) {
+                    store[key] = value;
+                }
+            });
+        };
+
+        applySanitized();
+
+        if (!store.lyricVisualizerHasAutoEnabled && !store.lyricVisualizer) {
+            store.lyricVisualizer = DEFAULTS.enabled;
+            store.lyricVisualizerHasAutoEnabled = true;
+        } else if (store.lyricVisualizer) {
+            store.lyricVisualizerHasAutoEnabled = true;
         }
 
         store.lyricVisualizerPluginActive = true;
         store.lyricVisualizerToggleAvailable = true;
-        if (store.lyricVisualizer) {
-            store.lyricVisualizerHasAutoEnabled = true;
-        }
 
-        const unregisterSettings = registerSettingsPage(context, store);
+        const unregisterSettings = registerSettings(context, store);
         if (typeof unregisterSettings === 'function') {
             context.onCleanup(unregisterSettings);
+        }
+
+        const unsubscribe = typeof store.$subscribe === 'function'
+            ? store.$subscribe(() => {
+                  applySanitized();
+              })
+            : null;
+        if (unsubscribe) {
+            context.onCleanup(() => unsubscribe());
         }
 
         context.onCleanup(() => {
@@ -782,10 +977,11 @@ module.exports = {
                 store.lyricVisualizerHasAutoEnabled = false;
                 store.lyricVisualizer = false;
             } catch (error) {
-                console.error('[LyricVisualizerPlugin] Failed to reset lyric visualizer state during cleanup:', error);
+                console.error('[LyricVisualizerPlugin] 清理状态失败', error);
             }
         });
 
-        context.utils?.notice?.('Lyric visualizer plugin is active', 2.5);
+        context.utils?.notice?.('歌词可视化插件已启用', 2.5);
     },
 };
+

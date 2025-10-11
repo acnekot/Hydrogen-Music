@@ -51,7 +51,7 @@ export const usePlayerStore = defineStore('playerStore', {
             lyricVisualizerTransitionDelay: 0.75, // 过渡延迟（平滑系数）
             lyricVisualizerBarCount: 48, // 柱体数量
             lyricVisualizerBarWidth: 55, // 柱体宽度比例（%）
-            lyricVisualizerColor: 'black', // 可视化主颜色
+            lyricVisualizerColor: 'auto', // 可视化主颜色
             lyricVisualizerOpacity: 100, // 可视化透明度（百分比）
             lyricVisualizerStyle: 'bars', // 可视化样式
             lyricVisualizerRadialSize: 100, // 辐射样式尺寸（百分比）
