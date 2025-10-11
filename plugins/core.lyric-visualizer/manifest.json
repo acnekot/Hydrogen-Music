@@ -1,9 +1,0 @@
-{
-  "id": "core.lyric-visualizer",
-  "name": "歌词音频可视化",
-  "version": "1.0.0",
-  "author": "Hydrogen Labs",
-  "description": "在歌词页面渲染频谱/辐射样式的音乐可视化效果，并提供细节参数调节。",
-  "main": "main.js",
-  "builtin": true
-}

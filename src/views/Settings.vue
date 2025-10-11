@@ -119,32 +119,6 @@ const pluginSettingsAvailability = computed(() => {
     return availability;
 });
 
-const LYRIC_VISUALIZER_PLUGIN_ID = 'core.lyric-visualizer';
-const lyricVisualizerPlugin = computed(() =>
-    (plugins.value || []).find(plugin => plugin && plugin.id === LYRIC_VISUALIZER_PLUGIN_ID) || null
-);
-const lyricVisualizerPluginEnabled = computed(() => Boolean(lyricVisualizerPlugin.value?.enabled));
-const lyricVisualizerSettingsAvailable = computed(
-    () => lyricVisualizerPluginEnabled.value && pluginHasSettings(LYRIC_VISUALIZER_PLUGIN_ID)
-);
-const lyricVisualizerStatusText = computed(() => {
-    if (!pluginApiAvailable.value) return '插件系统不可用';
-    if (!lyricVisualizerPlugin.value) return '插件未导入';
-    return lyricVisualizerPluginEnabled.value ? '插件已启用' : '插件未启用';
-});
-const openLyricVisualizerPluginSettings = () => {
-    const plugin = lyricVisualizerPlugin.value;
-    if (!plugin) {
-        noticeOpen('请先导入歌词音频可视化插件', 2);
-        return;
-    }
-    if (!plugin.enabled) {
-        noticeOpen('请先启用歌词音频可视化插件', 2);
-        return;
-    }
-    openPluginSettings(plugin);
-};
-
 if (isLogin()) {
     getVipInfo().then(result => {
         vipInfo.value = result.data;
