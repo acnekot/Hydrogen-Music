@@ -179,20 +179,44 @@ const mountSettingsPage = (container, store, context) => {
     const style = document.createElement('style');
     style.textContent = `
 .hm-visualizer-settings {
+    --plugin-settings-bg: var(--settings-shell-bg, var(--bg, #f4f6f8));
+    --plugin-settings-surface: var(--settings-shell-surface, var(--panel, rgba(255, 255, 255, 0.92)));
+    --plugin-settings-text: var(--settings-shell-text, var(--text, #111213));
+    --plugin-settings-muted: var(--settings-shell-muted, var(--muted-text, rgba(17, 18, 19, 0.68)));
+    --plugin-settings-border: var(--settings-shell-border, var(--border, rgba(0, 0, 0, 0.18)));
+    --plugin-settings-button-bg: var(--settings-shell-button-bg, rgba(255, 255, 255, 0.88));
+    --plugin-settings-button-hover-bg: var(--settings-shell-button-hover-bg, rgba(255, 255, 255, 1));
+    --plugin-settings-shadow: var(--settings-shell-shadow, 0 22px 48px rgba(20, 32, 58, 0.18));
+    --plugin-settings-empty-bg: var(--settings-shell-empty-bg, rgba(255, 255, 255, 0.78));
+    --plugin-settings-empty-border: var(--settings-shell-empty-border, rgba(92, 122, 170, 0.32));
+    --plugin-settings-input-surface: var(--settings-shell-input-bg, var(--layer, rgba(255, 255, 255, 0.92)));
+    --plugin-settings-accent: var(--settings-shell-accent, #4c6edb);
     position: relative;
     isolation: isolate;
     font-family: "Source Han Sans", "Microsoft Yahei", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    color: var(--plugin-settings-text, var(--text, #111213));
-    background: transparent;
+    color: var(--plugin-settings-text);
+    background: var(--plugin-settings-bg);
     min-height: 100%;
     padding: 28px 32px 40px;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
     gap: 24px;
-    color-scheme: var(--plugin-settings-color-scheme, light);
+    color-scheme: light;
 }
 .dark .hm-visualizer-settings {
+    --plugin-settings-bg: var(--settings-shell-bg, var(--bg, #21262b));
+    --plugin-settings-surface: var(--settings-shell-surface, var(--panel, rgba(52, 58, 68, 0.92)));
+    --plugin-settings-text: var(--settings-shell-text, var(--text, #f1f3f5));
+    --plugin-settings-muted: var(--settings-shell-muted, rgba(241, 243, 245, 0.72));
+    --plugin-settings-border: var(--settings-shell-border, var(--border, rgba(255, 255, 255, 0.24)));
+    --plugin-settings-button-bg: var(--settings-shell-button-bg, rgba(255, 255, 255, 0.12));
+    --plugin-settings-button-hover-bg: var(--settings-shell-button-hover-bg, rgba(255, 255, 255, 0.18));
+    --plugin-settings-shadow: var(--settings-shell-shadow, 0 18px 42px rgba(0, 0, 0, 0.55));
+    --plugin-settings-empty-bg: var(--settings-shell-empty-bg, rgba(255, 255, 255, 0.08));
+    --plugin-settings-empty-border: var(--settings-shell-empty-border, rgba(255, 255, 255, 0.22));
+    --plugin-settings-input-surface: var(--settings-shell-input-bg, rgba(44, 48, 56, 0.88));
+    --plugin-settings-accent: var(--settings-shell-accent, #6b8cff);
     color-scheme: dark;
 }
 .hm-visualizer-settings *,
@@ -201,20 +225,15 @@ const mountSettingsPage = (container, store, context) => {
     box-sizing: border-box;
 }
 .hm-visualizer-panel {
-    background: var(--plugin-settings-surface, var(--panel, rgba(255, 255, 255, 0.92)));
-    border: 1px solid var(--plugin-settings-border, var(--border, rgba(0, 0, 0, 0.16)));
-    box-shadow: var(--plugin-settings-shadow, 0 20px 44px rgba(20, 32, 58, 0.16));
+    background: var(--plugin-settings-surface);
+    border: 1px solid var(--plugin-settings-border);
+    box-shadow: var(--plugin-settings-shadow);
     border-radius: 0;
     padding: 20px 24px;
     display: flex;
     flex-direction: column;
     gap: 12px;
     backdrop-filter: blur(16px);
-}
-.dark .hm-visualizer-panel {
-    background: var(--plugin-settings-surface, var(--panel, rgba(52, 58, 68, 0.92)));
-    border-color: var(--plugin-settings-border, var(--border, rgba(255, 255, 255, 0.22)));
-    box-shadow: var(--plugin-settings-shadow, 0 18px 40px rgba(0, 0, 0, 0.55));
 }
 .hm-visualizer-header {
     display: flex;
@@ -229,7 +248,7 @@ const mountSettingsPage = (container, store, context) => {
 .hm-visualizer-subtitle {
     margin: 0;
     font-size: 13px;
-    opacity: 0.78;
+    color: var(--plugin-settings-muted);
 }
 .hm-visualizer-section-title {
     margin: 0 0 4px;
@@ -265,9 +284,9 @@ const mountSettingsPage = (container, store, context) => {
 .hm-visualizer-select select {
     min-width: 140px;
     padding: 6px 12px;
-    border: 1px solid var(--plugin-settings-border, var(--border, rgba(0, 0, 0, 0.18)));
+    border: 1px solid var(--plugin-settings-border);
     border-radius: 0;
-    background: var(--plugin-settings-input-surface, var(--settings-shell-input-bg, var(--layer, rgba(255, 255, 255, 0.92))));
+    background: var(--plugin-settings-input-surface);
     color: inherit;
     outline: none;
     transition: border-color 0.2s ease;
@@ -281,8 +300,8 @@ const mountSettingsPage = (container, store, context) => {
     width: 96px;
     padding: 6px 10px;
     border-radius: 0;
-    border: 1px solid var(--plugin-settings-border, var(--border, rgba(0, 0, 0, 0.18)));
-    background: var(--plugin-settings-input-surface, var(--settings-shell-input-bg, var(--layer, rgba(255, 255, 255, 0.92))));
+    border: 1px solid var(--plugin-settings-border);
+    background: var(--plugin-settings-input-surface);
     color: inherit;
     outline: none;
 }
@@ -290,7 +309,7 @@ const mountSettingsPage = (container, store, context) => {
     padding: 6px 14px;
     border-radius: 0;
     border: 1px solid transparent;
-    background: var(--plugin-settings-accent, var(--settings-shell-accent, #4c6edb));
+    background: var(--plugin-settings-accent);
     color: #fff;
     font-size: 13px;
     cursor: pointer;
@@ -298,7 +317,7 @@ const mountSettingsPage = (container, store, context) => {
 }
 .hm-visualizer-action--ghost {
     background: transparent;
-    border-color: var(--plugin-settings-border, var(--border, rgba(0, 0, 0, 0.18)));
+    border-color: var(--plugin-settings-border);
     color: inherit;
 }
 .hm-visualizer-action--remove {
@@ -324,12 +343,15 @@ const mountSettingsPage = (container, store, context) => {
 .hm-visualizer-switch-track {
     width: 46px;
     height: 26px;
-    background: rgba(20, 32, 58, 0.2);
+    background: rgba(28, 44, 78, 0.22);
     border-radius: 999px;
     display: inline-flex;
     align-items: center;
     padding: 4px;
     transition: background 0.2s ease;
+}
+.dark .hm-visualizer-switch-track {
+    background: rgba(255, 255, 255, 0.18);
 }
 .hm-visualizer-switch-handle {
     width: 18px;
@@ -341,7 +363,7 @@ const mountSettingsPage = (container, store, context) => {
     transition: transform 0.2s ease;
 }
 .hm-visualizer-switch input:checked + .hm-visualizer-switch-track {
-    background: var(--plugin-settings-accent, var(--settings-shell-accent, #4c6edb));
+    background: var(--plugin-settings-accent);
 }
 .hm-visualizer-switch input:checked + .hm-visualizer-switch-track .hm-visualizer-switch-handle {
     transform: translateX(20px);
@@ -362,7 +384,7 @@ const mountSettingsPage = (container, store, context) => {
     font-size: 13px;
 }
 .hm-visualizer-color-option input[type="radio"] {
-    accent-color: var(--plugin-settings-accent, #4c6edb);
+    accent-color: var(--plugin-settings-accent);
 }
 .hm-visualizer-color-option--custom .hm-visualizer-color-custom {
     display: inline-flex;
@@ -380,14 +402,14 @@ const mountSettingsPage = (container, store, context) => {
     width: 90px;
     padding: 6px 8px;
     border-radius: 0;
-    border: 1px solid var(--plugin-settings-border, var(--border, rgba(0, 0, 0, 0.18)));
-    background: var(--plugin-settings-input-surface, var(--settings-shell-input-bg, var(--layer, rgba(255, 255, 255, 0.92))));
+    border: 1px solid var(--plugin-settings-border);
+    background: var(--plugin-settings-input-surface);
     color: inherit;
 }
 .hm-visualizer-note {
     margin: 0;
     font-size: 12px;
-    opacity: 0.7;
+    color: var(--plugin-settings-muted);
     text-align: right;
 }
 .hm-visualizer-panel--radial {
@@ -403,15 +425,15 @@ const mountSettingsPage = (container, store, context) => {
 .hm-visualizer-button {
     padding: 8px 20px;
     border-radius: 0;
-    border: 1px solid var(--plugin-settings-border, var(--border, rgba(0, 0, 0, 0.18)));
-    background: var(--plugin-settings-button-bg, rgba(255, 255, 255, 0.88));
+    border: 1px solid var(--plugin-settings-border);
+    background: var(--plugin-settings-button-bg);
     color: inherit;
     cursor: pointer;
     transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease;
 }
 .hm-visualizer-button:hover {
-    background: var(--plugin-settings-button-hover-bg, rgba(255, 255, 255, 1));
-    border-color: var(--plugin-settings-accent, #4c6edb);
+    background: var(--plugin-settings-button-hover-bg);
+    border-color: var(--plugin-settings-accent);
     transform: translateY(-1px);
 }
 .hm-visualizer-button:focus {
@@ -479,7 +501,7 @@ const mountSettingsPage = (container, store, context) => {
                 </div>
             </div>
             <div class="hm-visualizer-option">
-                <div class="hm-visualizer-option-label">画布高度 (px)</div>
+                <div class="hm-visualizer-option-label">画布高度</div>
                 <div class="hm-visualizer-option-controls">
                     <div class="hm-visualizer-select">
                         <select data-field="height-select"></select>
@@ -505,7 +527,7 @@ const mountSettingsPage = (container, store, context) => {
                 </div>
             </div>
             <div class="hm-visualizer-option">
-                <div class="hm-visualizer-option-label">柱体宽度 (%)</div>
+                <div class="hm-visualizer-option-label">柱体宽度</div>
                 <div class="hm-visualizer-option-controls">
                     <div class="hm-visualizer-select">
                         <select data-field="barwidth-select"></select>
@@ -518,7 +540,7 @@ const mountSettingsPage = (container, store, context) => {
                 </div>
             </div>
             <div class="hm-visualizer-option">
-                <div class="hm-visualizer-option-label">平滑系数 (秒)</div>
+                <div class="hm-visualizer-option-label">平滑系数</div>
                 <div class="hm-visualizer-option-controls">
                     <div class="hm-visualizer-select">
                         <select data-field="transition-select"></select>
@@ -531,7 +553,7 @@ const mountSettingsPage = (container, store, context) => {
                 </div>
             </div>
             <div class="hm-visualizer-option">
-                <div class="hm-visualizer-option-label">不透明度 (%)</div>
+                <div class="hm-visualizer-option-label">不透明度</div>
                 <div class="hm-visualizer-option-controls">
                     <div class="hm-visualizer-select">
                         <select data-field="opacity-select"></select>
@@ -544,7 +566,7 @@ const mountSettingsPage = (container, store, context) => {
                 </div>
             </div>
             <div class="hm-visualizer-option">
-                <div class="hm-visualizer-option-label">最低频率 (Hz)</div>
+                <div class="hm-visualizer-option-label">最低频率</div>
                 <div class="hm-visualizer-option-controls">
                     <div class="hm-visualizer-select">
                         <select data-field="freqmin-select"></select>
@@ -557,7 +579,7 @@ const mountSettingsPage = (container, store, context) => {
                 </div>
             </div>
             <div class="hm-visualizer-option">
-                <div class="hm-visualizer-option-label">最高频率 (Hz)</div>
+                <div class="hm-visualizer-option-label">最高频率</div>
                 <div class="hm-visualizer-option-controls">
                     <div class="hm-visualizer-select">
                         <select data-field="freqmax-select"></select>
@@ -601,7 +623,7 @@ const mountSettingsPage = (container, store, context) => {
         <div class="hm-visualizer-panel hm-visualizer-panel--radial" data-section="radial">
             <div class="hm-visualizer-section-title">辐射样式参数</div>
             <div class="hm-visualizer-option">
-                <div class="hm-visualizer-option-label">半径比例 (%)</div>
+                <div class="hm-visualizer-option-label">半径比例</div>
                 <div class="hm-visualizer-option-controls">
                     <div class="hm-visualizer-select">
                         <select data-field="radialsize-select"></select>
@@ -614,7 +636,7 @@ const mountSettingsPage = (container, store, context) => {
                 </div>
             </div>
             <div class="hm-visualizer-option">
-                <div class="hm-visualizer-option-label">中心偏移 X (%)</div>
+                <div class="hm-visualizer-option-label">中心偏移 X</div>
                 <div class="hm-visualizer-option-controls">
                     <div class="hm-visualizer-select">
                         <select data-field="offsetx-select"></select>
@@ -627,7 +649,7 @@ const mountSettingsPage = (container, store, context) => {
                 </div>
             </div>
             <div class="hm-visualizer-option">
-                <div class="hm-visualizer-option-label">中心偏移 Y (%)</div>
+                <div class="hm-visualizer-option-label">中心偏移 Y</div>
                 <div class="hm-visualizer-option-controls">
                     <div class="hm-visualizer-select">
                         <select data-field="offsety-select"></select>
@@ -640,7 +662,7 @@ const mountSettingsPage = (container, store, context) => {
                 </div>
             </div>
             <div class="hm-visualizer-option">
-                <div class="hm-visualizer-option-label">核心区域 (%)</div>
+                <div class="hm-visualizer-option-label">核心区域</div>
                 <div class="hm-visualizer-option-controls">
                     <div class="hm-visualizer-select">
                         <select data-field="core-select"></select>

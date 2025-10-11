@@ -360,6 +360,7 @@ let animationFrameId = null;
 let resizeObserver = null;
 let resizeHandler = null;
 let resizeTarget = null;
+let boundAudioNode = null;
 let visualizerBarLevels = null;
 let visualizerPauseState = false;
 let idlePhase = 0;
@@ -546,7 +547,7 @@ const detachVisualizerSizeTracking = () => {
     resetVisualizerContainerMetrics();
 };
 
-const setupVisualizer = async () => {
+const setupVisualizer = async ({ forceRebind = false, resumeContext = false } = {}) => {
     if (!shouldShowVisualizer.value || !lyricVisualizerCanvas.value) return;
     if (!currentMusic.value || !currentMusic.value._sounds || !currentMusic.value._sounds.length) return;
     const audioNode = currentMusic.value._sounds[0]?._node;
@@ -566,7 +567,14 @@ const setupVisualizer = async () => {
 
     const audioContext = audioEnv.audioContext;
 
-    if (audioContext.state === 'suspended') {
+    if (!audioEnv.analyser) {
+        audioEnv.analyser = audioContext.createAnalyser();
+    }
+    syncAnalyserConfig();
+
+    const sameNode = boundAudioNode && audioNode && boundAudioNode === audioNode;
+
+    if (resumeContext && audioContext.state === 'suspended') {
         try {
             await audioContext.resume();
         } catch (error) {
@@ -574,10 +582,10 @@ const setupVisualizer = async () => {
         }
     }
 
-    if (!audioEnv.analyser) {
-        audioEnv.analyser = audioContext.createAnalyser();
+    if (!forceRebind && sameNode && audioEnv.analyserConnected && canvasCtx && lyricVisualizerCanvas.value) {
+        ensureVisualizerSizeTracking();
+        return;
     }
-    syncAnalyserConfig();
 
     const analyser = audioEnv.analyser;
 
@@ -605,6 +613,7 @@ const setupVisualizer = async () => {
     canvasCtx = lyricVisualizerCanvas.value.getContext('2d');
     if (!canvasCtx) return;
 
+    boundAudioNode = audioNode;
     ensureVisualizerSizeTracking();
 };
 
@@ -812,6 +821,7 @@ const stopVisualizerLoop = ({ clear = false, teardown = false } = {}) => {
     if (teardown) {
         detachVisualizerSizeTracking();
         canvasCtx = null;
+        boundAudioNode = null;
     }
 };
 
@@ -1097,13 +1107,14 @@ watch(
         if (!canvas) {
             stopVisualizerLoop({ clear: true, teardown: true });
             canvasCtx = null;
+            boundAudioNode = null;
             return;
         }
         await nextTick();
         updateVisualizerCanvasSize();
         renderVisualizerPreview();
         if (!shouldShowVisualizer.value) return;
-        await setupVisualizer();
+        await setupVisualizer({ forceRebind: true, resumeContext: playing.value });
         visualizerPauseState = !playing.value;
         startVisualizerLoop({ force: true });
     }
@@ -1112,12 +1123,13 @@ watch(
 watch(shouldShowVisualizer, active => {
     if (active) {
         nextTick(async () => {
-            await setupVisualizer();
+            await setupVisualizer({ forceRebind: true, resumeContext: playing.value });
             visualizerPauseState = !playing.value;
             startVisualizerLoop({ force: true });
         });
     } else {
         stopVisualizerLoop({ clear: true, teardown: true });
+        boundAudioNode = null;
     }
 });
 
@@ -1126,7 +1138,7 @@ watch(
     () => {
         if (!shouldShowVisualizer.value) return;
         nextTick(async () => {
-            await setupVisualizer();
+            await setupVisualizer({ forceRebind: true, resumeContext: playing.value });
             visualizerPauseState = !playing.value;
             if (playing.value) startVisualizerLoop({ force: true });
             else startVisualizerLoop();
@@ -1137,11 +1149,14 @@ watch(
 watch(playing, isPlaying => {
     visualizerPauseState = !isPlaying;
     if (!shouldShowVisualizer.value) return;
-    nextTick(async () => {
-        await setupVisualizer();
-        if (isPlaying) startVisualizerLoop({ force: true });
-        else startVisualizerLoop();
-    });
+    if (isPlaying) {
+        nextTick(async () => {
+            await setupVisualizer({ resumeContext: true });
+            startVisualizerLoop({ force: true });
+        });
+    } else {
+        startVisualizerLoop();
+    }
 });
 
 // 根据显示配置（翻译/原文/罗马音、字号）动态调整高度与位置
@@ -1341,7 +1356,7 @@ onMounted(() => {
     visualizerPauseState = !playing.value;
     if (shouldShowVisualizer.value) {
         nextTick(async () => {
-            await setupVisualizer();
+            await setupVisualizer({ forceRebind: true, resumeContext: playing.value });
             visualizerPauseState = !playing.value;
             startVisualizerLoop({ force: true });
         });
