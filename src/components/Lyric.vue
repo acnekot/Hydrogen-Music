@@ -439,6 +439,7 @@ let slowReleaseStartTime = 0;
 let slowReleaseDurationMs = 0;
 let visualizerWasPausedLastFrame = false;
 let visualizerSetupGeneration = 0;
+let visualizerSetupRetryHandle = 0;
 const IDLE_WAVE_SPEED = 0.0125;
 const IDLE_BASE_LEVEL = 0.08;
 const IDLE_LEVEL_RANGE = 0.42;
@@ -460,6 +461,25 @@ const scheduleIdleSuppression = (duration = IDLE_SUPPRESSION_DEFAULT_MS) => {
     const target = now + safeDuration;
     if (!Number.isFinite(target)) return;
     idleSuppressionUntil = Math.max(idleSuppressionUntil, target);
+};
+
+const clearVisualizerSetupRetry = () => {
+    if (visualizerSetupRetryHandle) {
+        clearTimeout(visualizerSetupRetryHandle);
+        visualizerSetupRetryHandle = 0;
+    }
+};
+
+const scheduleVisualizerSetupRetry = ({ delay = 180, forceRebind = true, resumeContext = false } = {}) => {
+    clearVisualizerSetupRetry();
+    const attemptGeneration = visualizerSetupGeneration;
+    const safeDelay = Math.max(60, Number(delay) || 0);
+    visualizerSetupRetryHandle = setTimeout(() => {
+        visualizerSetupRetryHandle = 0;
+        if (!shouldShowVisualizer.value) return;
+        if (attemptGeneration !== visualizerSetupGeneration) return;
+        setupVisualizer({ forceRebind, resumeContext }).catch(() => {});
+    }, safeDelay);
 };
 
 const resetIdleTracking = () => {
@@ -727,6 +747,7 @@ const setupVisualizer = async ({ forceRebind = false, resumeContext = false } = 
     if (!shouldShowVisualizer.value || !lyricVisualizerCanvas.value) return;
 
     const setupId = ++visualizerSetupGeneration;
+    clearVisualizerSetupRetry();
 
     let audioNode = getCurrentAudioNode();
     if (!audioNode) {
@@ -735,7 +756,10 @@ const setupVisualizer = async ({ forceRebind = false, resumeContext = false } = 
 
     if (setupId !== visualizerSetupGeneration) return;
     if (!shouldShowVisualizer.value || !lyricVisualizerCanvas.value) return;
-    if (!audioNode) return;
+    if (!audioNode) {
+        scheduleVisualizerSetupRetry({ forceRebind: true, resumeContext });
+        return;
+    }
 
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) return;
@@ -1136,6 +1160,7 @@ const stopVisualizerLoop = ({ clear = false, teardown = false } = {}) => {
         detachVisualizerSizeTracking();
         canvasCtx = null;
         boundAudioNode = null;
+        clearVisualizerSetupRetry();
     }
 };
 
@@ -1493,6 +1518,7 @@ watch(shouldShowVisualizer, active => {
             }
         });
     } else {
+        clearVisualizerSetupRetry();
         stopVisualizerLoop({ clear: true, teardown: true });
         boundAudioNode = null;
     }
