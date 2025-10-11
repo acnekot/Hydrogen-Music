@@ -362,8 +362,15 @@ let resizeHandler = null;
 let resizeTarget = null;
 let boundAudioNode = null;
 let visualizerBarLevels = null;
+let visualizerFrameTargets = null;
 let visualizerPauseState = false;
 let idlePhase = 0;
+let visualizerSampleFrequencies = new Float32Array(0);
+let visualizerSampleIndices = new Uint16Array(0);
+let visualizerSampleBinCount = 0;
+let visualizerSampleNyquist = 22050;
+let radialUnitVectors = new Float32Array(0);
+let radialVectorCount = 0;
 const IDLE_WAVE_SPEED = 0.0125;
 const IDLE_BASE_LEVEL = 0.08;
 const IDLE_LEVEL_RANGE = 0.42;
@@ -379,6 +386,7 @@ const syncAnalyserConfig = () => {
         analyserDataArray = new Uint8Array(analyser.frequencyBinCount);
     }
     analyser.smoothingTimeConstant = visualizerSmoothing.value;
+    rebuildFrequencySamples({ binCount: analyser.frequencyBinCount });
 };
 
 const ensureVisualizerLevels = size => {
@@ -394,7 +402,81 @@ const ensureVisualizerLevels = size => {
 
 const resetVisualizerLevels = () => {
     visualizerBarLevels = null;
+    visualizerFrameTargets = null;
 };
+
+const ensureVisualizerFrameTargets = size => {
+    if (size <= 0) {
+        visualizerFrameTargets = null;
+        return visualizerFrameTargets;
+    }
+    if (!visualizerFrameTargets || visualizerFrameTargets.length !== size) {
+        visualizerFrameTargets = new Float32Array(size);
+    }
+    return visualizerFrameTargets;
+};
+
+const rebuildRadialUnitVectors = () => {
+    const barCount = Math.max(1, visualizerBarCountValue.value);
+    if (radialVectorCount === barCount && radialUnitVectors.length === barCount * 2) return;
+    const vectors = new Float32Array(barCount * 2);
+    const step = (Math.PI * 2) / barCount;
+    let angle = 0;
+    for (let index = 0; index < barCount; index++, angle += step) {
+        vectors[index * 2] = Math.cos(angle);
+        vectors[index * 2 + 1] = Math.sin(angle);
+    }
+    radialUnitVectors = vectors;
+    radialVectorCount = barCount;
+};
+
+const rebuildFrequencySamples = ({ binCount: overrideBinCount } = {}) => {
+    const barCount = Math.max(1, visualizerBarCountValue.value);
+    const { min, max } = visualizerFrequencyRange.value;
+    const minHz = Math.max(0, Number(min) || 0);
+    const maxHz = Math.max(minHz + 10, Number(max) || minHz + 10);
+    const range = Math.max(10, maxHz - minHz);
+    const step = range / barCount;
+    const frequencies = new Float32Array(barCount);
+    let cursor = minHz + step * 0.5;
+    for (let index = 0; index < barCount; index++, cursor += step) {
+        frequencies[index] = cursor;
+    }
+    visualizerSampleFrequencies = frequencies;
+
+    const analyser = audioEnv.analyser;
+    const audioContext = audioEnv.audioContext;
+    const nyquistCandidate =
+        audioContext && typeof audioContext.sampleRate === 'number' && audioContext.sampleRate > 0
+            ? audioContext.sampleRate / 2
+            : visualizerSampleNyquist || 22050;
+    visualizerSampleNyquist = Math.max(1, nyquistCandidate);
+
+    const resolvedBinCount =
+        overrideBinCount ?? analyser?.frequencyBinCount ?? analyserDataArray?.length ?? visualizerSampleBinCount;
+    const binCount = Math.max(0, Number(resolvedBinCount) || 0);
+    visualizerSampleBinCount = binCount;
+
+    if (!binCount) {
+        visualizerSampleIndices = new Uint16Array(0);
+        return;
+    }
+
+    if (!visualizerSampleIndices || visualizerSampleIndices.length !== barCount) {
+        visualizerSampleIndices = new Uint16Array(barCount);
+    }
+
+    const invNyquist = 1 / visualizerSampleNyquist;
+    const indexLimit = binCount - 1;
+    for (let index = 0; index < barCount; index++) {
+        const freq = Math.min(Math.max(frequencies[index], 0), visualizerSampleNyquist);
+        const ratio = Math.min(Math.max(freq * invNyquist, 0), 0.999999);
+        visualizerSampleIndices[index] = Math.min(indexLimit, Math.max(0, Math.floor(ratio * binCount)));
+    }
+};
+
+rebuildRadialUnitVectors();
+rebuildFrequencySamples();
 
 const updateVisualizerLevels = (size, resolveTarget, { paused = false } = {}) => {
     const levels = ensureVisualizerLevels(size);
@@ -635,19 +717,8 @@ const renderVisualizerFrame = () => {
     const opacityRatio = visualizerOpacityRatio.value;
     const styleMode = visualizerStyleValue.value;
 
-    const nyquist = audioEnv.audioContext ? audioEnv.audioContext.sampleRate / 2 : 22050;
     const binCount = analyserDataArray ? analyserDataArray.length : 0;
-    const frequencyMin = Math.max(0, Math.min(visualizerFrequencyMinValue.value, nyquist));
-    const frequencyMax = Math.max(frequencyMin + 10, Math.min(visualizerFrequencyMaxValue.value, nyquist));
-    const minIndex = binCount
-        ? Math.min(binCount - 1, Math.max(0, Math.floor((frequencyMin / nyquist) * binCount)))
-        : 0;
-    const maxIndex = binCount
-        ? Math.max(minIndex + 1, Math.min(binCount, Math.floor((frequencyMax / nyquist) * binCount)))
-        : 1;
-    const rangeSize = Math.max(1, maxIndex - minIndex);
     const barCount = Math.max(1, visualizerBarCountValue.value);
-    const step = rangeSize / barCount;
 
     const levels = ensureVisualizerLevels(barCount);
     if (!levels) return false;
@@ -670,15 +741,45 @@ const renderVisualizerFrame = () => {
     let peakLevel = 0;
 
     if (analyserReady && !isPaused) {
-        peakLevel = updateVisualizerLevels(
-            barCount,
-            index => {
-                const samplePosition = minIndex + (index + 0.5) * step;
-                const dataIndex = Math.min(binCount - 1, Math.max(0, Math.floor(samplePosition)));
-                return analyserDataArray[dataIndex] / 255;
-            },
-            { paused: false }
-        );
+        if (
+            visualizerSampleFrequencies.length !== barCount ||
+            (binCount > 0 && visualizerSampleIndices.length !== barCount) ||
+            visualizerSampleBinCount !== binCount
+        ) {
+            rebuildFrequencySamples({ binCount });
+        }
+
+        const freqIndices =
+            visualizerSampleIndices.length === barCount && visualizerSampleBinCount === binCount
+                ? visualizerSampleIndices
+                : null;
+        const freqTable = visualizerSampleFrequencies.length === barCount ? visualizerSampleFrequencies : null;
+        const invNyquist = visualizerSampleNyquist > 0 ? 1 / visualizerSampleNyquist : 0;
+        const indexLimit = binCount - 1;
+        const targets = ensureVisualizerFrameTargets(barCount);
+
+        if (targets) {
+            if (freqIndices) {
+                for (let i = 0; i < barCount; i++) {
+                    targets[i] = analyserDataArray[freqIndices[i]] / 255;
+                }
+            } else if (freqTable) {
+                for (let i = 0; i < barCount; i++) {
+                    const freq = freqTable[i] ?? visualizerFrequencyMinValue.value;
+                    const normalized = Math.min(Math.max(freq * invNyquist, 0), 0.999999);
+                    const dataIndex = Math.min(indexLimit, Math.max(0, Math.floor(normalized * binCount)));
+                    targets[i] = analyserDataArray[dataIndex] / 255;
+                }
+            } else {
+                const sampleStep = binCount / barCount;
+                for (let i = 0; i < barCount; i++) {
+                    const dataIndex = Math.min(indexLimit, Math.max(0, Math.floor((i + 0.5) * sampleStep)));
+                    targets[i] = analyserDataArray[dataIndex] / 255;
+                }
+            }
+
+            peakLevel = updateVisualizerLevels(barCount, index => targets[index], { paused: false });
+        }
     } else if (!isPaused) {
         // Soft decay existing levels when audio data is unavailable but playback should continue.
         for (let i = 0; i < barCount; i++) {
@@ -730,16 +831,20 @@ const renderVisualizerFrame = () => {
         const widthRatio = Math.min(Math.max(visualizerBarWidthRatio.value, 0.05), 1);
         const lineWidth = Math.max(1.2, (circumference / barCount) * widthRatio);
 
+        if (radialUnitVectors.length !== barCount * 2) {
+            rebuildRadialUnitVectors();
+        }
+        const vectors = radialUnitVectors.length === barCount * 2 ? radialUnitVectors : null;
+
         canvasCtx.save();
         canvasCtx.lineCap = 'round';
         canvasCtx.lineWidth = lineWidth;
 
-        for (let i = 0; i < barCount; i++) {
+        for (let i = 0, vectorIndex = 0; i < barCount; i++, vectorIndex += 2) {
             const value = levels[i] ?? 0;
             const endRadius = startRadius + value * radialExtent;
-            const angle = (i / barCount) * Math.PI * 2;
-            const cos = Math.cos(angle);
-            const sin = Math.sin(angle);
+            const cos = vectors ? vectors[vectorIndex] : Math.cos((i / barCount) * Math.PI * 2);
+            const sin = vectors ? vectors[vectorIndex + 1] : Math.sin((i / barCount) * Math.PI * 2);
             const x1 = centerX + startRadius * cos;
             const y1 = centerY + startRadius * sin;
             const x2 = centerX + endRadius * cos;
@@ -815,6 +920,7 @@ const stopVisualizerLoop = ({ clear = false, teardown = false } = {}) => {
     }
     if (clear || teardown) {
         resetVisualizerLevels();
+        visualizerFrameTargets = null;
         visualizerPauseState = false;
         idlePhase = 0;
     }
@@ -969,6 +1075,7 @@ watch(
 );
 
 watch([visualizerFrequencyMinValue, visualizerFrequencyMaxValue], () => {
+    rebuildFrequencySamples();
     renderVisualizerPreview();
 });
 
@@ -1007,10 +1114,16 @@ watch(visualizerHeightPx, () => {
     });
 });
 
-watch(visualizerBarCountValue, () => {
-    resetVisualizerLevels();
-    renderVisualizerPreview();
-});
+watch(
+    visualizerBarCountValue,
+    () => {
+        rebuildFrequencySamples();
+        rebuildRadialUnitVectors();
+        resetVisualizerLevels();
+        renderVisualizerPreview();
+    },
+    { immediate: true }
+);
 
 watch(visualizerBarWidthRatio, () => {
     renderVisualizerPreview();
@@ -1033,6 +1146,7 @@ watch(
 );
 
 watch(visualizerStyleValue, () => {
+    rebuildRadialUnitVectors();
     resetVisualizerLevels();
     nextTick(() => {
         updateVisualizerCanvasSize();
