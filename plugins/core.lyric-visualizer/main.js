@@ -204,24 +204,8 @@ const mountSettingsPage = (container, store, context) => {
     line-height: 1.6;
     color-scheme: var(--plugin-settings-color-scheme, light);
 }
-.hm-visualizer-settings::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 28px;
-    background: var(--plugin-settings-bg, var(--settings-shell-bg, #f4f6f8));
-    opacity: 0.94;
-    filter: saturate(1.05);
-    z-index: -1;
-    pointer-events: none;
-}
 .dark .hm-visualizer-settings {
     color-scheme: dark;
-}
-.dark .hm-visualizer-settings::before {
-    background: var(--plugin-settings-bg, var(--settings-shell-bg, #181c23));
-    opacity: 0.9;
-    filter: saturate(1.12) brightness(0.92);
 }
 .hm-visualizer-settings *,
 .hm-visualizer-settings *::before,

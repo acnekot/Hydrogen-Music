@@ -643,11 +643,11 @@ const renderVisualizerFrame = () => {
     const levels = ensureVisualizerLevels(barCount);
     if (!levels) return false;
 
-    const paused = !playing.value || visualizerPauseState;
+    const isPaused = !playing.value || visualizerPauseState;
     const analyserReady = analyser && analyserDataArray && binCount > 0;
     let peakLevel = 0;
 
-    if (analyserReady && !paused) {
+    if (analyserReady && !isPaused) {
         peakLevel = updateVisualizerLevels(
             barCount,
             index => {
@@ -657,16 +657,22 @@ const renderVisualizerFrame = () => {
             },
             { paused: false }
         );
-    } else {
-        // Soft decay existing levels when audio is paused or unavailable.
+    } else if (!isPaused) {
+        // Soft decay existing levels when audio data is unavailable but playback should continue.
         for (let i = 0; i < barCount; i++) {
             const previous = levels[i] ?? 0;
             levels[i] = Math.max(previous * 0.86 - 0.015, 0);
             if (levels[i] > peakLevel) peakLevel = levels[i];
         }
+    } else {
+        for (let i = 0; i < barCount; i++) {
+            const previous = Math.max(levels[i] ?? 0, 0);
+            levels[i] = previous;
+            if (previous > peakLevel) peakLevel = previous;
+        }
     }
 
-    const idleActive = !analyserReady || paused || peakLevel < 0.015;
+    const idleActive = !isPaused && (!analyserReady || peakLevel < 0.015);
     if (idleActive) {
         idlePhase = (idlePhase + IDLE_WAVE_SPEED) % 1;
         let idlePeak = 0;
@@ -681,12 +687,6 @@ const renderVisualizerFrame = () => {
     }
 
     canvasCtx.clearRect(0, 0, width, height);
-    const backgroundAlpha = Math.min(Math.max(opacityRatio * 0.22, 0.05), themeIsDark.value ? 0.32 : 0.24);
-    if (backgroundAlpha > 0) {
-        canvasCtx.fillStyle = `rgba(${r}, ${g}, ${b}, ${backgroundAlpha})`;
-        canvasCtx.fillRect(0, 0, width, height);
-    }
-
     if (styleMode === 'radial') {
         const maxBaseRadius = Math.min(width, height) / 2;
         if (maxBaseRadius <= 0) return true;
@@ -758,7 +758,7 @@ const renderVisualizerFrame = () => {
         }
     }
 
-    const continueLoop = idleActive || playing.value;
+    const continueLoop = !isPaused;
     return continueLoop;
 };
 
