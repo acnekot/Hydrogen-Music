@@ -68,20 +68,27 @@ const unmountPage = () => {
 
 const mountPage = async () => {
     const page = activePage.value
-    if (!page || typeof page.mount !== 'function' || !containerRef.value) return
+    if (!page || typeof page.mount !== 'function') return
+
+    let container = containerRef.value
+    if (!container) {
+        await nextTick()
+        container = containerRef.value
+    }
+    if (!container) return
 
     mountedPage.value = page
-    containerRef.value.innerHTML = ''
+    container.innerHTML = ''
     await nextTick()
 
     try {
-        const maybeCleanup = page.mount(containerRef.value)
+        const maybeCleanup = page.mount(container)
         cleanupRef.value = typeof maybeCleanup === 'function' ? maybeCleanup : null
     } catch (error) {
         console.error('[PluginSettings] 渲染插件设置页面失败:', error)
         cleanupRef.value = null
-        if (containerRef.value) {
-            containerRef.value.innerHTML = '<div class="plugin-settings-error">渲染插件设置页面失败。</div>'
+        if (container) {
+            container.innerHTML = '<div class="plugin-settings-error">渲染插件设置页面失败。</div>'
         }
     }
 }
@@ -119,7 +126,7 @@ const syncActivePage = () => {
 
 watch([pluginId, () => pluginSettingsVersionSignal.value], () => {
     syncActivePage()
-}, { immediate: true })
+}, { immediate: true, flush: 'post' })
 
 onMounted(async () => {
     await nextTick()
