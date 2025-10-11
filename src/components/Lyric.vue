@@ -362,6 +362,60 @@ const shouldShowVisualizer = computed(
     () => shouldShowVisualizerInLyrics.value || shouldShowVisualizerInPlaceholder.value
 );
 
+const waitForNextFrame = () =>
+    new Promise(resolve => {
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => resolve());
+        } else {
+            setTimeout(resolve, 16);
+        }
+    });
+
+const getAudioNodeFromMusic = music => {
+    if (!music || !Array.isArray(music._sounds)) return null;
+    for (let i = 0; i < music._sounds.length; i++) {
+        const sound = music._sounds[i];
+        if (sound && sound._node) {
+            return sound._node;
+        }
+    }
+    return null;
+};
+
+const getCurrentAudioNode = () => getAudioNodeFromMusic(currentMusic.value);
+
+const getVisualizerTimestamp = () =>
+    typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : Date.now();
+
+async function waitForAudioNodeAvailability({ timeout = 1500, generation } = {}) {
+    let audioNode = getCurrentAudioNode();
+    if (audioNode) return audioNode;
+
+    const maxWait = Math.max(0, Number(timeout) || 0);
+    if (maxWait <= 0) return null;
+
+    const deadline = getVisualizerTimestamp() + maxWait;
+    let now = getVisualizerTimestamp();
+
+    while (shouldShowVisualizer.value && now <= deadline) {
+        if (typeof generation === 'number' && generation !== visualizerSetupGeneration) {
+            return null;
+        }
+        await waitForNextFrame();
+        if (typeof generation === 'number' && generation !== visualizerSetupGeneration) {
+            return null;
+        }
+        if (!shouldShowVisualizer.value) return null;
+        audioNode = getCurrentAudioNode();
+        if (audioNode) return audioNode;
+        now = getVisualizerTimestamp();
+    }
+
+    return getCurrentAudioNode();
+}
+
 let analyserDataArray = null;
 let canvasCtx = null;
 let animationFrameId = null;
@@ -384,6 +438,7 @@ let slowReleaseSnapshot = null;
 let slowReleaseStartTime = 0;
 let slowReleaseDurationMs = 0;
 let visualizerWasPausedLastFrame = false;
+let visualizerSetupGeneration = 0;
 const IDLE_WAVE_SPEED = 0.0125;
 const IDLE_BASE_LEVEL = 0.08;
 const IDLE_LEVEL_RANGE = 0.42;
@@ -645,8 +700,16 @@ const detachVisualizerSizeTracking = () => {
 
 const setupVisualizer = async ({ forceRebind = false, resumeContext = false } = {}) => {
     if (!shouldShowVisualizer.value || !lyricVisualizerCanvas.value) return;
-    if (!currentMusic.value || !currentMusic.value._sounds || !currentMusic.value._sounds.length) return;
-    const audioNode = currentMusic.value._sounds[0]?._node;
+
+    const setupId = ++visualizerSetupGeneration;
+
+    let audioNode = getCurrentAudioNode();
+    if (!audioNode) {
+        audioNode = await waitForAudioNodeAvailability({ timeout: 1600, generation: setupId });
+    }
+
+    if (setupId !== visualizerSetupGeneration) return;
+    if (!shouldShowVisualizer.value || !lyricVisualizerCanvas.value) return;
     if (!audioNode) return;
 
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -702,9 +765,16 @@ const setupVisualizer = async ({ forceRebind = false, resumeContext = false } = 
     source.connect(analyser);
 
     if (!audioEnv.analyserConnected) {
-        analyser.connect(audioContext.destination);
-        audioEnv.analyserConnected = true;
+        try {
+            analyser.connect(audioContext.destination);
+            audioEnv.analyserConnected = true;
+        } catch (error) {
+            console.warn('连接分析节点失败:', error);
+        }
     }
+
+    if (setupId !== visualizerSetupGeneration) return;
+    if (!shouldShowVisualizer.value || !lyricVisualizerCanvas.value) return;
 
     canvasCtx = lyricVisualizerCanvas.value.getContext('2d');
     if (!canvasCtx) return;
@@ -752,10 +822,7 @@ const renderVisualizerFrame = () => {
 
     const isPaused = !playing.value || visualizerPauseState || nodePaused;
     const analyserReady = analyser && analyserDataArray && binCount > 0;
-    const now =
-        typeof performance !== 'undefined' && typeof performance.now === 'function'
-            ? performance.now()
-            : Date.now();
+    const now = getVisualizerTimestamp();
     const slowReleaseEnabled = visualizerSlowReleaseEnabled.value && visualizerSlowReleaseDurationValue.value > 0;
     let peakLevel = 0;
 
@@ -1043,15 +1110,6 @@ const requestVisualizerPause = ({ immediate = false } = {}) => {
         startVisualizerLoop({ force: true });
     }
 };
-
-const waitForNextFrame = () =>
-    new Promise(resolve => {
-        if (typeof requestAnimationFrame === 'function') {
-            requestAnimationFrame(() => resolve());
-        } else {
-            setTimeout(resolve, 16);
-        }
-    });
 
 const waitForLayoutCommit = async () => {
     await nextTick();

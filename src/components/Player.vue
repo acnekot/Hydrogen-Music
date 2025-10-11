@@ -1072,6 +1072,7 @@ const toggleDjSub = async (isSubscribe) => {
                 flex-direction: row;
                 justify-content: space-evenly;
                 align-items: center;
+
                 .comment-toggle-group {
                     display: flex;
                     flex-direction: column;
@@ -1092,6 +1093,7 @@ const toggleDjSub = async (isSubscribe) => {
                         cursor: pointer;
                         transition: color 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
                         outline: none;
+                        box-shadow: none;
                         -webkit-tap-highlight-color: transparent;
 
                         svg {
@@ -1116,15 +1118,18 @@ const toggleDjSub = async (isSubscribe) => {
 
                         &:focus {
                             outline: none;
+                            box-shadow: none;
                         }
 
                         &:focus-visible {
                             outline: none;
+                            box-shadow: none;
                         }
 
                         &:active {
                             background: transparent;
                             transform: translateY(0);
+                            box-shadow: none;
                         }
                     }
                 }
