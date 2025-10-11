@@ -897,15 +897,15 @@ const startVisualizerLoop = ({ force = false } = {}) => {
         cancelAnimationFrame(animationFrameId);
         animationFrameId = null;
     }
-    const draw = () => {
+    const step = () => {
         const keepGoing = renderVisualizerFrame();
         if (keepGoing === false) {
             animationFrameId = null;
             return;
         }
-        animationFrameId = requestAnimationFrame(draw);
+        animationFrameId = requestAnimationFrame(step);
     };
-    draw();
+    animationFrameId = requestAnimationFrame(step);
 };
 
 const stopVisualizerLoop = ({ clear = false, teardown = false } = {}) => {

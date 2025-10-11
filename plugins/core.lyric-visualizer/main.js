@@ -474,23 +474,48 @@ const registerSettings = (context, store) => {
             const style = createElement('style');
             style.textContent = `
 .hm-visualizer-settings {
-    width: 100%;
+    position: relative;
+    isolation: isolate;
+    min-height: 100%;
+    box-sizing: border-box;
+    padding: 32px 36px 48px;
     display: flex;
     flex-direction: column;
     gap: 28px;
-    padding: 24px 28px 64px;
-    box-sizing: border-box;
-    background: rgba(255, 255, 255, 0.35);
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    border-radius: 0;
-    backdrop-filter: blur(24px);
-    color: rgba(0, 0, 0, 0.85);
-    font-family: 'SourceHanSansCN-Regular', sans-serif;
+    font-family: "Source Han Sans", "Microsoft Yahei", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: var(--plugin-settings-text, var(--text, #111213));
+    background: transparent;
+    line-height: 1.6;
+    --hm-surface: var(--plugin-settings-surface, var(--panel, rgba(255, 255, 255, 0.92)));
+    --hm-layer: var(--plugin-settings-layer, var(--layer, rgba(255, 255, 255, 0.35)));
+    --hm-border: var(--plugin-settings-border, var(--border, rgba(0, 0, 0, 0.18)));
+    --hm-text: var(--plugin-settings-text, var(--text, #111213));
+    --hm-muted: var(--plugin-settings-muted, var(--muted-text, #5b6066));
+    --hm-accent: var(--plugin-settings-accent, #4c6edb);
+    --hm-button-bg: var(--plugin-settings-button-bg, rgba(255, 255, 255, 0.88));
+    --hm-button-hover: var(--plugin-settings-button-hover-bg, rgba(255, 255, 255, 1));
+    --hm-shadow: var(--plugin-settings-shadow, 0 18px 42px rgba(20, 32, 58, 0.12));
+}
+.hm-visualizer-settings::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 24px;
+    background: var(--plugin-settings-bg, var(--settings-shell-bg, var(--bg, #f4f6f8)));
+    box-shadow: var(--hm-shadow);
+    opacity: 0.96;
+    z-index: -1;
+    pointer-events: none;
 }
 .dark .hm-visualizer-settings {
-    background: rgba(32, 34, 42, 0.65);
-    border-color: rgba(255, 255, 255, 0.12);
-    color: rgba(255, 255, 255, 0.88);
+    color-scheme: dark;
+    --hm-button-bg: var(--plugin-settings-button-bg, rgba(255, 255, 255, 0.12));
+    --hm-button-hover: var(--plugin-settings-button-hover-bg, rgba(255, 255, 255, 0.18));
+}
+.dark .hm-visualizer-settings::before {
+    background: var(--plugin-settings-bg, var(--settings-shell-bg, var(--bg, #181c23)));
+    opacity: 0.92;
+    filter: saturate(1.05) brightness(0.95);
 }
 .hm-visualizer-header {
     display: flex;
@@ -499,14 +524,15 @@ const registerSettings = (context, store) => {
 }
 .hm-visualizer-heading {
     margin: 0;
-    font: 22px SourceHanSansCN-Bold;
+    font-size: 22px;
+    font-weight: 600;
     color: inherit;
 }
 .hm-visualizer-subheading {
     margin: 0;
-    font: 14px SourceHanSansCN-Regular;
-    color: inherit;
-    opacity: 0.72;
+    font-size: 14px;
+    color: var(--hm-muted) !important;
+    opacity: 0.88;
 }
 .hm-visualizer-section {
     display: flex;
@@ -516,16 +542,19 @@ const registerSettings = (context, store) => {
 .hm-visualizer-field {
     display: flex;
     justify-content: space-between;
-    gap: 24px;
-    padding: 18px 20px;
-    border-radius: 0;
-    border: 1px solid rgba(0, 0, 0, 0.1);
-    background: rgba(255, 255, 255, 0.45);
     align-items: center;
+    gap: 24px;
+    padding: 20px 22px;
+    border-radius: 0;
+    border: 1px solid var(--hm-border);
+    background: var(--hm-surface);
+    backdrop-filter: blur(18px);
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
-.dark .hm-visualizer-field {
-    background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(255, 255, 255, 0.12);
+.hm-visualizer-field:hover {
+    border-color: rgba(76, 110, 219, 0.45);
+    box-shadow: 0 0 0 1px rgba(76, 110, 219, 0.2);
 }
 .hm-visualizer-field-info {
     display: flex;
@@ -535,80 +564,72 @@ const registerSettings = (context, store) => {
 }
 .hm-visualizer-field-title {
     margin: 0;
-    font: 16px SourceHanSansCN-Bold;
+    font-size: 16px;
+    font-weight: 600;
     color: inherit;
 }
 .hm-visualizer-field-desc {
     margin: 0;
-    font: 13px SourceHanSansCN-Regular;
-    color: inherit;
-    opacity: 0.72;
+    font-size: 13px;
+    color: var(--hm-muted) !important;
+    opacity: 0.88;
 }
 .hm-visualizer-field-controls {
     display: flex;
     flex-direction: column;
+    gap: 12px;
     align-items: flex-end;
-    gap: 10px;
-    min-width: 220px;
 }
 .hm-visualizer-select,
-.hm-visualizer-input {
-    width: 210px;
-    padding: 8px 12px;
-    border-radius: 0;
-    border: 1px solid rgba(0, 0, 0, 0.12);
-    background: rgba(255, 255, 255, 0.92);
-    color: rgba(0, 0, 0, 0.88);
+.hm-visualizer-input,
+.hm-visualizer-button,
+.hm-visualizer-color {
     font: 14px SourceHanSansCN-Regular;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    color: var(--hm-text);
+    border-radius: 0;
+    border: 1px solid var(--hm-border);
+    background: var(--hm-layer);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
+    box-shadow: none;
+}
+.hm-visualizer-select {
+    min-width: 180px;
+    height: 40px;
+    padding: 0 36px 0 14px;
+    background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-position: calc(100% - 18px) 16px, calc(100% - 12px) 16px;
+    background-size: 6px 6px, 6px 6px;
+    background-repeat: no-repeat;
+    appearance: none;
+}
+.hm-visualizer-select:focus-visible,
+.hm-visualizer-input:focus-visible,
+.hm-visualizer-button:focus-visible {
+    outline: none;
+    border-color: var(--hm-accent);
+    box-shadow: 0 0 0 2px rgba(76, 110, 219, 0.28);
 }
 .hm-visualizer-input {
-    width: 140px;
-}
-.hm-visualizer-select:focus,
-.hm-visualizer-input:focus {
-    outline: none;
-    border-color: rgba(0, 0, 0, 0.4);
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
-}
-.dark .hm-visualizer-select,
-.dark .hm-visualizer-input {
-    background: rgba(22, 24, 31, 0.85);
-    border-color: rgba(255, 255, 255, 0.14);
-    color: rgba(255, 255, 255, 0.9);
-}
-.dark .hm-visualizer-select:focus,
-.dark .hm-visualizer-input:focus {
-    border-color: rgba(255, 255, 255, 0.45);
-    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15);
+    width: 120px;
+    height: 36px;
+    padding: 0 12px;
 }
 .hm-visualizer-actions {
     display: flex;
+    gap: 12px;
     align-items: center;
-    justify-content: flex-end;
-    gap: 10px;
-    flex-wrap: wrap;
 }
 .hm-visualizer-button {
-    padding: 6px 16px;
-    border-radius: 0;
-    border: 1px solid rgba(0, 0, 0, 0.15);
-    background: rgba(255, 255, 255, 0.75);
-    color: rgba(0, 0, 0, 0.85);
-    font: 14px SourceHanSansCN-Bold;
+    padding: 8px 16px;
+    background: var(--hm-button-bg);
+    color: var(--hm-text);
     cursor: pointer;
-    transition: opacity 0.2s ease, transform 0.2s ease;
 }
 .hm-visualizer-button:hover {
-    opacity: 0.85;
+    background: var(--hm-button-hover);
 }
 .hm-visualizer-button:active {
-    transform: scale(0.97);
-}
-.dark .hm-visualizer-button {
-    background: rgba(255, 255, 255, 0.12);
-    border-color: rgba(255, 255, 255, 0.22);
-    color: rgba(255, 255, 255, 0.92);
+    transform: scale(0.98);
 }
 .hm-visualizer-button[disabled] {
     opacity: 0.45;
@@ -618,31 +639,22 @@ const registerSettings = (context, store) => {
 .hm-visualizer-color {
     width: 48px;
     height: 34px;
-    border: 1px solid rgba(0, 0, 0, 0.15);
-    background: transparent;
     padding: 0;
     cursor: pointer;
 }
-.dark .hm-visualizer-color {
-    border-color: rgba(255, 255, 255, 0.2);
-}
 .hm-visualizer-switch {
     position: relative;
-    width: 52px;
-    height: 28px;
+    width: 56px;
+    height: 30px;
     border-radius: 0;
-    border: 1px solid rgba(0, 0, 0, 0.15);
-    background: rgba(255, 255, 255, 0.65);
+    border: 1px solid var(--hm-border);
+    background: var(--hm-layer);
     display: inline-flex;
     align-items: center;
-    padding: 2px;
+    padding: 3px;
     box-sizing: border-box;
     cursor: pointer;
     transition: border-color 0.2s ease, background 0.2s ease;
-}
-.dark .hm-visualizer-switch {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.2);
 }
 .hm-visualizer-switch input {
     opacity: 0;
@@ -654,18 +666,15 @@ const registerSettings = (context, store) => {
     width: 22px;
     height: 22px;
     border-radius: 0;
-    background: rgba(0, 0, 0, 0.45);
+    background: rgba(17, 18, 19, 0.7);
     transition: transform 0.2s ease, background 0.2s ease;
 }
 .dark .hm-visualizer-switch-indicator {
-    background: rgba(255, 255, 255, 0.55);
+    background: rgba(255, 255, 255, 0.78);
 }
 .hm-visualizer-switch input:checked + .hm-visualizer-switch-indicator {
     transform: translateX(24px);
-    background: rgba(74, 119, 255, 0.9);
-}
-.dark .hm-visualizer-switch input:checked + .hm-visualizer-switch-indicator {
-    background: rgba(111, 162, 255, 0.95);
+    background: var(--hm-accent);
 }
 .hm-visualizer-footer {
     margin-top: 12px;
@@ -676,29 +685,48 @@ const registerSettings = (context, store) => {
 .hm-visualizer-footer button {
     padding: 8px 20px;
     border-radius: 0;
-    border: 1px solid rgba(0, 0, 0, 0.15);
-    background: rgba(255, 255, 255, 0.8);
-    color: rgba(0, 0, 0, 0.85);
+    border: 1px solid var(--hm-border);
+    background: var(--hm-button-bg);
+    color: var(--hm-text);
     font: 14px SourceHanSansCN-Bold;
     cursor: pointer;
-    transition: opacity 0.2s ease, transform 0.2s ease;
+    transition: background 0.2s ease, transform 0.2s ease;
 }
 .hm-visualizer-footer button:hover {
-    opacity: 0.85;
+    background: var(--hm-button-hover);
 }
 .hm-visualizer-footer button:active {
-    transform: scale(0.97);
-}
-.dark .hm-visualizer-footer button {
-    background: rgba(255, 255, 255, 0.15);
-    border-color: rgba(255, 255, 255, 0.25);
-    color: rgba(255, 255, 255, 0.92);
+    transform: scale(0.98);
 }
 .hm-visualizer-note {
     font: 13px SourceHanSansCN-Regular;
-    color: inherit;
-    opacity: 0.6;
+    color: var(--hm-muted) !important;
     text-align: right;
+}
+@media (max-width: 720px) {
+    .hm-visualizer-settings {
+        padding: 24px 24px 36px;
+    }
+    .hm-visualizer-field {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .hm-visualizer-field-controls {
+        width: 100%;
+        align-items: stretch;
+    }
+    .hm-visualizer-select {
+        width: 100%;
+    }
+    .hm-visualizer-actions {
+        width: 100%;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+    .hm-visualizer-button,
+    .hm-visualizer-input {
+        width: 100%;
+    }
 }
 `;
             container.appendChild(style);
