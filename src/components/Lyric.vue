@@ -40,6 +40,8 @@ const {
     lyricVisualizerRadialOffsetX,
     lyricVisualizerRadialOffsetY,
     lyricVisualizerRadialCoreSize,
+    lyricVisualizerSlowRelease,
+    lyricVisualizerSlowReleaseDuration,
     customBackgroundEnabled,
     customBackgroundImage,
     customBackgroundMode,
@@ -201,6 +203,12 @@ const visualizerSmoothing = computed(() => {
     if (Number.isFinite(value)) return Math.min(Math.max(value, 0), 0.95);
     return 0.75;
 });
+const visualizerSlowReleaseEnabled = computed(() => !!lyricVisualizerSlowRelease.value);
+const visualizerSlowReleaseDurationValue = computed(() => {
+    const value = Number(lyricVisualizerSlowReleaseDuration.value);
+    if (!Number.isFinite(value)) return 900;
+    return clampNumber(Math.round(value), 200, 5000, 900);
+});
 const visualizerBarCountValue = computed(() => {
     const value = Number(lyricVisualizerBarCount.value);
     if (!Number.isFinite(value) || value <= 0) return 1;
@@ -354,6 +362,60 @@ const shouldShowVisualizer = computed(
     () => shouldShowVisualizerInLyrics.value || shouldShowVisualizerInPlaceholder.value
 );
 
+const waitForNextFrame = () =>
+    new Promise(resolve => {
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => resolve());
+        } else {
+            setTimeout(resolve, 16);
+        }
+    });
+
+const getAudioNodeFromMusic = music => {
+    if (!music || !Array.isArray(music._sounds)) return null;
+    for (let i = 0; i < music._sounds.length; i++) {
+        const sound = music._sounds[i];
+        if (sound && sound._node) {
+            return sound._node;
+        }
+    }
+    return null;
+};
+
+const getCurrentAudioNode = () => getAudioNodeFromMusic(currentMusic.value);
+
+const getVisualizerTimestamp = () =>
+    typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : Date.now();
+
+async function waitForAudioNodeAvailability({ timeout = 1500, generation } = {}) {
+    let audioNode = getCurrentAudioNode();
+    if (audioNode) return audioNode;
+
+    const maxWait = Math.max(0, Number(timeout) || 0);
+    if (maxWait <= 0) return null;
+
+    const deadline = getVisualizerTimestamp() + maxWait;
+    let now = getVisualizerTimestamp();
+
+    while (shouldShowVisualizer.value && now <= deadline) {
+        if (typeof generation === 'number' && generation !== visualizerSetupGeneration) {
+            return null;
+        }
+        await waitForNextFrame();
+        if (typeof generation === 'number' && generation !== visualizerSetupGeneration) {
+            return null;
+        }
+        if (!shouldShowVisualizer.value) return null;
+        audioNode = getCurrentAudioNode();
+        if (audioNode) return audioNode;
+        now = getVisualizerTimestamp();
+    }
+
+    return getCurrentAudioNode();
+}
+
 let analyserDataArray = null;
 let canvasCtx = null;
 let animationFrameId = null;
@@ -371,9 +433,40 @@ let visualizerSampleBinCount = 0;
 let visualizerSampleNyquist = 22050;
 let radialUnitVectors = new Float32Array(0);
 let radialVectorCount = 0;
+let slowReleaseActive = false;
+let slowReleaseSnapshot = null;
+let slowReleaseStartTime = 0;
+let slowReleaseDurationMs = 0;
+let visualizerWasPausedLastFrame = false;
+let visualizerSetupGeneration = 0;
 const IDLE_WAVE_SPEED = 0.0125;
 const IDLE_BASE_LEVEL = 0.08;
 const IDLE_LEVEL_RANGE = 0.42;
+const IDLE_SUPPRESSION_DEFAULT_MS = 720;
+const IDLE_ACTIVITY_COOLDOWN_MS = 260;
+const IDLE_TARGET_ACTIVITY_THRESHOLD = 0.0025;
+const IDLE_LEVEL_ACTIVITY_THRESHOLD = 0.02;
+let lastAnalyserActivityTime = 0;
+let idleSuppressionUntil = 0;
+
+const markAnalyserActivity = timestamp => {
+    if (!Number.isFinite(timestamp)) return;
+    lastAnalyserActivityTime = timestamp;
+};
+
+const scheduleIdleSuppression = (duration = IDLE_SUPPRESSION_DEFAULT_MS) => {
+    const now = getVisualizerTimestamp();
+    const safeDuration = Math.max(0, Number(duration) || 0);
+    const target = now + safeDuration;
+    if (!Number.isFinite(target)) return;
+    idleSuppressionUntil = Math.max(idleSuppressionUntil, target);
+};
+
+const resetIdleTracking = () => {
+    idlePhase = 0;
+    lastAnalyserActivityTime = 0;
+    idleSuppressionUntil = 0;
+};
 
 const syncAnalyserConfig = () => {
     const analyser = audioEnv.analyser;
@@ -403,6 +496,7 @@ const ensureVisualizerLevels = size => {
 const resetVisualizerLevels = () => {
     visualizerBarLevels = null;
     visualizerFrameTargets = null;
+    slowReleaseSnapshot = null;
 };
 
 const ensureVisualizerFrameTargets = size => {
@@ -631,8 +725,16 @@ const detachVisualizerSizeTracking = () => {
 
 const setupVisualizer = async ({ forceRebind = false, resumeContext = false } = {}) => {
     if (!shouldShowVisualizer.value || !lyricVisualizerCanvas.value) return;
-    if (!currentMusic.value || !currentMusic.value._sounds || !currentMusic.value._sounds.length) return;
-    const audioNode = currentMusic.value._sounds[0]?._node;
+
+    const setupId = ++visualizerSetupGeneration;
+
+    let audioNode = getCurrentAudioNode();
+    if (!audioNode) {
+        audioNode = await waitForAudioNodeAvailability({ timeout: 1600, generation: setupId });
+    }
+
+    if (setupId !== visualizerSetupGeneration) return;
+    if (!shouldShowVisualizer.value || !lyricVisualizerCanvas.value) return;
     if (!audioNode) return;
 
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -688,15 +790,23 @@ const setupVisualizer = async ({ forceRebind = false, resumeContext = false } = 
     source.connect(analyser);
 
     if (!audioEnv.analyserConnected) {
-        analyser.connect(audioContext.destination);
-        audioEnv.analyserConnected = true;
+        try {
+            analyser.connect(audioContext.destination);
+            audioEnv.analyserConnected = true;
+        } catch (error) {
+            console.warn('连接分析节点失败:', error);
+        }
     }
+
+    if (setupId !== visualizerSetupGeneration) return;
+    if (!shouldShowVisualizer.value || !lyricVisualizerCanvas.value) return;
 
     canvasCtx = lyricVisualizerCanvas.value.getContext('2d');
     if (!canvasCtx) return;
 
     boundAudioNode = audioNode;
     ensureVisualizerSizeTracking();
+    scheduleIdleSuppression();
 };
 
 const renderVisualizerFrame = () => {
@@ -738,7 +848,62 @@ const renderVisualizerFrame = () => {
 
     const isPaused = !playing.value || visualizerPauseState || nodePaused;
     const analyserReady = analyser && analyserDataArray && binCount > 0;
+    const now = getVisualizerTimestamp();
+    const slowReleaseEnabled = visualizerSlowReleaseEnabled.value && visualizerSlowReleaseDurationValue.value > 0;
     let peakLevel = 0;
+    let rawTargetPeak = 0;
+
+    if (!isPaused) {
+        slowReleaseActive = false;
+        slowReleaseSnapshot = null;
+        slowReleaseDurationMs = 0;
+        slowReleaseStartTime = 0;
+        visualizerWasPausedLastFrame = false;
+    } else {
+        if (!visualizerWasPausedLastFrame) {
+            if (slowReleaseEnabled) {
+                if (!slowReleaseSnapshot || slowReleaseSnapshot.length !== barCount) {
+                    slowReleaseSnapshot = new Float32Array(barCount);
+                }
+                let snapshotPeak = 0;
+                for (let i = 0; i < barCount; i++) {
+                    const value = levels[i] ?? 0;
+                    slowReleaseSnapshot[i] = value;
+                    if (value > snapshotPeak) snapshotPeak = value;
+                }
+                if (snapshotPeak > 0.0005) {
+                    slowReleaseActive = true;
+                    slowReleaseStartTime = now;
+                    slowReleaseDurationMs = Math.max(1, visualizerSlowReleaseDurationValue.value);
+                } else {
+                    slowReleaseActive = false;
+                    slowReleaseSnapshot = null;
+                    slowReleaseDurationMs = 0;
+                }
+            } else {
+                slowReleaseActive = false;
+                slowReleaseSnapshot = null;
+                slowReleaseDurationMs = 0;
+            }
+        } else if (slowReleaseActive) {
+            if (!slowReleaseEnabled) {
+                slowReleaseActive = false;
+                slowReleaseSnapshot = null;
+                slowReleaseDurationMs = 0;
+            } else {
+                slowReleaseDurationMs = Math.max(1, visualizerSlowReleaseDurationValue.value);
+                if (!slowReleaseSnapshot || slowReleaseSnapshot.length !== barCount) {
+                    const snapshot = new Float32Array(barCount);
+                    for (let i = 0; i < barCount; i++) {
+                        snapshot[i] = levels[i] ?? 0;
+                    }
+                    slowReleaseSnapshot = snapshot;
+                    slowReleaseStartTime = now;
+                }
+            }
+        }
+        visualizerWasPausedLastFrame = true;
+    }
 
     if (analyserReady && !isPaused) {
         if (
@@ -761,24 +926,33 @@ const renderVisualizerFrame = () => {
         if (targets) {
             if (freqIndices) {
                 for (let i = 0; i < barCount; i++) {
-                    targets[i] = analyserDataArray[freqIndices[i]] / 255;
+                    const value = analyserDataArray[freqIndices[i]] / 255;
+                    targets[i] = value;
+                    if (value > rawTargetPeak) rawTargetPeak = value;
                 }
             } else if (freqTable) {
                 for (let i = 0; i < barCount; i++) {
                     const freq = freqTable[i] ?? visualizerFrequencyMinValue.value;
                     const normalized = Math.min(Math.max(freq * invNyquist, 0), 0.999999);
                     const dataIndex = Math.min(indexLimit, Math.max(0, Math.floor(normalized * binCount)));
-                    targets[i] = analyserDataArray[dataIndex] / 255;
+                    const value = analyserDataArray[dataIndex] / 255;
+                    targets[i] = value;
+                    if (value > rawTargetPeak) rawTargetPeak = value;
                 }
             } else {
                 const sampleStep = binCount / barCount;
                 for (let i = 0; i < barCount; i++) {
                     const dataIndex = Math.min(indexLimit, Math.max(0, Math.floor((i + 0.5) * sampleStep)));
-                    targets[i] = analyserDataArray[dataIndex] / 255;
+                    const value = analyserDataArray[dataIndex] / 255;
+                    targets[i] = value;
+                    if (value > rawTargetPeak) rawTargetPeak = value;
                 }
             }
 
             peakLevel = updateVisualizerLevels(barCount, index => targets[index], { paused: false });
+        }
+        if (rawTargetPeak > IDLE_TARGET_ACTIVITY_THRESHOLD || peakLevel > IDLE_LEVEL_ACTIVITY_THRESHOLD) {
+            markAnalyserActivity(now);
         }
     } else if (!isPaused) {
         // Soft decay existing levels when audio data is unavailable but playback should continue.
@@ -788,14 +962,41 @@ const renderVisualizerFrame = () => {
             if (levels[i] > peakLevel) peakLevel = levels[i];
         }
     } else {
-        peakLevel = updateVisualizerLevels(
-            barCount,
-            () => 0,
-            { paused: true }
-        );
+        if (slowReleaseActive && slowReleaseSnapshot) {
+            const duration = Math.max(1, slowReleaseDurationMs || visualizerSlowReleaseDurationValue.value);
+            const elapsed = now - slowReleaseStartTime;
+            const progress = Math.min(Math.max(elapsed / duration, 0), 1);
+            peakLevel = 0;
+            for (let i = 0; i < barCount; i++) {
+                const startValue = slowReleaseSnapshot[i] ?? 0;
+                const value = Math.max(0, startValue * (1 - progress));
+                levels[i] = value;
+                if (value > peakLevel) peakLevel = value;
+            }
+            if (progress >= 1) {
+                slowReleaseActive = false;
+                slowReleaseSnapshot = null;
+                slowReleaseDurationMs = 0;
+                slowReleaseStartTime = 0;
+            }
+        } else {
+            peakLevel = updateVisualizerLevels(
+                barCount,
+                () => 0,
+                { paused: true }
+            );
+        }
     }
 
-    const idleActive = !isPaused && (!analyserReady || peakLevel < 0.015);
+    if (!isPaused && peakLevel > IDLE_LEVEL_ACTIVITY_THRESHOLD) {
+        markAnalyserActivity(now);
+    }
+
+    const idleAllowed =
+        !isPaused &&
+        now >= idleSuppressionUntil &&
+        now - lastAnalyserActivityTime > IDLE_ACTIVITY_COOLDOWN_MS;
+    const idleActive = idleAllowed && (!analyserReady || peakLevel < 0.015);
     if (idleActive) {
         idlePhase = (idlePhase + IDLE_WAVE_SPEED) % 1;
         let idlePeak = 0;
@@ -807,6 +1008,8 @@ const renderVisualizerFrame = () => {
             if (levels[i] > idlePeak) idlePeak = levels[i];
         }
         peakLevel = Math.max(peakLevel, idlePeak);
+    } else {
+        idlePhase = 0;
     }
 
     canvasCtx.clearRect(0, 0, width, height);
@@ -885,7 +1088,7 @@ const renderVisualizerFrame = () => {
         }
     }
 
-    const continueLoop = !isPaused || peakLevel > 0.003;
+    const continueLoop = !isPaused || slowReleaseActive || peakLevel > 0.003;
     return continueLoop;
 };
 
@@ -921,24 +1124,38 @@ const stopVisualizerLoop = ({ clear = false, teardown = false } = {}) => {
     if (clear || teardown) {
         resetVisualizerLevels();
         visualizerFrameTargets = null;
-        visualizerPauseState = false;
-        idlePhase = 0;
+        resetIdleTracking();
+        slowReleaseActive = false;
+        slowReleaseSnapshot = null;
+        slowReleaseDurationMs = 0;
+        slowReleaseStartTime = 0;
+        visualizerWasPausedLastFrame = false;
     }
     if (teardown) {
+        visualizerPauseState = false;
         detachVisualizerSizeTracking();
         canvasCtx = null;
         boundAudioNode = null;
     }
 };
 
-const waitForNextFrame = () =>
-    new Promise(resolve => {
-        if (typeof requestAnimationFrame === 'function') {
-            requestAnimationFrame(() => resolve());
-        } else {
-            setTimeout(resolve, 16);
-        }
-    });
+const requestVisualizerPause = ({ immediate = false } = {}) => {
+    visualizerPauseState = true;
+    const allowSlowRelease =
+        !immediate &&
+        visualizerSlowReleaseEnabled.value &&
+        visualizerSlowReleaseDurationValue.value > 0 &&
+        lyricVisualizerCanvas.value &&
+        canvasCtx;
+    if (!allowSlowRelease) {
+        stopVisualizerLoop({ clear: true });
+        renderVisualizerPreview();
+        return;
+    }
+    if (!animationFrameId) {
+        startVisualizerLoop({ force: true });
+    }
+};
 
 const waitForLayoutCommit = async () => {
     await nextTick();
@@ -1216,6 +1433,26 @@ watch(
 );
 
 watch(
+    () => lyricVisualizerSlowRelease.value,
+    value => {
+        const safe = visualizerSlowReleaseEnabled.value;
+        if (value !== safe) lyricVisualizerSlowRelease.value = safe;
+        renderVisualizerPreview();
+    },
+    { immediate: true }
+);
+
+watch(
+    () => lyricVisualizerSlowReleaseDuration.value,
+    value => {
+        const safe = visualizerSlowReleaseDurationValue.value;
+        if (value !== safe) lyricVisualizerSlowReleaseDuration.value = safe;
+        renderVisualizerPreview();
+    },
+    { immediate: true }
+);
+
+watch(
     () => lyricVisualizerCanvas.value,
     async canvas => {
         if (!canvas) {
@@ -1224,22 +1461,36 @@ watch(
             boundAudioNode = null;
             return;
         }
+        resetIdleTracking();
+        scheduleIdleSuppression();
         await nextTick();
         updateVisualizerCanvasSize();
         renderVisualizerPreview();
         if (!shouldShowVisualizer.value) return;
         await setupVisualizer({ forceRebind: true, resumeContext: playing.value });
-        visualizerPauseState = !playing.value;
-        startVisualizerLoop({ force: true });
+        if (!shouldShowVisualizer.value) return;
+        if (playing.value) {
+            visualizerPauseState = false;
+            startVisualizerLoop({ force: true });
+        } else {
+            requestVisualizerPause();
+        }
     }
 );
 
 watch(shouldShowVisualizer, active => {
     if (active) {
+        resetIdleTracking();
+        scheduleIdleSuppression();
         nextTick(async () => {
             await setupVisualizer({ forceRebind: true, resumeContext: playing.value });
-            visualizerPauseState = !playing.value;
-            startVisualizerLoop({ force: true });
+            if (!shouldShowVisualizer.value) return;
+            if (playing.value) {
+                visualizerPauseState = false;
+                startVisualizerLoop({ force: true });
+            } else {
+                requestVisualizerPause();
+            }
         });
     } else {
         stopVisualizerLoop({ clear: true, teardown: true });
@@ -1250,26 +1501,44 @@ watch(shouldShowVisualizer, active => {
 watch(
     () => currentMusic.value,
     () => {
+        resetVisualizerLevels();
+        slowReleaseActive = false;
+        slowReleaseSnapshot = null;
+        slowReleaseDurationMs = 0;
+        slowReleaseStartTime = 0;
+        visualizerWasPausedLastFrame = false;
+        resetIdleTracking();
+        scheduleIdleSuppression();
         if (!shouldShowVisualizer.value) return;
         nextTick(async () => {
             await setupVisualizer({ forceRebind: true, resumeContext: playing.value });
-            visualizerPauseState = !playing.value;
-            if (playing.value) startVisualizerLoop({ force: true });
-            else startVisualizerLoop();
+            if (!shouldShowVisualizer.value) return;
+            if (playing.value) {
+                visualizerPauseState = false;
+                startVisualizerLoop({ force: true });
+            } else {
+                requestVisualizerPause();
+            }
         });
     }
 );
 
 watch(playing, isPlaying => {
     visualizerPauseState = !isPlaying;
+    if (isPlaying) {
+        resetIdleTracking();
+        scheduleIdleSuppression(520);
+    }
     if (!shouldShowVisualizer.value) return;
     if (isPlaying) {
         nextTick(async () => {
             await setupVisualizer({ resumeContext: true });
+            if (!shouldShowVisualizer.value) return;
+            visualizerPauseState = false;
             startVisualizerLoop({ force: true });
         });
     } else {
-        startVisualizerLoop();
+        requestVisualizerPause();
     }
 });
 
