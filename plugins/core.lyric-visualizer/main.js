@@ -204,7 +204,7 @@ const mountSettingsPage = (container, store, context) => {
     background: var(--plugin-settings-surface, var(--panel, rgba(255, 255, 255, 0.92)));
     border: 1px solid var(--plugin-settings-border, var(--border, rgba(0, 0, 0, 0.16)));
     box-shadow: var(--plugin-settings-shadow, 0 20px 44px rgba(20, 32, 58, 0.16));
-    border-radius: 18px;
+    border-radius: 0;
     padding: 20px 24px;
     display: flex;
     flex-direction: column;
@@ -266,15 +266,11 @@ const mountSettingsPage = (container, store, context) => {
     min-width: 140px;
     padding: 6px 12px;
     border: 1px solid var(--plugin-settings-border, var(--border, rgba(0, 0, 0, 0.18)));
-    border-radius: 10px;
+    border-radius: 0;
     background: var(--plugin-settings-input-surface, var(--settings-shell-input-bg, var(--layer, rgba(255, 255, 255, 0.92))));
     color: inherit;
     outline: none;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-.hm-visualizer-select select:focus-visible {
-    border-color: var(--plugin-settings-accent, #4c6edb);
-    box-shadow: 0 0 0 3px rgba(76, 110, 219, 0.18);
+    transition: border-color 0.2s ease;
 }
 .hm-visualizer-custom {
     display: inline-flex;
@@ -284,7 +280,7 @@ const mountSettingsPage = (container, store, context) => {
 .hm-visualizer-custom input {
     width: 96px;
     padding: 6px 10px;
-    border-radius: 10px;
+    border-radius: 0;
     border: 1px solid var(--plugin-settings-border, var(--border, rgba(0, 0, 0, 0.18)));
     background: var(--plugin-settings-input-surface, var(--settings-shell-input-bg, var(--layer, rgba(255, 255, 255, 0.92))));
     color: inherit;
@@ -292,7 +288,7 @@ const mountSettingsPage = (container, store, context) => {
 }
 .hm-visualizer-action {
     padding: 6px 14px;
-    border-radius: 10px;
+    border-radius: 0;
     border: 1px solid transparent;
     background: var(--plugin-settings-accent, var(--settings-shell-accent, #4c6edb));
     color: #fff;
@@ -383,7 +379,7 @@ const mountSettingsPage = (container, store, context) => {
 .hm-visualizer-color-custom input[type="text"] {
     width: 90px;
     padding: 6px 8px;
-    border-radius: 8px;
+    border-radius: 0;
     border: 1px solid var(--plugin-settings-border, var(--border, rgba(0, 0, 0, 0.18)));
     background: var(--plugin-settings-input-surface, var(--settings-shell-input-bg, var(--layer, rgba(255, 255, 255, 0.92))));
     color: inherit;
@@ -406,18 +402,26 @@ const mountSettingsPage = (container, store, context) => {
 }
 .hm-visualizer-button {
     padding: 8px 20px;
-    border-radius: 12px;
+    border-radius: 0;
     border: 1px solid var(--plugin-settings-border, var(--border, rgba(0, 0, 0, 0.18)));
     background: var(--plugin-settings-button-bg, rgba(255, 255, 255, 0.88));
     color: inherit;
     cursor: pointer;
     transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease;
 }
-.hm-visualizer-button:hover,
-.hm-visualizer-button:focus-visible {
+.hm-visualizer-button:hover {
     background: var(--plugin-settings-button-hover-bg, rgba(255, 255, 255, 1));
     border-color: var(--plugin-settings-accent, #4c6edb);
     transform: translateY(-1px);
+}
+.hm-visualizer-button:focus {
+    outline: none;
+}
+.hm-visualizer-switch-track {
+    outline: none;
+}
+.hm-visualizer-switch input:focus-visible + .hm-visualizer-switch-track {
+    box-shadow: none;
 }
 @media (max-width: 720px) {
     .hm-visualizer-settings {

@@ -678,11 +678,11 @@ const renderVisualizerFrame = () => {
             if (levels[i] > peakLevel) peakLevel = levels[i];
         }
     } else {
-        for (let i = 0; i < barCount; i++) {
-            const previous = Math.max(levels[i] ?? 0, 0);
-            levels[i] = previous;
-            if (previous > peakLevel) peakLevel = previous;
-        }
+        peakLevel = updateVisualizerLevels(
+            barCount,
+            () => 0,
+            { paused: true }
+        );
     }
 
     const idleActive = !isPaused && (!analyserReady || peakLevel < 0.015);
@@ -771,7 +771,7 @@ const renderVisualizerFrame = () => {
         }
     }
 
-    const continueLoop = !isPaused;
+    const continueLoop = !isPaused || peakLevel > 0.003;
     return continueLoop;
 };
 
