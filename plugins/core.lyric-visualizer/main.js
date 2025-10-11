@@ -474,53 +474,74 @@ const registerSettings = (context, store) => {
             const style = createElement('style');
             style.textContent = `
 .hm-visualizer-settings {
-    position: relative;
-    padding: 32px 36px 44px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+    padding: 24px 28px 64px;
+    box-sizing: border-box;
+    background: rgba(255, 255, 255, 0.35);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 0;
+    backdrop-filter: blur(24px);
+    color: rgba(0, 0, 0, 0.85);
+    font-family: 'SourceHanSansCN-Regular', sans-serif;
+}
+.dark .hm-visualizer-settings {
+    background: rgba(32, 34, 42, 0.65);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.88);
+}
+.hm-visualizer-header {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.hm-visualizer-heading {
+    margin: 0;
+    font: 22px SourceHanSansCN-Bold;
+    color: inherit;
+}
+.hm-visualizer-subheading {
+    margin: 0;
+    font: 14px SourceHanSansCN-Regular;
+    color: inherit;
+    opacity: 0.72;
+}
+.hm-visualizer-section {
     display: flex;
     flex-direction: column;
     gap: 18px;
-    color: var(--settings-shell-text, var(--text, #111));
-}
-.hm-visualizer-settings::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 24px;
-    background: var(--settings-shell-surface, var(--panel, rgba(255,255,255,0.92)));
-    border: 1px solid var(--settings-shell-border, rgba(0,0,0,0.12));
-    opacity: 0.96;
-    z-index: -1;
-}
-.dark .hm-visualizer-settings::before {
-    background: var(--settings-shell-surface, rgba(32,36,46,0.9));
-    border-color: var(--settings-shell-border, rgba(255,255,255,0.18));
 }
 .hm-visualizer-field {
     display: flex;
     justify-content: space-between;
     gap: 24px;
     padding: 18px 20px;
-    border-radius: 12px;
-    border: 1px solid var(--settings-shell-border, rgba(0,0,0,0.12));
-    background: var(--settings-shell-surface, rgba(255,255,255,0.85));
+    border-radius: 0;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    background: rgba(255, 255, 255, 0.45);
     align-items: center;
 }
 .dark .hm-visualizer-field {
-    background: var(--settings-shell-surface, rgba(44,48,58,0.88));
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
 }
 .hm-visualizer-field-info {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    min-width: 0;
 }
 .hm-visualizer-field-title {
     margin: 0;
-    font-size: 16px;
-    font-weight: 600;
+    font: 16px SourceHanSansCN-Bold;
+    color: inherit;
 }
 .hm-visualizer-field-desc {
     margin: 0;
-    font-size: 13px;
+    font: 13px SourceHanSansCN-Regular;
+    color: inherit;
     opacity: 0.72;
 }
 .hm-visualizer-field-controls {
@@ -528,56 +549,100 @@ const registerSettings = (context, store) => {
     flex-direction: column;
     align-items: flex-end;
     gap: 10px;
-    min-width: 240px;
+    min-width: 220px;
 }
-.hm-visualizer-select {
-    width: 200px;
+.hm-visualizer-select,
+.hm-visualizer-input {
+    width: 210px;
     padding: 8px 12px;
-    border-radius: 6px;
-    border: 1px solid var(--settings-shell-border, rgba(0,0,0,0.12));
-    background: var(--settings-shell-input-bg, rgba(255,255,255,0.94));
-    color: inherit;
+    border-radius: 0;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    background: rgba(255, 255, 255, 0.92);
+    color: rgba(0, 0, 0, 0.88);
+    font: 14px SourceHanSansCN-Regular;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 .hm-visualizer-input {
-    width: 120px;
-    padding: 6px 10px;
-    border-radius: 6px;
-    border: 1px solid var(--settings-shell-border, rgba(0,0,0,0.12));
-    background: var(--settings-shell-input-bg, rgba(255,255,255,0.94));
-    color: inherit;
+    width: 140px;
 }
-.hm-visualizer-color {
-    width: 48px;
-    height: 32px;
-    border: none;
-    background: transparent;
+.hm-visualizer-select:focus,
+.hm-visualizer-input:focus {
+    outline: none;
+    border-color: rgba(0, 0, 0, 0.4);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+.dark .hm-visualizer-select,
+.dark .hm-visualizer-input {
+    background: rgba(22, 24, 31, 0.85);
+    border-color: rgba(255, 255, 255, 0.14);
+    color: rgba(255, 255, 255, 0.9);
+}
+.dark .hm-visualizer-select:focus,
+.dark .hm-visualizer-input:focus {
+    border-color: rgba(255, 255, 255, 0.45);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15);
 }
 .hm-visualizer-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
 }
 .hm-visualizer-button {
-    padding: 6px 14px;
-    border-radius: 6px;
-    border: 1px solid var(--settings-shell-border, rgba(0,0,0,0.12));
-    background: var(--settings-shell-button-bg, rgba(255,255,255,0.88));
+    padding: 6px 16px;
+    border-radius: 0;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    background: rgba(255, 255, 255, 0.75);
+    color: rgba(0, 0, 0, 0.85);
+    font: 14px SourceHanSansCN-Bold;
     cursor: pointer;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.hm-visualizer-button:hover {
+    opacity: 0.85;
+}
+.hm-visualizer-button:active {
+    transform: scale(0.97);
+}
+.dark .hm-visualizer-button {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.22);
+    color: rgba(255, 255, 255, 0.92);
 }
 .hm-visualizer-button[disabled] {
-    opacity: 0.5;
+    opacity: 0.45;
     cursor: not-allowed;
+    transform: none;
+}
+.hm-visualizer-color {
+    width: 48px;
+    height: 34px;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+}
+.dark .hm-visualizer-color {
+    border-color: rgba(255, 255, 255, 0.2);
 }
 .hm-visualizer-switch {
     position: relative;
-    width: 46px;
-    height: 24px;
-    border-radius: 12px;
-    background: rgba(120,128,140,0.35);
+    width: 52px;
+    height: 28px;
+    border-radius: 0;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    background: rgba(255, 255, 255, 0.65);
     display: inline-flex;
     align-items: center;
     padding: 2px;
+    box-sizing: border-box;
     cursor: pointer;
+    transition: border-color 0.2s ease, background 0.2s ease;
+}
+.dark .hm-visualizer-switch {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
 }
 .hm-visualizer-switch input {
     opacity: 0;
@@ -586,33 +651,70 @@ const registerSettings = (context, store) => {
     cursor: pointer;
 }
 .hm-visualizer-switch-indicator {
-    width: 20px;
-    height: 20px;
-    border-radius: 8px;
-    background: var(--settings-shell-button-bg, #fff);
+    width: 22px;
+    height: 22px;
+    border-radius: 0;
+    background: rgba(0, 0, 0, 0.45);
     transition: transform 0.2s ease, background 0.2s ease;
 }
+.dark .hm-visualizer-switch-indicator {
+    background: rgba(255, 255, 255, 0.55);
+}
 .hm-visualizer-switch input:checked + .hm-visualizer-switch-indicator {
-    transform: translateX(22px);
-    background: var(--settings-shell-accent, #4c6edb);
+    transform: translateX(24px);
+    background: rgba(74, 119, 255, 0.9);
+}
+.dark .hm-visualizer-switch input:checked + .hm-visualizer-switch-indicator {
+    background: rgba(111, 162, 255, 0.95);
 }
 .hm-visualizer-footer {
+    margin-top: 12px;
     display: flex;
     justify-content: flex-end;
     gap: 12px;
 }
 .hm-visualizer-footer button {
-    padding: 8px 18px;
-    border-radius: 6px;
-    border: 1px solid var(--settings-shell-border, rgba(0,0,0,0.12));
-    background: var(--settings-shell-button-bg, rgba(255,255,255,0.88));
+    padding: 8px 20px;
+    border-radius: 0;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    background: rgba(255, 255, 255, 0.8);
+    color: rgba(0, 0, 0, 0.85);
+    font: 14px SourceHanSansCN-Bold;
     cursor: pointer;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.hm-visualizer-footer button:hover {
+    opacity: 0.85;
+}
+.hm-visualizer-footer button:active {
+    transform: scale(0.97);
+}
+.dark .hm-visualizer-footer button {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.25);
+    color: rgba(255, 255, 255, 0.92);
+}
+.hm-visualizer-note {
+    font: 13px SourceHanSansCN-Regular;
+    color: inherit;
+    opacity: 0.6;
+    text-align: right;
 }
 `;
             container.appendChild(style);
 
             const root = createElement('div', 'hm-visualizer-settings');
             container.appendChild(root);
+
+            const header = createElement('div', 'hm-visualizer-header');
+            header.appendChild(createElement('h2', 'hm-visualizer-heading', '歌词可视化'));
+            header.appendChild(
+                createElement('p', 'hm-visualizer-subheading', '自定义歌词区域的音频可视化效果')
+            );
+            root.appendChild(header);
+
+            const section = createElement('div', 'hm-visualizer-section');
+            root.appendChild(section);
 
             const applySanitized = () => {
                 const sanitized = sanitizeState(store);
@@ -627,7 +729,7 @@ const registerSettings = (context, store) => {
 
             const pushField = field => {
                 fields.push(field);
-                root.appendChild(field.element);
+                section.appendChild(field.element);
             };
 
             pushField(
