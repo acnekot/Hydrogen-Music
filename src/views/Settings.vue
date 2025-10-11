@@ -476,6 +476,8 @@ const lyricVisualizerDefaults = Object.freeze({
     barWidth: 55,
     color: 'auto',
     opacity: 100,
+    slowRelease: false,
+    slowReleaseDuration: 900,
     style: 'bars',
     radialSize: 100,
     radialOffsetX: 0,
@@ -594,6 +596,12 @@ const sanitizeOpacity = value => {
     return clampNumber(Math.round(numeric), 0, 100, lyricVisualizerDefaults.opacity);
 };
 
+const sanitizeSlowReleaseDuration = value => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return lyricVisualizerDefaults.slowReleaseDuration;
+    return clampNumber(Math.round(numeric), 200, 5000, lyricVisualizerDefaults.slowReleaseDuration);
+};
+
 const sanitizeTransitionDelay = value => {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return lyricVisualizerDefaults.transitionDelay;
@@ -665,6 +673,7 @@ const lyricVisualizerFrequencyMinBaseValues = Object.freeze([20, 40, 80, 120, 20
 const lyricVisualizerFrequencyMaxBaseValues = Object.freeze([4000, 6000, 8000, 12000, 16000]);
 const lyricVisualizerTransitionDelayBaseValues = Object.freeze([0, 0.25, 0.5, 0.75, 0.9]);
 const lyricVisualizerOpacityBaseValues = Object.freeze([20, 40, 60, 80, 100]);
+const lyricVisualizerSlowReleaseDurationBaseValues = Object.freeze([400, 700, 900, 1200, 1600]);
 const lyricVisualizerRadialSizeBaseValues = Object.freeze([60, 80, 100, 120, 160]);
 const lyricVisualizerRadialOffsetBaseValues = Object.freeze([-50, -25, 0, 25, 50]);
 const lyricVisualizerRadialCoreSizeBaseValues = Object.freeze([40, 52, 62, 72, 84]);
@@ -678,6 +687,7 @@ const lyricVisualizerFrequencyMinValues = ref([...lyricVisualizerFrequencyMinBas
 const lyricVisualizerFrequencyMaxValues = ref([...lyricVisualizerFrequencyMaxBaseValues]);
 const lyricVisualizerTransitionDelayValues = ref([...lyricVisualizerTransitionDelayBaseValues]);
 const lyricVisualizerOpacityValues = ref([...lyricVisualizerOpacityBaseValues]);
+const lyricVisualizerSlowReleaseDurationValues = ref([...lyricVisualizerSlowReleaseDurationBaseValues]);
 const lyricVisualizerRadialSizeValues = ref([...lyricVisualizerRadialSizeBaseValues]);
 const lyricVisualizerRadialOffsetXValues = ref([...lyricVisualizerRadialOffsetBaseValues]);
 const lyricVisualizerRadialOffsetYValues = ref([...lyricVisualizerRadialOffsetBaseValues]);
@@ -744,6 +754,13 @@ const lyricVisualizerOpacityOptions = computed(() =>
     }))
 );
 
+const lyricVisualizerSlowReleaseDurationOptions = computed(() =>
+    lyricVisualizerSlowReleaseDurationValues.value.map(value => ({
+        label: formatOptionLabel(value, ' 毫秒', lyricVisualizerDefaults.slowReleaseDuration),
+        value,
+    }))
+);
+
 const lyricVisualizerRadialSizeOptions = computed(() =>
     lyricVisualizerRadialSizeValues.value.map(value => ({
         label: formatOptionLabel(value, '%', lyricVisualizerDefaults.radialSize),
@@ -792,6 +809,7 @@ const lyricVisualizerFrequencyMinCustom = ref('');
 const lyricVisualizerFrequencyMaxCustom = ref('');
 const lyricVisualizerTransitionDelayCustom = ref('');
 const lyricVisualizerOpacityCustom = ref('');
+const lyricVisualizerSlowReleaseDurationCustom = ref('');
 const lyricVisualizerRadialSizeCustom = ref('');
 const lyricVisualizerRadialOffsetXCustom = ref('');
 const lyricVisualizerRadialOffsetYCustom = ref('');
@@ -823,6 +841,11 @@ const lyricVisualizerOpacityAction = createCustomActionState(
     lyricVisualizerOpacityCustom,
     sanitizeOpacity,
     lyricVisualizerOpacityValues
+);
+const lyricVisualizerSlowReleaseDurationAction = createCustomActionState(
+    lyricVisualizerSlowReleaseDurationCustom,
+    sanitizeSlowReleaseDuration,
+    lyricVisualizerSlowReleaseDurationValues
 );
 const lyricVisualizerRadialSizeAction = createCustomActionState(
     lyricVisualizerRadialSizeCustom,
@@ -986,6 +1009,21 @@ const addLyricVisualizerOpacityOption = () => {
         playerStore.lyricVisualizerOpacity = value;
     }
     lyricVisualizerOpacityCustom.value = '';
+};
+
+const addLyricVisualizerSlowReleaseDurationOption = () => {
+    const { mode, value } = lyricVisualizerSlowReleaseDurationAction.value;
+    if (value === null) return;
+    if (mode === 'remove') {
+        removeChoiceValue(lyricVisualizerSlowReleaseDurationValues, value);
+        if (playerStore.lyricVisualizerSlowReleaseDuration === value) {
+            playerStore.lyricVisualizerSlowReleaseDuration = lyricVisualizerDefaults.slowReleaseDuration;
+        }
+    } else {
+        addChoiceValue(lyricVisualizerSlowReleaseDurationValues, value);
+        playerStore.lyricVisualizerSlowReleaseDuration = value;
+    }
+    lyricVisualizerSlowReleaseDurationCustom.value = '';
 };
 
 const addLyricVisualizerRadialSizeOption = () => {
@@ -1154,6 +1192,25 @@ watch(
 );
 
 watch(
+    () => playerStore.lyricVisualizerSlowReleaseDuration,
+    value => {
+        const safe = sanitizeSlowReleaseDuration(value);
+        if (value !== safe) playerStore.lyricVisualizerSlowReleaseDuration = safe;
+        addChoiceValue(lyricVisualizerSlowReleaseDurationValues, safe);
+    },
+    { immediate: true }
+);
+
+watch(
+    () => playerStore.lyricVisualizerSlowRelease,
+    value => {
+        const safe = !!value;
+        if (value !== safe) playerStore.lyricVisualizerSlowRelease = safe;
+    },
+    { immediate: true }
+);
+
+watch(
     () => playerStore.lyricVisualizerRadialSize,
     value => {
         const safe = sanitizeRadialSize(value);
@@ -1278,6 +1335,14 @@ const resetLyricVisualizerTransitionDelay = () => {
 
 const resetLyricVisualizerOpacity = () => {
     playerStore.lyricVisualizerOpacity = lyricVisualizerDefaults.opacity;
+};
+
+const resetLyricVisualizerSlowReleaseDuration = () => {
+    playerStore.lyricVisualizerSlowReleaseDuration = lyricVisualizerDefaults.slowReleaseDuration;
+};
+
+const resetLyricVisualizerSlowRelease = () => {
+    playerStore.lyricVisualizerSlowRelease = lyricVisualizerDefaults.slowRelease;
 };
 
 const resetLyricVisualizerRadialSize = () => {
